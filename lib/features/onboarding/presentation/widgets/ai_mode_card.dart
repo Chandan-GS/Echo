@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
-import 'chip_label.dart';
+import '../../../../core/presentation/widgets/chip_label.dart';
 
 class AiModeCard extends StatelessWidget {
   final bool isSelected;

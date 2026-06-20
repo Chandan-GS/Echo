@@ -3,7 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:project_echo/core/presentation/widgets/echo_button.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/features/onboarding/presentation/cubit/on_boarding_cubit.dart';
-import 'package:project_echo/features/onboarding/presentation/widgets/chip_label.dart';
+import 'package:project_echo/core/presentation/widgets/chip_label.dart';
 import 'package:project_echo/features/onboarding/presentation/widgets/permission_tile.dart';
 
 class PermissionScreen extends StatefulWidget {
