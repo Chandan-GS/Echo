@@ -2,13 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 part 'on_boarding_state.dart';
 
 class OnBoardingCubit extends Cubit<OnBoardingState> {
   static const _platform = MethodChannel('project_echo/permissions');
 
-  OnBoardingCubit() : super(OnBoardingInitial());
+  OnBoardingCubit({bool isFinished = false})
+    : super(isFinished ? OnBoardingFinished() : OnBoardingInitial());
 
   void startOnboarding() {
     emit(OnBoardingInitial());
@@ -113,7 +115,9 @@ class OnBoardingCubit extends Cubit<OnBoardingState> {
     }
   }
 
-  void completeAiMode() {
+  Future<void> completeAiMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('onboarding_finished', true);
     emit(OnBoardingFinished());
   }
 }

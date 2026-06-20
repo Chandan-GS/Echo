@@ -8,6 +8,7 @@ class EchoButton extends StatelessWidget {
   final bool showArrow;
   final Color? backgroundColor;
   final Color? textColor;
+  final IconData? icon;
 
   const EchoButton({
     super.key,
@@ -16,6 +17,7 @@ class EchoButton extends StatelessWidget {
     this.showArrow = false,
     this.backgroundColor,
     this.textColor,
+    this.icon,
   });
 
   @override
@@ -40,6 +42,10 @@ class EchoButton extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            if (icon != null) ...[
+              Icon(icon, size: 20),
+              const SizedBox(width: 8),
+            ],
             Text(
               text,
               style: GoogleFonts.nunito(
@@ -47,6 +53,10 @@ class EchoButton extends StatelessWidget {
                 fontWeight: FontWeight.bold,
               ),
             ),
+            if (showArrow) ...[
+              const SizedBox(width: 8),
+              const Icon(Icons.arrow_forward, size: 20),
+            ],
           ],
         ),
       ),

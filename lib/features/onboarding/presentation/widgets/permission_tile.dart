@@ -22,10 +22,7 @@ class PermissionTile extends StatelessWidget {
     return Container(
       decoration: const BoxDecoration(
         border: Border(
-          bottom: BorderSide(
-            color: AppTheme.dividerColor,
-            width: 1,
-          ),
+          bottom: BorderSide(color: AppTheme.dividerColor, width: 1),
         ),
       ),
       padding: const EdgeInsets.symmetric(vertical: 20.0),
@@ -39,23 +36,17 @@ class PermissionTile extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
+                Text(subtitle, style: Theme.of(context).textTheme.bodyMedium),
               ],
             ),
           ),
           const SizedBox(width: 8),
-          Switch(
-            value: isGranted,
-            onChanged: onChanged,
-          ),
+          Switch(value: isGranted, onChanged: onChanged),
         ],
       ),
     );

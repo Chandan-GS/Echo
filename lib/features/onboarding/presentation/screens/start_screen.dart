@@ -4,6 +4,7 @@ import 'package:project_echo/features/onboarding/presentation/cubit/on_boarding_
 import 'package:project_echo/features/onboarding/presentation/screens/permission_screen.dart';
 import 'package:project_echo/features/onboarding/presentation/screens/ai_mode_screen.dart';
 import 'package:project_echo/features/onboarding/presentation/screens/welcome_screen.dart';
+import 'package:project_echo/features/echo/presentation/screens/echo_home_screen.dart';
 
 class StartScreen extends StatelessWidget {
   const StartScreen({super.key});
@@ -19,9 +20,7 @@ class StartScreen extends StatelessWidget {
         } else if (state is AiModeStep) {
           return const AiModeScreen();
         } else if (state is OnBoardingFinished) {
-          return const Scaffold(
-            body: Center(child: Text('Onboarding Finished!')),
-          );
+          return const EchoHomeScreen();
         }
 
         return const Scaffold(body: Center(child: Text('Unknown State')));

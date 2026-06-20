@@ -10,6 +10,7 @@ class AiModeCard extends StatelessWidget {
   final String speedLabel;
   final bool isFast;
   final VoidCallback onTap;
+  final Widget? expandedContent;
 
   const AiModeCard({
     Key? key,
@@ -20,6 +21,7 @@ class AiModeCard extends StatelessWidget {
     required this.speedLabel,
     required this.isFast,
     required this.onTap,
+    this.expandedContent,
   }) : super(key: key);
 
   @override
@@ -37,71 +39,92 @@ class AiModeCard extends StatelessWidget {
             width: isSelected ? 2 : 1,
           ),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(icon, color: AppTheme.primaryGreen, size: 24),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                ),
-                Container(
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: isSelected ? AppTheme.primaryGreen : AppTheme.dividerColor,
-                      width: 2,
+        child: AnimatedSize(
+          duration: const Duration(milliseconds: 500),
+          curve: Curves.easeInOutBack,
+          alignment: Alignment.topCenter,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(icon, color: AppTheme.primaryGreen, size: 24),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: Theme.of(context).textTheme.titleLarge,
                     ),
                   ),
-                  child: isSelected
-                      ? Center(
-                          child: Container(
-                            width: 12,
-                            height: 12,
-                            decoration: const BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: AppTheme.primaryGreen,
+                  Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: isSelected
+                            ? AppTheme.primaryGreen
+                            : AppTheme.dividerColor,
+                        width: 2,
+                      ),
+                    ),
+                    child: isSelected
+                        ? Center(
+                            child: Container(
+                              width: 12,
+                              height: 12,
+                              decoration: const BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: AppTheme.primaryGreen,
+                              ),
                             ),
-                          ),
-                        )
-                      : null,
-                ),
+                          )
+                        : null,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: tags
+                    .map((tag) => ChipLabel(text: tag, isOutline: true))
+                    .toList(),
+              ),
+              const SizedBox(height: 16),
+              const Divider(color: AppTheme.dividerColor, height: 1),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Icon(
+                    isFast ? Icons.bolt : Icons.hourglass_empty,
+                    size: 16,
+                    color: AppTheme.textSecondary,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Processing speed:',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  const SizedBox(width: 8),
+                  ChipLabel(
+                    text: speedLabel,
+                    isOutline: false,
+                    backgroundColor: isFast
+                        ? AppTheme.lightGreenBackground
+                        : AppTheme.amberBackground,
+                    textColor: AppTheme.textPrimary,
+                  ),
+                ],
+              ),
+              if (expandedContent != null && isSelected) ...[
+                const SizedBox(height: 16),
+                const Divider(color: AppTheme.dividerColor, height: 1),
+                const SizedBox(height: 16),
+                expandedContent!,
               ],
-            ),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: tags.map((tag) => ChipLabel(text: tag, isOutline: true)).toList(),
-            ),
-            const SizedBox(height: 16),
-            const Divider(color: AppTheme.dividerColor, height: 1),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Icon(isFast ? Icons.bolt : Icons.hourglass_empty, size: 16, color: AppTheme.textSecondary),
-                const SizedBox(width: 6),
-                Text(
-                  'Processing speed:',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-                const SizedBox(width: 8),
-                ChipLabel(
-                  text: speedLabel,
-                  isOutline: false,
-                  backgroundColor: isFast ? AppTheme.lightGreenBackground : AppTheme.amberBackground,
-                  textColor: AppTheme.textPrimary,
-                ),
-              ],
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

@@ -6,7 +6,6 @@ import 'package:project_echo/features/onboarding/presentation/cubit/on_boarding_
 import 'package:project_echo/features/onboarding/presentation/widgets/chip_label.dart';
 import 'package:project_echo/features/onboarding/presentation/widgets/permission_tile.dart';
 
-
 class PermissionScreen extends StatefulWidget {
   const PermissionScreen({super.key});
 

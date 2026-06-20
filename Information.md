@@ -197,3 +197,35 @@ The user navigates to the "Vault" screen.
 | **Synthesize** | TTS Engine | Summary String -> briefing.wav (Audio) | App Documents Directory |
 | **Archive** | End of Job | Briefing Entity (Text + Path) | Isar |
 | **Consume** | User Tap | Briefing Entity + .wav | UI / AudioPlayer |
+
+---
+
+## Phase 9: Echo Converse (Interactive RAG)
+
+**21. Mock Data Seeding (Testing Foundation)**
+During development, the Isar database is populated with realistic mock notifications (work messages, personal texts, calendar events). Each entry is pre-embedded using a local embedding model, and the resulting 384-dimensional vector is stored alongside the text in Isar.
+
+**22. The Embedding & Indexing Workflow**
+In production, when a new notification arrives via the `NotificationListenerService`, the raw text is extracted. Before saving to Isar, an on-device embedding model (e.g. `all-MiniLM-L6-v2`) converts the text into a vector. Both the raw text and vector are saved in a single atomic transaction.
+
+**23. The "Converse" Retrieval (RAG)**
+When the user asks a question in the "Converse" screen:
+- The query is embedded into a 384-dimensional vector.
+- The app fetches candidate `RawData` entries from Isar.
+- A brute-force cosine similarity calculation is performed between the query vector and candidate vectors.
+- The top 3-5 most relevant entries (with similarity > 0.5) are retrieved and concatenated to form the context.
+
+**24. Converse Prompt Engineering**
+A strict system prompt is used:
+- **Role:** "You are Echo, a private assistant. Answer using ONLY the provided context."
+- The retrieved context and the user's query are injected into the prompt.
+- The total prompt length is kept under the LLM's context window limits.
+
+**25. Inference & Streaming**
+The prompt is fed to the initialized local model (e.g. Gemma or DeepSeek). The UI streams the response token-by-token for a fast, responsive user experience. If the user asks a new question mid-generation, the current inference is cancelled and restarted.
+
+**26. UI/UX for the Converse Screen**
+A minimal chat interface matching the app's aesthetic:
+- Accessible via an "Ask Echo" button on the Dashboard.
+- Features a scrollable list of message bubbles, a fixed text input at the bottom, and state indicators for "Searching..." and "Typing...".
+- Includes empty state suggestions and graceful error handling if no relevant context is found.
