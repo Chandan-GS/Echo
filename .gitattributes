@@ -1,11 +1,11 @@
-# Mark the web folder as vendored/documentation so GitHub's Linguist ignores it in stats
-web/** linguist-vendored
-web/* linguist-vendored
-web/index.html linguist-vendored
+# Force GitHub Linguist to ignore all HTML files completely
+*.html linguist-detectable=false
+*.html linguist-vendored
 
-# Ignore ios and android build/project files from stats if any
-ios/** linguist-vendored
+# Mark all platform directories as vendored to exclude boilerplates (C++, Kotlin, Swift, CMake)
+web/** linguist-vendored
 android/** linguist-vendored
+ios/** linguist-vendored
 macos/** linguist-vendored
 windows/** linguist-vendored
 linux/** linguist-vendored
