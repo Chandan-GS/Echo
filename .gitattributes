@@ -1,0 +1,11 @@
+# Mark the web folder as vendored/documentation so GitHub's Linguist ignores it in stats
+web/** linguist-vendored
+web/* linguist-vendored
+web/index.html linguist-vendored
+
+# Ignore ios and android build/project files from stats if any
+ios/** linguist-vendored
+android/** linguist-vendored
+macos/** linguist-vendored
+windows/** linguist-vendored
+linux/** linguist-vendored
