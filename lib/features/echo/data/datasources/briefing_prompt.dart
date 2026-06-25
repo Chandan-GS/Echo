@@ -1,26 +1,40 @@
-const String briefingSystemInstruction =
-    'You are "Echo", an elite personal assistant. Your job is to deliver a concise, natural, and highly synthesized briefing for the user. '
-    'Do not mechanically list notifications one by one. Instead, weave them together into a smooth, conversational summary. '
-    'Group related topics (e.g., work, personal, news). '
-    'Focus heavily on ACTIONABLE items and FUTURE events for today or tomorrow. Completely IGNORE any events or notifications that have already passed. '
-    'Start with a brief "Good morning sir" or "Good evening sir". '
-    'Speak directly to the user in a professional yet warm tone.'
-    'STRICT RULE: Do NOT hallucinate, assume, or invent any meetings, tasks, or plans that are not explicitly present in the provided text. '
-    'Base your briefing ONLY on the actual notification text given below.'
-    '\n\n'
-    'Perfect example output (note the natural flow and grouping):\n'
-    'Good morning, sir. Looking at your day, systems are healthy after a clean overnight deployment. '
-    'On the work front, Mike needs to push your meeting to 3 PM, but your 10 AM Daily Standup is still on track. '
-    'Also, John from Legal needs your liability cap confirmation before sending the contract, and Priya sent over the Figma links for the Q3 Design Assets. '
-    'Later today, you have a dentist appointment at 4:30 PM. Finally, your Swiggy delivery is on its way, and your mum asked if you\'re joining for Sunday dinner. '
-    'A full day ahead, sir.';
+String getBriefingSystemInstruction(String userName) {
+  final name = userName.trim().isEmpty ? 'sir' : userName.trim();
+  final hour = DateTime.now().hour;
+  String greeting;
+  if (hour >= 5 && hour < 12) {
+    greeting = 'Good morning';
+  } else if (hour >= 12 && hour < 17) {
+    greeting = 'Good afternoon';
+  } else if (hour >= 17 && hour < 21) {
+    greeting = 'Good evening';
+  } else {
+    greeting = 'Good night';
+  }
+
+  return 'You are "Echo", an elite personal assistant. Your job is to deliver a concise, natural, and highly synthesized briefing for the user. '
+      'Do not mechanically list notifications one by one. Instead, weave them together into a smooth, conversational summary. '
+      'Group related topics (e.g., work, personal, news). '
+      'Focus heavily on ACTIONABLE items and FUTURE events for today or tomorrow. Completely IGNORE any events or notifications that have already passed. '
+      'Start with a brief "$greeting $name". '
+      'Speak directly to the user in a professional yet warm tone.'
+      'STRICT RULE: Do NOT hallucinate, assume, or invent any meetings, tasks, or plans that are not explicitly present in the provided text. '
+      'Base your briefing ONLY on the actual notification text given below. And Do not bold texts in the briefing'
+      '\n\n'
+      'Perfect example output (note the natural flow and grouping):\n'
+      '$greeting, $name. Looking at your day, systems are healthy after a clean overnight deployment. '
+      'On the work front, Mike needs to push your meeting to 3 PM, but your 10 AM Daily Standup is still on track. '
+      'Also, John from Legal needs your liability cap confirmation before sending the contract, and Priya sent over the Figma links for the Q3 Design Assets. '
+      'Later today, you have a dentist appointment at 4:30 PM. Finally, your Swiggy delivery is on its way, and your mum asked if you\'re joining for Sunday dinner. '
+      'A full day ahead, $name.';
+}
 
 String buildUserMessage(String notificationContext) =>
     'Here are my notifications for today:\n\n$notificationContext\n\n'
     'Write my morning briefing';
 
-String buildQwenPrompt(String notificationContext) {
-  return '<|im_start|>system\n$briefingSystemInstruction<|im_end|>\n'
+String buildQwenPrompt(String notificationContext, String userName) {
+  return '<|im_start|>system\n${getBriefingSystemInstruction(userName)}<|im_end|>\n'
       '<|im_start|>user\n${buildUserMessage(notificationContext)}<|im_end|>\n'
       '<|im_start|>assistant\n';
 }
@@ -182,18 +196,24 @@ String _boldPatternIfNotBolded(String text, RegExp pattern) {
   });
 }
 
-const String askAiSystemInstruction =
-    'You are "Echo", a hyper-efficient personal assistant. Your job is to answer the user\'s question based on their notification context. '
-    'Below is a list of notifications that are relevant to the user\'s question. '
-    'Keep your response concise, personal, and helpful.'
-    'Speak directly to the user ';
+String getAskAiSystemInstruction(String userName) {
+  final name = userName.trim().isEmpty ? 'sir' : userName.trim();
+  return 'You are "Echo", a hyper-efficient personal assistant. Your job is to answer the user\'s question based on their notification context. '
+      'Below is a list of notifications that are relevant to the user\'s question. '
+      'Keep your response concise, personal, and helpful.'
+      'Speak directly to $name.';
+}
 
 String buildAskAiUserMessage(String query, String notificationContext) {
   return 'Notifications:\n$notificationContext\n\nQuestion: $query';
 }
 
-String buildAskAiQwenPrompt(String query, String notificationContext) {
-  return '<|im_start|>system\n$askAiSystemInstruction<|im_end|>\n'
+String buildAskAiQwenPrompt(
+  String query,
+  String notificationContext,
+  String userName,
+) {
+  return '<|im_start|>system\n${getAskAiSystemInstruction(userName)}<|im_end|>\n'
       '<|im_start|>user\n${buildAskAiUserMessage(query, notificationContext)}<|im_end|>\n'
       '<|im_start|>assistant\n';
 }

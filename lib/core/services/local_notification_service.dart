@@ -17,19 +17,20 @@ class LocalNotificationService {
     if (_initialized) return;
 
     const AndroidInitializationSettings initializationSettingsAndroid =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+        AndroidInitializationSettings('ic_notification');
 
     final DarwinInitializationSettings initializationSettingsDarwin =
         DarwinInitializationSettings(
-      requestAlertPermission: true,
-      requestBadgePermission: true,
-      requestSoundPermission: true,
-    );
+          requestAlertPermission: true,
+          requestBadgePermission: true,
+          requestSoundPermission: true,
+        );
 
-    final InitializationSettings initializationSettings = InitializationSettings(
-      android: initializationSettingsAndroid,
-      iOS: initializationSettingsDarwin,
-    );
+    final InitializationSettings initializationSettings =
+        InitializationSettings(
+          android: initializationSettingsAndroid,
+          iOS: initializationSettingsDarwin,
+        );
 
     await flutterLocalNotificationsPlugin.initialize(
       settings: initializationSettings,
@@ -37,7 +38,7 @@ class LocalNotificationService {
         // Handle notification tap
       },
     );
-    
+
     _initialized = true;
   }
 
@@ -48,13 +49,13 @@ class LocalNotificationService {
   }) async {
     const AndroidNotificationDetails androidPlatformChannelSpecifics =
         AndroidNotificationDetails(
-      'daily_briefing_channel',
-      'Daily Briefing',
-      channelDescription: 'Notifications for your daily AI briefing',
-      importance: Importance.max,
-      priority: Priority.high,
-      showWhen: false,
-    );
+          'daily_briefing_channel',
+          'Daily Briefing',
+          channelDescription: 'Notifications for your daily AI briefing',
+          importance: Importance.max,
+          priority: Priority.high,
+          showWhen: false,
+        );
     const DarwinNotificationDetails iOSPlatformChannelSpecifics =
         DarwinNotificationDetails();
     const NotificationDetails platformChannelSpecifics = NotificationDetails(

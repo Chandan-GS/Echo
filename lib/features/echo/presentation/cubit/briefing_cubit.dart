@@ -127,8 +127,9 @@ class BriefingCubit extends Cubit<BriefingState> {
       final prefs = await SharedPreferences.getInstance();
       final isOfflineEngine = prefs.getBool('is_offline_engine') ?? true;
       final geminiApiKey = prefs.getString('gemini_api_key') ?? '';
+      final userName = prefs.getString('user_name') ?? 'Sir';
 
-      final prompt = buildQwenPrompt(contextObj['context'] as String);
+      final prompt = buildQwenPrompt(contextObj['context'] as String, userName);
 
       _debugPrintLongString(
         '=== LLM INPUT PROMPT ===\n$prompt\n========================',

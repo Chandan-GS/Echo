@@ -115,8 +115,17 @@ class OnBoardingCubit extends Cubit<OnBoardingState> {
     }
   }
 
-  Future<void> completeAiMode() async {
+  void completeAiMode() {
+    emit(NameInputStep());
+  }
+
+  void goBackToAiMode() {
+    emit(AiModeStep());
+  }
+
+  Future<void> saveUserNameAndFinish(String name) async {
     final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('user_name', name.trim());
     await prefs.setBool('onboarding_finished', true);
     emit(OnBoardingFinished());
   }

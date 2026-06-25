@@ -15,6 +15,7 @@ class VaultLoaded extends VaultState {
   final List<RawData> displayedItems;
   final Map<String, String> categoryAliases;
   final List<String> blockedCategories;
+  final Map<String, int> categoryIcons;
 
   VaultLoaded({
     required this.allItems,
@@ -25,6 +26,7 @@ class VaultLoaded extends VaultState {
     required this.displayedItems,
     required this.categoryAliases,
     required this.blockedCategories,
+    required this.categoryIcons,
   });
 
   VaultLoaded copyWith({
@@ -36,6 +38,7 @@ class VaultLoaded extends VaultState {
     List<RawData>? displayedItems,
     Map<String, String>? categoryAliases,
     List<String>? blockedCategories,
+    Map<String, int>? categoryIcons,
   }) {
     return VaultLoaded(
       allItems: allItems ?? this.allItems,
@@ -46,6 +49,7 @@ class VaultLoaded extends VaultState {
       displayedItems: displayedItems ?? this.displayedItems,
       categoryAliases: categoryAliases ?? this.categoryAliases,
       blockedCategories: blockedCategories ?? this.blockedCategories,
+      categoryIcons: categoryIcons ?? this.categoryIcons,
     );
   }
 }

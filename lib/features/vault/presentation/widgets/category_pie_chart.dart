@@ -277,11 +277,13 @@ class _CategoryPieChartState extends State<CategoryPieChart>
                 SizedBox(
                   width: size,
                   height: size,
-                  child: CustomPaint(
-                    painter: _PieChartPainter(
-                      slices: _slices,
-                      hoverValues: _hoverValues,
-                      surfaceColor: context.colors.surface,
+                  child: RepaintBoundary(
+                    child: CustomPaint(
+                      painter: _PieChartPainter(
+                        slices: _slices,
+                        hoverValues: _hoverValues,
+                        surfaceColor: context.colors.surface,
+                      ),
                     ),
                   ),
                 ),
@@ -329,7 +331,7 @@ class _CategoryPieChartState extends State<CategoryPieChart>
                       children: [
                         Icon(
                           Icons.touch_app_rounded,
-                          color: context.colors.dividerColor,
+                          color: context.colors.textSecondary,
                           size: 32,
                         ),
                         const SizedBox(height: 8),

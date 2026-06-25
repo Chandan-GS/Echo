@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:project_echo/features/echo/presentation/cubit/briefing_cubit.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/features/echo/presentation/screens/daily_briefing_screen.dart';
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
+import 'package:project_echo/features/echo/presentation/widgets/timer/next_briefing_timer.dart';
+import 'package:project_echo/features/echo/presentation/widgets/generating_view.dart';
 
 class EchoHomeScreen extends StatelessWidget {
   const EchoHomeScreen({super.key});
@@ -88,7 +91,7 @@ class _EchoViewState extends State<_EchoView> with WidgetsBindingObserver {
           }
 
           if (state is BriefingGenerating) {
-            return _GeneratingView(partial: state.partial);
+            return GeneratingView(partial: state.partial);
           }
 
           if (state is BriefingError) {
@@ -125,7 +128,7 @@ class _InitialView extends StatelessWidget {
         ),
         const SizedBox(height: 20),
         _ActionCard(
-          title: 'Ask AI',
+          title: 'Ask Echo',
           subtitle: 'Chat with your secure assistant',
           icon: Icons.chat_bubble_outline_rounded,
           onTap: () => context.push('/echo/chat'),
@@ -160,7 +163,7 @@ class _CachedView extends StatelessWidget {
           children: [
             Expanded(
               child: _ActionCard(
-                title: 'Ask AI',
+                title: 'Ask Echo',
                 subtitle: 'Chat',
                 icon: Icons.chat_bubble_outline_rounded,
                 onTap: () => context.push('/echo/chat'),
@@ -245,12 +248,52 @@ class _ErrorView extends StatelessWidget {
 // ---------------------------------------------------------------------------
 // Shared shell (header + signal card + action list)
 // ---------------------------------------------------------------------------
-class _HomeShell extends StatelessWidget {
+class _HomeShell extends StatefulWidget {
   final List<Widget> actions;
   const _HomeShell({required this.actions});
 
   @override
+  State<_HomeShell> createState() => _HomeShellState();
+}
+
+class _HomeShellState extends State<_HomeShell> {
+  String? _userName;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserName();
+  }
+
+  Future<void> _loadUserName() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (mounted) {
+        setState(() {
+          _userName = prefs.getString('user_name');
+        });
+      }
+    } catch (_) {}
+  }
+
+  String _getGreeting() {
+    final hour = DateTime.now().hour;
+    if (hour >= 5 && hour < 12) {
+      return 'Good morning';
+    } else if (hour >= 12 && hour < 17) {
+      return 'Good afternoon';
+    } else if (hour >= 17 && hour < 22) {
+      return 'Good evening';
+    } else {
+      return 'Good night';
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final greeting = _getGreeting();
+    final name = _userName ?? 'Sir';
+
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 24.0),
@@ -260,7 +303,7 @@ class _HomeShell extends StatelessWidget {
             const SizedBox(height: 24),
 
             Text(
-              'Your morning\nbriefing',
+              '$greeting,\n$name',
               style: GoogleFonts.oldStandardTt(
                 fontSize: 40,
                 fontWeight: FontWeight.w700,
@@ -268,7 +311,7 @@ class _HomeShell extends StatelessWidget {
                 height: 1.15,
               ),
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 24),
 
             FutureBuilder<List<RawData>>(
               future: IsarDataSource.getAllEntries(),
@@ -278,9 +321,13 @@ class _HomeShell extends StatelessWidget {
               },
             ),
 
-            const Spacer(),
+            const SizedBox(height: 24),
 
-            ...actions,
+            const Expanded(child: Center(child: NextBriefingTimer())),
+
+            const SizedBox(height: 24),
+
+            ...widget.actions,
 
             const SizedBox(height: 48),
           ],
@@ -482,7 +529,7 @@ class _SignalCard extends StatelessWidget {
                 ),
                 children: [
                   TextSpan(
-                    text: '$signalCount signals ',
+                    text: '$signalCount notifications ',
                     style: TextStyle(
                       fontWeight: FontWeight.w800,
                       color: context.colors.primaryGreen,
@@ -494,77 +541,6 @@ class _SignalCard extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Generating View (Progress State)
-// ---------------------------------------------------------------------------
-class _GeneratingView extends StatelessWidget {
-  final String partial;
-  const _GeneratingView({required this.partial});
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 24),
-            Text(
-              'Echo is\nthinking...',
-              style: GoogleFonts.oldStandardTt(
-                fontSize: 40,
-                fontWeight: FontWeight.w700,
-                color: context.colors.textPrimary,
-                height: 1.15,
-              ),
-            ),
-            const SizedBox(height: 32),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: context.colors.surface,
-                borderRadius: BorderRadius.circular(32),
-                border: Border.all(
-                  color: context.colors.dividerColor.withValues(alpha: 0.5),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.02),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  CircularProgressIndicator(
-                    strokeWidth: 3,
-                    valueColor: AlwaysStoppedAnimation(
-                      context.colors.primaryGreen,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    partial.isEmpty ? "Synthesizing intelligence..." : partial,
-                    style: GoogleFonts.nunito(
-                      fontSize: 16,
-                      fontStyle: FontStyle.italic,
-                      color: context.colors.textSecondary,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

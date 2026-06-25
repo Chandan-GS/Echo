@@ -17,6 +17,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
   bool isOnboardingFinished = prefs.getBool('onboarding_finished') ?? false;
+  // bool isOnboardingFinished = false;
   if (Platform.isAndroid) {
     final status = await Permission.notification.status;
     if (status.isDenied) {

@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
+import 'package:project_echo/features/vault/data/vault_icons.dart';
 import 'package:project_echo/features/vault/presentation/cubit/vault_cubit.dart';
 import 'package:project_echo/features/vault/presentation/widgets/notification_card_widget.dart';
+import 'package:project_echo/features/vault/presentation/widgets/vault_utils.dart';
 
 void showCategoryDetailsSheet(BuildContext context, String category) {
   // Ensure the cubit has this category selected before opening
@@ -29,7 +31,7 @@ class _CategoryDetailsSheet extends StatelessWidget {
   });
 
   void _showDeleteConfirmation(BuildContext context) {
-    showDialog(
+    _showBouncyDialog(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
@@ -87,7 +89,7 @@ class _CategoryDetailsSheet extends StatelessWidget {
 
   void _showRenameDialog(BuildContext context) {
     final controller = TextEditingController(text: category);
-    showDialog(
+    _showBouncyDialog(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
@@ -163,7 +165,7 @@ class _CategoryDetailsSheet extends StatelessWidget {
   }
 
   void _showBlockConfirmation(BuildContext context) {
-    showDialog(
+    _showBouncyDialog(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
@@ -219,6 +221,89 @@ class _CategoryDetailsSheet extends StatelessWidget {
     );
   }
 
+  void _showIconPickerDialog(BuildContext context, IconData currentIcon) {
+    _showBouncyDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          backgroundColor: context.colors.surface,
+          title: Text(
+            'Choose Category Icon',
+            style: GoogleFonts.nunito(
+              fontWeight: FontWeight.bold,
+              color: context.colors.textPrimary,
+            ),
+          ),
+          content: SizedBox(
+            width: 300,
+            height: 280,
+            child: GridView.builder(
+              shrinkWrap: true,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 4,
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+              ),
+              itemCount: curatedVaultIcons.length,
+              itemBuilder: (context, index) {
+                final icon = curatedVaultIcons[index];
+                final isSelected = icon.codePoint == currentIcon.codePoint;
+
+                return GestureDetector(
+                  onTap: () {
+                    parentContext.read<VaultCubit>().updateCategoryIcon(
+                      category,
+                      icon.codePoint,
+                    );
+                    Navigator.of(dialogContext).pop();
+                  },
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? context.colors.primaryGreen
+                          : context.colors.background,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: isSelected
+                            ? context.colors.primaryGreen
+                            : context.colors.dividerColor.withValues(
+                                alpha: 0.5,
+                              ),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Icon(
+                      icon,
+                      color: isSelected
+                          ? context.colors.textInverse
+                          : context.colors.textPrimary,
+                      size: 24,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text(
+                'Cancel',
+                style: GoogleFonts.nunito(
+                  fontWeight: FontWeight.bold,
+                  color: context.colors.textSecondary,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // We use the parentContext's BlocProvider to listen to VaultCubit
@@ -228,6 +313,8 @@ class _CategoryDetailsSheet extends StatelessWidget {
         if (state is! VaultLoaded) {
           return const SizedBox.shrink();
         }
+
+        final currentIcon = getCategoryIcon(category, state.categoryIcons);
 
         return Container(
           height: MediaQuery.of(context).size.height * 0.85,
@@ -252,26 +339,51 @@ class _CategoryDetailsSheet extends StatelessWidget {
               // Header
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                child: Text(
-                  category,
-                  style: GoogleFonts.oldStandardTt(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                    color: context.colors.textPrimary,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        category,
+                        style: GoogleFonts.oldStandardTt(
+                          fontSize: 32,
+                          fontWeight: FontWeight.bold,
+                          color: context.colors.textPrimary,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    GestureDetector(
+                      onTap: () => _showIconPickerDialog(context, currentIcon),
+                      child: Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: context.colors.primaryGreen,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          currentIcon,
+                          size: 24,
+                          color: context.colors.textInverse,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
 
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                child: Text(
-                  '${state.displayedItems.length} signals',
-                  style: GoogleFonts.nunito(
-                    fontSize: 14,
-                    color: context.colors.textSecondary,
-                    fontWeight: FontWeight.w600,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    '${state.displayedItems.length} signals',
+                    style: GoogleFonts.nunito(
+                      fontSize: 14,
+                      color: context.colors.textSecondary,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ),
@@ -316,7 +428,6 @@ class _CategoryDetailsSheet extends StatelessWidget {
                 thickness: 1,
               ),
 
-              // List of notifications
               Expanded(
                 child: state.displayedItems.isEmpty
                     ? Center(
@@ -395,4 +506,24 @@ class _CategoryDetailsSheet extends StatelessWidget {
       ),
     );
   }
+}
+
+Future<T?> _showBouncyDialog<T>({
+  required BuildContext context,
+  required Widget Function(BuildContext) builder,
+}) {
+  return showGeneralDialog<T>(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+    barrierColor: Colors.black.withValues(alpha: 0.4),
+    transitionDuration: const Duration(milliseconds: 200),
+    pageBuilder: (context, animation, secondaryAnimation) {
+      return builder(context);
+    },
+    transitionBuilder: (context, animation, secondaryAnimation, child) {
+      final curvedValue = Curves.easeOutBack.transform(animation.value);
+      return Transform.scale(scale: curvedValue, child: child);
+    },
+  );
 }

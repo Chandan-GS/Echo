@@ -59,7 +59,7 @@ class BriefingControls extends StatelessWidget {
                       color: context.colors.textPrimary.withValues(alpha: 0.25),
                       blurRadius: 20,
                       offset: const Offset(0, 8),
-                    )
+                    ),
                   ],
                 ),
                 child: Icon(

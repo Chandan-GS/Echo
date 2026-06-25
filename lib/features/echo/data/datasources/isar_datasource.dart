@@ -89,4 +89,22 @@ class IsarDataSource {
       await isar.rawDatas.putAll(toUpdate);
     });
   }
+
+  /// Deletes all notification entries older than 24 hours.
+  static Future<void> deleteOldNotifications() async {
+    try {
+      final isar = await instance;
+      final limit = DateTime.now().subtract(const Duration(hours: 24));
+      await isar.writeTxn(() async {
+        final oldEntries = await isar.rawDatas.filter().timestampLessThan(limit).findAll();
+        if (oldEntries.isNotEmpty) {
+          final ids = oldEntries.map((e) => e.id).toList();
+          await isar.rawDatas.deleteAll(ids);
+          debugPrint('Permanently deleted ${ids.length} notifications older than 24 hours.');
+        }
+      });
+    } catch (e) {
+      debugPrint('Error cleaning up old notifications: $e');
+    }
+  }
 }

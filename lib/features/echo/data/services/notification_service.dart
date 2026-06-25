@@ -23,6 +23,9 @@ class NotificationService with WidgetsBindingObserver {
     try {
       WidgetsBinding.instance.addObserver(this);
 
+      // Cleanup old notifications on launch
+      await IsarDataSource.deleteOldNotifications();
+
       // 0. Fetch today's calendar events silently
       await _fetchAndProcessCalendarEvents();
 
@@ -152,6 +155,9 @@ class NotificationService with WidgetsBindingObserver {
       });
 
       debugPrint('Saved notification from $source to Isar.');
+      
+      // Auto-cleanup old notifications (older than 24 hours)
+      await IsarDataSource.deleteOldNotifications();
     } catch (e) {
       debugPrint('Error processing notification: $e');
     }

@@ -38,7 +38,7 @@ class _VaultViewState extends State<_VaultView> {
   }
 
   Widget _buildTabBar() {
-    final tabs = ['All Signals', 'Categories'];
+    final tabs = ['All', 'Categories'];
 
     return Container(
       height: 68,
@@ -94,7 +94,7 @@ class _VaultViewState extends State<_VaultView> {
                                 ? context.colors.textInverse
                                 : context.colors.textSecondary,
                           ),
-                          child: Text(title),
+                          child: Text(textAlign: TextAlign.center, title),
                         ),
                       ),
                     ),
@@ -242,8 +242,12 @@ class _VaultViewState extends State<_VaultView> {
           Padding(
             padding: const EdgeInsets.only(bottom: 16.0),
             child: TextButton.icon(
-              onPressed: () => _showManageBlockedCategoriesDialog(parentContext, state),
-              icon: Icon(Icons.block, color: parentContext.colors.textSecondary),
+              onPressed: () =>
+                  _showManageBlockedCategoriesDialog(parentContext, state),
+              icon: Icon(
+                Icons.block,
+                color: parentContext.colors.textSecondary,
+              ),
               label: Text(
                 'Manage Blocked (${state.blockedCategories.length})',
                 style: GoogleFonts.nunito(
@@ -257,7 +261,10 @@ class _VaultViewState extends State<_VaultView> {
     );
   }
 
-  void _showManageBlockedCategoriesDialog(BuildContext parentContext, VaultLoaded state) {
+  void _showManageBlockedCategoriesDialog(
+    BuildContext parentContext,
+    VaultLoaded state,
+  ) {
     showModalBottomSheet(
       context: parentContext,
       backgroundColor: Colors.transparent,
@@ -297,15 +304,18 @@ class _VaultViewState extends State<_VaultView> {
                 child: BlocBuilder<VaultCubit, VaultState>(
                   bloc: parentContext.read<VaultCubit>(),
                   builder: (context, currentState) {
-                    if (currentState is! VaultLoaded || currentState.blockedCategories.isEmpty) {
+                    if (currentState is! VaultLoaded ||
+                        currentState.blockedCategories.isEmpty) {
                       return Center(
                         child: Text(
                           'No blocked categories',
-                          style: GoogleFonts.nunito(color: parentContext.colors.textSecondary),
+                          style: GoogleFonts.nunito(
+                            color: parentContext.colors.textSecondary,
+                          ),
                         ),
                       );
                     }
-                    
+
                     return ListView.builder(
                       itemCount: currentState.blockedCategories.length,
                       itemBuilder: (context, index) {
@@ -320,11 +330,15 @@ class _VaultViewState extends State<_VaultView> {
                           ),
                           trailing: TextButton(
                             onPressed: () {
-                              parentContext.read<VaultCubit>().toggleBlockCategory(cat);
+                              parentContext
+                                  .read<VaultCubit>()
+                                  .toggleBlockCategory(cat);
                             },
                             child: Text(
                               'Unblock',
-                              style: GoogleFonts.nunito(color: parentContext.colors.primaryGreen),
+                              style: GoogleFonts.nunito(
+                                color: parentContext.colors.primaryGreen,
+                              ),
                             ),
                           ),
                         );

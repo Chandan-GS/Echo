@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
+import 'package:project_echo/features/vault/presentation/cubit/vault_cubit.dart';
 import 'package:project_echo/features/vault/presentation/widgets/vault_utils.dart';
 
 class NotificationCardWidget extends StatelessWidget {
@@ -12,7 +14,18 @@ class NotificationCardWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final timeStr = _formatTimestamp(notification.timestamp);
-    final icon = getSourceIcon(notification.source);
+    
+    Map<String, int> customIcons = const {};
+    try {
+      final currentState = context.read<VaultCubit>().state;
+      if (currentState is VaultLoaded) {
+        customIcons = currentState.categoryIcons;
+      }
+    } catch (_) {
+      // Fallback if Cubit is not in tree
+    }
+    
+    final icon = getCategoryIcon(notification.source, customIcons);
     final themeColor = context.colors.primaryGreen;
 
     return Padding(

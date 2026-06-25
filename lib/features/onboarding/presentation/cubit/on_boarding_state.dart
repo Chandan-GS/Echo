@@ -26,4 +26,6 @@ final class AiModeStep extends OnBoardingState {
   AiModeStep({this.selectedMode, this.isModelDownloaded = false});
 }
 
+final class NameInputStep extends OnBoardingState {}
+
 final class OnBoardingFinished extends OnBoardingState {}

@@ -1,18 +1,14 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/presentation/widgets/echo_app_bar.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:project_echo/features/echo/presentation/cubit/ask_ai_cubit.dart';
-import 'package:siri_wave/siri_wave.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:project_echo/features/echo/presentation/widgets/siri_waveform_visualizer.dart';
-
-import '../../../../core/presentation/widgets/echo_app_bar.dart';
 
 class AskAiScreen extends StatelessWidget {
   const AskAiScreen({super.key});
@@ -637,14 +633,16 @@ class _AnimatedMessage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isUser = message.sender == 'user';
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0.0, end: 1.0),
-      duration: const Duration(milliseconds: 500),
-      curve: Curves.easeOutQuint,
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeOutBack,
       builder: (context, value, child) {
-        return Transform.translate(
-          offset: Offset(0, 20 * (1 - value)),
-          child: Opacity(opacity: value, child: child),
+        return Transform.scale(
+          scale: value,
+          alignment: isUser ? Alignment.bottomRight : Alignment.bottomLeft,
+          child: child,
         );
       },
       child: _MessageContent(message: message),
@@ -882,7 +880,7 @@ class RagSourcesWidgetState extends State<RagSourcesWidget> {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    '${widget.sources.length} local signals used',
+                    '${widget.sources.length} local notifications used',
                     style: GoogleFonts.nunito(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,

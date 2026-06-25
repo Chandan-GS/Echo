@@ -18,3 +18,11 @@ IconData getSourceIcon(String source) {
       return Icons.notifications_none_rounded;
   }
 }
+
+IconData getCategoryIcon(String source, Map<String, int> customIcons) {
+  final lowerSource = source.toLowerCase().trim();
+  if (customIcons.containsKey(lowerSource)) {
+    return IconData(customIcons[lowerSource]!, fontFamily: 'MaterialIcons');
+  }
+  return getSourceIcon(source);
+}

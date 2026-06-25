@@ -93,6 +93,9 @@ class VaultCubit extends Cubit<VaultState> {
     final Map<String, String> categoryAliases = Map<String, String>.from(jsonDecode(aliasesString));
     
     final blockedCategories = prefs.getStringList('vault_blocked_categories') ?? [];
+    
+    final iconsString = prefs.getString('vault_category_icons') ?? '{}';
+    final Map<String, int> categoryIcons = Map<String, int>.from(jsonDecode(iconsString));
 
     final Map<String, int> categoryCounts = {'All': 0};
     final Map<String, List<RawData>> grouped = {'All': []};
@@ -126,6 +129,7 @@ class VaultCubit extends Cubit<VaultState> {
       displayedItems: displayedItems,
       categoryAliases: categoryAliases,
       blockedCategories: blockedCategories,
+      categoryIcons: categoryIcons,
     ));
   }
 
@@ -176,6 +180,19 @@ class VaultCubit extends Cubit<VaultState> {
           ? 'All' : currentState.selectedCategory;
           
       await _emitLoadedState(currentState.allItems, newSelectedCat);
+    }
+  }
+
+  Future<void> updateCategoryIcon(String category, int iconCodePoint) async {
+    final prefs = await SharedPreferences.getInstance();
+    final currentState = state;
+    if (currentState is VaultLoaded) {
+      final updatedIcons = Map<String, int>.from(currentState.categoryIcons);
+      updatedIcons[category.toLowerCase()] = iconCodePoint;
+      
+      await prefs.setString('vault_category_icons', jsonEncode(updatedIcons));
+      
+      await _emitLoadedState(currentState.allItems, currentState.selectedCategory);
     }
   }
 

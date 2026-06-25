@@ -172,8 +172,9 @@ class AskAiCubit extends Cubit<AskAiState> {
       final prefs = await SharedPreferences.getInstance();
       final isOfflineEngine = prefs.getBool('is_offline_engine') ?? true;
       final geminiApiKey = prefs.getString('gemini_api_key') ?? '';
+      final userName = prefs.getString('user_name') ?? 'Sir';
 
-      final prompt = buildAskAiQwenPrompt(text, contextString);
+      final prompt = buildAskAiQwenPrompt(text, contextString, userName);
 
       print('=== ASK AI: LLM INPUT PROMPT ===');
       _debugPrintLongString(prompt);
