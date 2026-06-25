@@ -16,15 +16,12 @@ class MainScaffold extends StatefulWidget {
 }
 
 class _MainScaffoldState extends State<MainScaffold> {
-  late PageController _pageController;
   int _selectedIndex = 0;
-  bool _isAnimatingProgrammatically = false;
 
   @override
   void initState() {
     super.initState();
     _selectedIndex = 0;
-    _pageController = PageController(initialPage: _selectedIndex);
   }
 
   @override
@@ -33,14 +30,11 @@ class _MainScaffoldState extends State<MainScaffold> {
     final routeIndex = _calculateSelectedIndex(context);
     if (routeIndex != _selectedIndex) {
       _selectedIndex = routeIndex;
-      _pageController.dispose();
-      _pageController = PageController(initialPage: _selectedIndex);
     }
   }
 
   @override
   void dispose() {
-    _pageController.dispose();
     super.dispose();
   }
 
@@ -63,22 +57,7 @@ class _MainScaffoldState extends State<MainScaffold> {
 
     setState(() {
       _selectedIndex = index;
-      _isAnimatingProgrammatically = true;
     });
-
-    _pageController
-        .animateToPage(
-          index,
-          duration: const Duration(milliseconds: 400),
-          curve: Curves.easeInOutCubic,
-        )
-        .then((_) {
-          if (mounted) {
-            setState(() {
-              _isAnimatingProgrammatically = false;
-            });
-          }
-        });
 
     _updateRoute(index);
   }
@@ -102,42 +81,16 @@ class _MainScaffoldState extends State<MainScaffold> {
     final routeIndex = _calculateSelectedIndex(context);
     if (routeIndex != _selectedIndex) {
       _selectedIndex = routeIndex;
-      if (_pageController.hasClients) {
-        _isAnimatingProgrammatically = true;
-        _pageController
-            .animateToPage(
-              routeIndex,
-              duration: const Duration(milliseconds: 400),
-              curve: Curves.easeInOutCubic,
-            )
-            .then((_) {
-              if (mounted) {
-                setState(() {
-                  _isAnimatingProgrammatically = false;
-                });
-              }
-            });
-      }
     }
 
     return Scaffold(
       body: Stack(
         children: [
-          // Swipeable screen area with iOS physics
+          // Persistent screen area using IndexedStack to prevent rebuild jitter
           Positioned.fill(
             bottom: 80,
-            child: PageView(
-              controller: _pageController,
-              onPageChanged: (index) {
-                if (_isAnimatingProgrammatically) return;
-                if (index != _selectedIndex) {
-                  setState(() {
-                    _selectedIndex = index;
-                  });
-                  _updateRoute(index);
-                }
-              },
-              physics: const BouncingScrollPhysics(),
+            child: IndexedStack(
+              index: _selectedIndex,
               children: const [
                 EchoHomeScreen(),
                 VaultScreen(),
@@ -195,25 +148,12 @@ class _FloatingNavBar extends StatelessWidget {
     return ClipRRect(
       borderRadius: BorderRadius.circular(34),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 28.0, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 0.0, vertical: 8),
         child: Container(
+          padding: EdgeInsets.symmetric(horizontal: 10),
           height: 68,
           width: double.infinity,
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.82),
-            borderRadius: BorderRadius.circular(34),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.5),
-              width: 1.5,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
-                blurRadius: 20,
-                offset: const Offset(0, 6),
-              ),
-            ],
-          ),
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(34)),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8.0),
             child: LayoutBuilder(
@@ -226,16 +166,16 @@ class _FloatingNavBar extends StatelessWidget {
                   children: [
                     // Fluid sliding active capsule
                     AnimatedPositioned(
-                      duration: const Duration(milliseconds: 400),
-                      curve: Curves
-                          .easeOutBack, // Elastic bounce matching onboarding theme
+                      duration: const Duration(milliseconds: 200),
+                      curve: Curves.easeOutBack,
                       left: activeLeft,
                       top: 8,
                       bottom: 8,
                       width: itemWidth,
                       child: Container(
+                        margin: EdgeInsets.symmetric(horizontal: 16),
                         decoration: BoxDecoration(
-                          color: AppTheme.lightGreenBackground,
+                          color: context.colors.lightGreenBackground,
                           borderRadius: BorderRadius.circular(26),
                         ),
                       ),
@@ -258,7 +198,7 @@ class _FloatingNavBar extends StatelessWidget {
                                   fontWeight: isSelected
                                       ? FontWeight.w800
                                       : FontWeight.w600,
-                                  color: AppTheme.textPrimary,
+                                  color: context.colors.textPrimary,
                                 ),
                                 child: Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
@@ -266,7 +206,7 @@ class _FloatingNavBar extends StatelessWidget {
                                     Icon(
                                       isSelected ? item.activeIcon : item.icon,
                                       size: 26,
-                                      color: AppTheme.textPrimary,
+                                      color: context.colors.textPrimary,
                                     ),
                                   ],
                                 ),

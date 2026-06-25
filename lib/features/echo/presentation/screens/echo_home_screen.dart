@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:flutter_tts/flutter_tts.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:project_echo/features/echo/presentation/cubit/briefing_cubit.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
@@ -27,64 +27,46 @@ class _EchoView extends StatefulWidget {
   State<_EchoView> createState() => _EchoViewState();
 }
 
-class _EchoViewState extends State<_EchoView> {
-  final FlutterTts _tts = FlutterTts();
-  bool _isPlaying = false;
-
+class _EchoViewState extends State<_EchoView> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    _setupTts();
-  }
-
-  Future<void> _setupTts() async {
-    await _tts.setLanguage('en-US');
-    await _tts.setSpeechRate(0.48);
-    await _tts.setPitch(1.0);
-    await _tts.setVolume(1.0);
-
-    try {
-      final voices = await _tts.getVoices;
-      for (var voice in voices) {
-        final name = voice['name'].toString().toLowerCase();
-        final locale = voice['locale'].toString().toLowerCase();
-        if ((locale.contains('en-gb')) &&
-            (name.contains('male') ||
-                name.contains('daniel') ||
-                name.contains('network'))) {
-          await _tts.setVoice({
-            "name": voice["name"],
-            "locale": voice["locale"],
-          });
-          break;
-        }
-      }
-    } catch (_) {}
-
-    _tts.setStartHandler(() => setState(() => _isPlaying = true));
-    _tts.setCompletionHandler(() => setState(() => _isPlaying = false));
-    _tts.setCancelHandler(() => setState(() => _isPlaying = false));
+    WidgetsBinding.instance.addObserver(this);
   }
 
   @override
   void dispose() {
-    _tts.stop();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
-  void _togglePlayback(String ttsText) async {
-    if (_isPlaying) {
-      await _tts.stop();
-    } else {
-      await _tts.speak(ttsText);
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      context.read<BriefingCubit>().loadCachedBriefing();
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.backgroundLight,
-      body: BlocBuilder<BriefingCubit, BriefingState>(
+      backgroundColor: context.colors.background,
+      body: BlocConsumer<BriefingCubit, BriefingState>(
+        listener: (context, state) {
+          if (state is BriefingReady) {
+            Navigator.of(context, rootNavigator: true).push(
+              MaterialPageRoute(
+                builder: (_) => DailyBriefingScreen(
+                  rawText: state.rawText,
+                  ttsText: state.ttsText,
+                  onReset: () {
+                    context.read<BriefingCubit>().goBack();
+                  },
+                ),
+              ),
+            );
+          }
+        },
         builder: (context, state) {
           if (state is BriefingInitial) {
             return _InitialView(
@@ -93,11 +75,13 @@ class _EchoViewState extends State<_EchoView> {
             );
           }
 
-          if (state is BriefingCached) {
+          if (state is BriefingCached || state is BriefingReady) {
+            final rawText = state is BriefingCached
+                ? state.rawText
+                : (state as BriefingReady).rawText;
             return _CachedView(
-              onPlay: () => context.read<BriefingCubit>().playCachedBriefing(
-                state.rawText,
-              ),
+              onPlay: () =>
+                  context.read<BriefingCubit>().playCachedBriefing(rawText),
               onRegenerate: () =>
                   context.read<BriefingCubit>().generateBriefing(),
             );
@@ -111,19 +95,6 @@ class _EchoViewState extends State<_EchoView> {
             return _ErrorView(
               message: state.message,
               onRetry: () => context.read<BriefingCubit>().generateBriefing(),
-            );
-          }
-
-          if (state is BriefingReady) {
-            return DailyBriefingScreen(
-              rawText: state.rawText,
-              ttsText: state.ttsText,
-              isPlaying: _isPlaying,
-              onTogglePlay: () => _togglePlayback(state.ttsText),
-              onReset: () {
-                _tts.stop();
-                context.read<BriefingCubit>().goBack();
-              },
             );
           }
 
@@ -145,11 +116,20 @@ class _InitialView extends StatelessWidget {
   Widget build(BuildContext context) {
     return _HomeShell(
       actions: [
-        _CompactButton(
+        _ActionCard(
+          title: 'Generate Briefing',
+          subtitle: "Synthesize today's intelligence",
           icon: Icons.auto_awesome_rounded,
-          label: 'Generate Briefing',
-          isPrimary: true,
           onTap: onGenerate,
+          isPrimary: true,
+        ),
+        const SizedBox(height: 20),
+        _ActionCard(
+          title: 'Ask AI',
+          subtitle: 'Chat with your secure assistant',
+          icon: Icons.chat_bubble_outline_rounded,
+          onTap: () => context.push('/echo/chat'),
+          isPrimary: false,
         ),
       ],
     );
@@ -168,23 +148,38 @@ class _CachedView extends StatelessWidget {
   Widget build(BuildContext context) {
     return _HomeShell(
       actions: [
-        _CompactButton(
+        _ActionCard(
+          title: "Play Today's Briefing",
+          subtitle: 'Listen to the cached summary',
           icon: Icons.play_arrow_rounded,
-          label: "Play Today's Briefing",
-          isPrimary: true,
           onTap: onPlay,
+          isPrimary: true,
         ),
-        _CompactButton(
-          icon: Icons.chat_bubble_outline_rounded,
-          label: 'Ask',
-          isPrimary: false,
-          onTap: () {}, // static for now
-        ),
-        _CompactButton(
-          icon: Icons.auto_awesome_rounded,
-          label: 'Generate',
-          isPrimary: false,
-          onTap: onRegenerate,
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: _ActionCard(
+                title: 'Ask AI',
+                subtitle: 'Chat',
+                icon: Icons.chat_bubble_outline_rounded,
+                onTap: () => context.push('/echo/chat'),
+                isPrimary: false,
+                isSmall: true,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: _ActionCard(
+                title: 'Regenerate',
+                subtitle: 'Update summary',
+                icon: Icons.auto_awesome_rounded,
+                onTap: onRegenerate,
+                isPrimary: false,
+                isSmall: true,
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -192,7 +187,63 @@ class _CachedView extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Shared shell (header + signal card + list + action list)
+// Error State
+// ---------------------------------------------------------------------------
+class _ErrorView extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+  const _ErrorView({required this.message, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return _HomeShell(
+      actions: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.red.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
+          ),
+          child: Column(
+            children: [
+              const Icon(Icons.error_outline, color: Colors.red, size: 32),
+              const SizedBox(height: 12),
+              Text(
+                'Failed to generate briefing.',
+                style: GoogleFonts.nunito(
+                  fontWeight: FontWeight.bold,
+                  color: context.colors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                message,
+                style: GoogleFonts.nunito(
+                  fontSize: 12,
+                  color: context.colors.textSecondary,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        _ActionCard(
+          title: 'Try Again',
+          subtitle: 'Attempt generation again',
+          icon: Icons.refresh_rounded,
+          onTap: onRetry,
+          isPrimary: true,
+        ),
+      ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Shared shell (header + signal card + action list)
 // ---------------------------------------------------------------------------
 class _HomeShell extends StatelessWidget {
   final List<Widget> actions;
@@ -200,7 +251,6 @@ class _HomeShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final today = _formattedDate();
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 24.0),
@@ -208,26 +258,17 @@ class _HomeShell extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 24),
-            Text(
-              today.toUpperCase(),
-              style: GoogleFonts.nunito(
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.8,
-                color: AppTheme.textSecondary,
-              ),
-            ),
-            const SizedBox(height: 4),
+
             Text(
               'Your morning\nbriefing',
               style: GoogleFonts.oldStandardTt(
-                fontSize: 32,
+                fontSize: 40,
                 fontWeight: FontWeight.w700,
-                color: AppTheme.textPrimary,
+                color: context.colors.textPrimary,
                 height: 1.15,
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 32),
 
             FutureBuilder<List<RawData>>(
               future: IsarDataSource.getAllEntries(),
@@ -236,174 +277,172 @@ class _HomeShell extends StatelessWidget {
                 return _SignalCard(signalCount: count);
               },
             ),
-            const SizedBox(height: 20),
 
-            Text(
-              'CAPTURED SIGNALS',
-              style: GoogleFonts.nunito(
-                fontSize: 10,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1.5,
-                color: AppTheme.textSecondary.withValues(alpha: 0.8),
-              ),
-            ),
-            const SizedBox(height: 8),
+            const Spacer(),
 
-            Expanded(
-              child: FutureBuilder<List<RawData>>(
-                future: IsarDataSource.getAllEntries(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(
-                      child: SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    );
-                  }
-                  final items = snapshot.data ?? [];
-                  if (items.isEmpty) {
-                    return Center(
-                      child: Text(
-                        'No signals captured yet',
-                        style: GoogleFonts.nunito(
-                          fontSize: 14,
-                          color: AppTheme.textSecondary,
-                        ),
-                      ),
-                    );
-                  }
+            ...actions,
 
-                  return ShaderMask(
-                    shaderCallback: (Rect rect) {
-                      return const LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.purple,
-                          Colors.transparent,
-                          Colors.transparent,
-                          Colors.purple,
-                        ],
-                        stops: [0.0, 0.05, 0.95, 1.0],
-                      ).createShader(rect);
-                    },
-                    blendMode: BlendMode.dstOut,
-                    child: ListView.builder(
-                      physics: const BouncingScrollPhysics(),
-                      padding: const EdgeInsets.symmetric(vertical: 8.0),
-                      itemCount: items.length,
-                      itemBuilder: (context, index) {
-                        return _NotificationCard(notification: items[index]);
-                      },
-                    ),
-                  );
-                },
-              ),
-            ),
-
-            const SizedBox(height: 16),
-            Center(
-              child: Wrap(
-                alignment: WrapAlignment.center,
-                spacing: 12,
-                runSpacing: 8,
-                children: actions,
-              ),
-            ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 48),
           ],
         ),
       ),
     );
   }
-
-  static String _formattedDate() {
-    final now = DateTime.now();
-    const days = [
-      'Monday',
-      'Tuesday',
-      'Wednesday',
-      'Thursday',
-      'Friday',
-      'Saturday',
-      'Sunday',
-    ];
-    const months = [
-      'January',
-      'February',
-      'March',
-      'April',
-      'May',
-      'June',
-      'July',
-      'August',
-      'September',
-      'October',
-      'November',
-      'December',
-    ];
-    return '${days[now.weekday - 1]}, ${months[now.month - 1]} ${now.day}';
-  }
 }
 
 // ---------------------------------------------------------------------------
-// Reusable compact action button
+// Massive Action Card
 // ---------------------------------------------------------------------------
-class _CompactButton extends StatelessWidget {
+class _ActionCard extends StatefulWidget {
+  final String title;
+  final String subtitle;
   final IconData icon;
-  final String label;
-  final bool isPrimary;
   final VoidCallback onTap;
+  final bool isPrimary;
+  final bool isSmall;
 
-  const _CompactButton({
+  const _ActionCard({
+    required this.title,
+    required this.subtitle,
     required this.icon,
-    required this.label,
-    required this.isPrimary,
     required this.onTap,
+    required this.isPrimary,
+    this.isSmall = false,
   });
 
   @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: isPrimary ? AppTheme.textPrimary : Colors.white,
-      borderRadius: BorderRadius.circular(24),
+  State<_ActionCard> createState() => _ActionCardState();
+}
 
-      shadowColor: isPrimary
-          ? AppTheme.textPrimary.withValues(alpha: 0.3)
-          : Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(24),
-        onTap: onTap,
+class _ActionCardState extends State<_ActionCard>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 150),
+    );
+    _scaleAnimation = Tween<double>(
+      begin: 1.0,
+      end: 0.96,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bgColor = widget.isPrimary
+        ? context.colors.textPrimary
+        : context.colors.surface;
+    final fgColor = widget.isPrimary
+        ? context.colors.textInverse
+        : context.colors.textPrimary;
+
+    return GestureDetector(
+      onTapDown: (_) => _controller.forward(),
+      onTapUp: (_) {
+        _controller.reverse();
+        widget.onTap();
+      },
+      onTapCancel: () => _controller.reverse(),
+      child: ScaleTransition(
+        scale: _scaleAnimation,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-          decoration: BoxDecoration(borderRadius: BorderRadius.circular(24)),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                size: 18,
-                color: isPrimary ? Colors.white : AppTheme.textPrimary,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: GoogleFonts.nunito(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: isPrimary ? Colors.white : AppTheme.textPrimary,
-                ),
+          padding: EdgeInsets.all(widget.isSmall ? 16 : 24),
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: BorderRadius.circular(24),
+            border: widget.isPrimary
+                ? null
+                : Border.all(
+                    color: context.colors.dividerColor.withValues(alpha: 0.5),
+                  ),
+            boxShadow: [
+              BoxShadow(
+                color: widget.isPrimary
+                    ? context.colors.primaryGreen.withValues(alpha: 0.1)
+                    : Colors.black.withValues(alpha: 0.03),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
               ),
             ],
           ),
+          child: widget.isSmall
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(widget.icon, color: fgColor, size: 24),
+                    const SizedBox(height: 24),
+                    Text(
+                      widget.title,
+                      style: GoogleFonts.nunito(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: fgColor,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      widget.subtitle,
+                      style: GoogleFonts.nunito(
+                        fontSize: 12,
+                        fontWeight: FontWeight.normal,
+                        color: fgColor.withValues(alpha: 0.7),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                )
+              : Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            widget.title,
+                            style: GoogleFonts.nunito(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              color: fgColor,
+                              letterSpacing: -0.5,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            widget.subtitle,
+                            style: GoogleFonts.nunito(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: fgColor.withValues(alpha: 0.7),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Icon(widget.icon, color: fgColor, size: 32),
+                  ],
+                ),
         ),
       ),
     );
   }
 }
 
+// ---------------------------------------------------------------------------
+// Summary Card (Signals Captured)
+// ---------------------------------------------------------------------------
 class _SignalCard extends StatelessWidget {
   final int signalCount;
   const _SignalCard({required this.signalCount});
@@ -411,52 +450,47 @@ class _SignalCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.colors.surface,
         borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: context.colors.dividerColor.withValues(alpha: 0.5),
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
       child: Row(
         children: [
-          const Icon(
+          Icon(
             Icons.inbox_outlined,
-            color: AppTheme.primaryGreen,
-            size: 22,
+            color: context.colors.primaryGreen,
+            size: 20,
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                RichText(
-                  text: TextSpan(
-                    children: [
-                      TextSpan(
-                        text: '$signalCount signals ',
-                        style: GoogleFonts.oldStandardTt(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: AppTheme.primaryGreen,
-                        ),
-                      ),
-                      TextSpan(
-                        text: 'captured today',
-                        style: GoogleFonts.nunito(
-                          fontSize: 14,
-                          color: AppTheme.textPrimary,
-                        ),
-                      ),
-                    ],
-                  ),
+            child: RichText(
+              text: TextSpan(
+                style: GoogleFonts.nunito(
+                  fontSize: 15,
+                  color: context.colors.textSecondary,
                 ),
-              ],
+                children: [
+                  TextSpan(
+                    text: '$signalCount signals ',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: context.colors.primaryGreen,
+                    ),
+                  ),
+                  const TextSpan(text: 'captured today'),
+                ],
+              ),
             ),
           ),
         ],
@@ -465,125 +499,8 @@ class _SignalCard extends StatelessWidget {
   }
 }
 
-class _NotificationCard extends StatelessWidget {
-  final RawData notification;
-
-  const _NotificationCard({required this.notification});
-
-  @override
-  Widget build(BuildContext context) {
-    final timeStr = _formatTimestamp(notification.timestamp);
-    final icon = _getSourceIcon(notification.source);
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.65),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.4),
-            width: 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.02),
-              blurRadius: 8,
-              offset: const Offset(0, 3),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(18),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 16.0,
-              vertical: 12.0,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Top line: source icon, source name, timestamp
-                Row(
-                  children: [
-                    Icon(icon, size: 14, color: AppTheme.textSecondary),
-                    const SizedBox(width: 6),
-                    Text(
-                      notification.source.toUpperCase(),
-                      style: GoogleFonts.nunito(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.0,
-                        color: AppTheme.textSecondary,
-                      ),
-                    ),
-                    const Spacer(),
-                    Text(
-                      timeStr,
-                      style: GoogleFonts.nunito(
-                        fontSize: 10,
-                        color: AppTheme.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                // Sender
-                Text(
-                  notification.sender,
-                  style: GoogleFonts.nunito(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                // Content
-                Text(
-                  notification.content,
-                  style: GoogleFonts.nunito(
-                    fontSize: 13,
-                    height: 1.3,
-                    color: AppTheme.textPrimary.withValues(alpha: 0.85),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  static String _formatTimestamp(DateTime dateTime) {
-    final hour = dateTime.hour > 12
-        ? dateTime.hour - 12
-        : (dateTime.hour == 0 ? 12 : dateTime.hour);
-    final minute = dateTime.minute.toString().padLeft(2, '0');
-    final period = dateTime.hour >= 12 ? 'PM' : 'AM';
-    return '$hour:$minute $period';
-  }
-
-  static IconData _getSourceIcon(String source) {
-    switch (source.toLowerCase()) {
-      case 'slack':
-        return Icons.chat_bubble_outline_rounded;
-      case 'sms':
-        return Icons.sms_outlined;
-      case 'whatsapp':
-        return Icons.message_outlined;
-      case 'calendar':
-        return Icons.calendar_today_outlined;
-      case 'gmail':
-        return Icons.mail_outline_rounded;
-      default:
-        return Icons.notifications_none_rounded;
-    }
-  }
-}
-
 // ---------------------------------------------------------------------------
-// Generating State — live streaming preview
+// Generating View (Progress State)
 // ---------------------------------------------------------------------------
 class _GeneratingView extends StatelessWidget {
   final String partial;
@@ -593,198 +510,57 @@ class _GeneratingView extends StatelessWidget {
   Widget build(BuildContext context) {
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 28.0, vertical: 40),
+        padding: const EdgeInsets.symmetric(horizontal: 24.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            const SizedBox(height: 24),
             Text(
-              'COMPOSING',
-              style: GoogleFonts.nunito(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 2,
-                color: AppTheme.textSecondary,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Echo is thinking...',
+              'Echo is\nthinking...',
               style: GoogleFonts.oldStandardTt(
-                fontSize: 28,
+                fontSize: 40,
                 fontWeight: FontWeight.w700,
-                color: AppTheme.textPrimary,
+                color: context.colors.textPrimary,
+                height: 1.15,
               ),
             ),
             const SizedBox(height: 32),
-            // Streaming text preview
-            Expanded(
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.04),
-                      blurRadius: 16,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: SingleChildScrollView(
-                  child: partial.isEmpty
-                      ? const _ThinkingDots()
-                      : Text(
-                          partial,
-                          style: GoogleFonts.nunito(
-                            fontSize: 17,
-                            height: 1.6,
-                            color: AppTheme.textPrimary,
-                          ),
-                        ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-            const LinearProgressIndicator(
-              backgroundColor: Color(0xFFE8E4DE),
-              valueColor: AlwaysStoppedAnimation(AppTheme.primaryGreen),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ThinkingDots extends StatefulWidget {
-  const _ThinkingDots();
-
-  @override
-  State<_ThinkingDots> createState() => _ThinkingDotsState();
-}
-
-class _ThinkingDotsState extends State<_ThinkingDots>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1200),
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _ctrl,
-      builder: (_, child) => Row(
-        mainAxisSize: MainAxisSize.min,
-        children: List.generate(3, (i) {
-          final phase = ((_ctrl.value * 3) - i).clamp(0.0, 1.0);
-          final opacity =
-              0.25 + 0.75 * (1 - (phase - 0.5).abs() * 2).clamp(0.0, 1.0);
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 3),
-            child: Opacity(
-              opacity: opacity,
-              child: Container(
-                width: 8,
-                height: 8,
-                decoration: const BoxDecoration(
-                  color: AppTheme.textSecondary,
-                  shape: BoxShape.circle,
-                ),
-              ),
-            ),
-          );
-        }),
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// DailyBriefingScreen is now used for Player State
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// Error State
-// ---------------------------------------------------------------------------
-class _ErrorView extends StatelessWidget {
-  final String message;
-  final VoidCallback onRetry;
-
-  const _ErrorView({required this.message, required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(28.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
             Container(
-              padding: const EdgeInsets.all(16),
+              width: double.infinity,
+              padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: Colors.red.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.warning_amber_rounded,
-                    color: Colors.red,
-                    size: 22,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      message,
-                      style: GoogleFonts.nunito(
-                        fontSize: 14,
-                        color: AppTheme.textPrimary,
-                      ),
-                    ),
+                color: context.colors.surface,
+                borderRadius: BorderRadius.circular(32),
+                border: Border.all(
+                  color: context.colors.dividerColor.withValues(alpha: 0.5),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.02),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
                   ),
                 ],
               ),
-            ),
-            const SizedBox(height: 32),
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(
-                    color: AppTheme.textPrimary,
-                    width: 1.5,
+              child: Column(
+                children: [
+                  CircularProgressIndicator(
+                    strokeWidth: 3,
+                    valueColor: AlwaysStoppedAnimation(
+                      context.colors.primaryGreen,
+                    ),
                   ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                  const SizedBox(height: 24),
+                  Text(
+                    partial.isEmpty ? "Synthesizing intelligence..." : partial,
+                    style: GoogleFonts.nunito(
+                      fontSize: 16,
+                      fontStyle: FontStyle.italic,
+                      color: context.colors.textSecondary,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
-                ),
-                onPressed: onRetry,
-                icon: const Icon(Icons.refresh, color: AppTheme.textPrimary),
-                label: Text(
-                  'Retry',
-                  style: GoogleFonts.nunito(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.textPrimary,
-                  ),
-                ),
+                ],
               ),
             ),
           ],

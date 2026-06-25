@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:project_echo/core/presentation/widgets/echo_button.dart';
+import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/features/onboarding/presentation/cubit/on_boarding_cubit.dart';
 
 class WelcomeScreen extends StatefulWidget {

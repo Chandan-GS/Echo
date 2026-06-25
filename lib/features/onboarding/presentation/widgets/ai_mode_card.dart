@@ -30,12 +30,14 @@ class AiModeCard extends StatelessWidget {
       onTap: onTap,
       child: Container(
         margin: const EdgeInsets.only(bottom: 16),
-        padding: const EdgeInsets.all(20),
+        padding: EdgeInsets.all(isSelected ? 19 : 20),
         decoration: BoxDecoration(
-          color: AppTheme.backgroundLight,
+          color: context.colors.background,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isSelected ? AppTheme.primaryGreen : AppTheme.dividerColor,
+            color: isSelected
+                ? context.colors.primaryGreen
+                : context.colors.dividerColor,
             width: isSelected ? 2 : 1,
           ),
         ),
@@ -48,12 +50,12 @@ class AiModeCard extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  Icon(icon, color: AppTheme.primaryGreen, size: 24),
+                  Icon(icon, color: context.colors.primaryGreen, size: 24),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
                       title,
-                      style: Theme.of(context).textTheme.titleLarge,
+                      style: Theme.of(context).textTheme.bodyLarge,
                     ),
                   ),
                   Container(
@@ -63,8 +65,8 @@ class AiModeCard extends StatelessWidget {
                       shape: BoxShape.circle,
                       border: Border.all(
                         color: isSelected
-                            ? AppTheme.primaryGreen
-                            : AppTheme.dividerColor,
+                            ? context.colors.primaryGreen
+                            : context.colors.dividerColor,
                         width: 2,
                       ),
                     ),
@@ -73,9 +75,9 @@ class AiModeCard extends StatelessWidget {
                             child: Container(
                               width: 12,
                               height: 12,
-                              decoration: const BoxDecoration(
+                              decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: AppTheme.primaryGreen,
+                                color: context.colors.primaryGreen,
                               ),
                             ),
                           )
@@ -92,14 +94,14 @@ class AiModeCard extends StatelessWidget {
                     .toList(),
               ),
               const SizedBox(height: 16),
-              const Divider(color: AppTheme.dividerColor, height: 1),
+              Divider(color: context.colors.dividerColor, height: 1),
               const SizedBox(height: 12),
               Row(
                 children: [
                   Icon(
                     isFast ? Icons.bolt : Icons.hourglass_empty,
                     size: 16,
-                    color: AppTheme.textSecondary,
+                    color: context.colors.textSecondary,
                   ),
                   const SizedBox(width: 6),
                   Text(
@@ -111,15 +113,15 @@ class AiModeCard extends StatelessWidget {
                     text: speedLabel,
                     isOutline: false,
                     backgroundColor: isFast
-                        ? AppTheme.lightGreenBackground
-                        : AppTheme.amberBackground,
-                    textColor: AppTheme.textPrimary,
+                        ? context.colors.lightGreenBackground
+                        : context.colors.amberBackground,
+                    textColor: context.colors.textPrimary,
                   ),
                 ],
               ),
               if (expandedContent != null && isSelected) ...[
                 const SizedBox(height: 16),
-                const Divider(color: AppTheme.dividerColor, height: 1),
+                Divider(color: context.colors.dividerColor, height: 1),
                 const SizedBox(height: 16),
                 expandedContent!,
               ],

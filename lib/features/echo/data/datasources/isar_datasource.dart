@@ -52,4 +52,41 @@ class IsarDataSource {
     final isar = await instance;
     return isar.rawDatas.where().sortByTimestampDesc().findAll();
   }
+
+  /// Deletes all stored notification entries matching the exact source (case-insensitive).
+  static Future<void> deleteEntriesBySource(String source) async {
+    final isar = await instance;
+    await isar.writeTxn(() async {
+      final all = await isar.rawDatas.where().findAll();
+      final toDelete = all
+          .where(
+            (e) => e.source.trim().toLowerCase() == source.trim().toLowerCase(),
+          )
+          .map((e) => e.id)
+          .toList();
+      await isar.rawDatas.deleteAll(toDelete);
+    });
+  }
+
+  /// Updates the source name for all entries matching the old source.
+  static Future<void> updateEntriesSource(
+    String oldSource,
+    String newSource,
+  ) async {
+    final isar = await instance;
+    await isar.writeTxn(() async {
+      final all = await isar.rawDatas.where().findAll();
+      final toUpdate = all
+          .where(
+            (e) =>
+                e.source.trim().toLowerCase() == oldSource.trim().toLowerCase(),
+          )
+          .toList();
+
+      for (var entry in toUpdate) {
+        entry.source = newSource;
+      }
+      await isar.rawDatas.putAll(toUpdate);
+    });
+  }
 }

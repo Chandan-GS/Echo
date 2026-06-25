@@ -86,9 +86,9 @@ class _AiModeScreenState extends State<AiModeScreen> {
       appBar: AppBar(
         scrolledUnderElevation: 0,
         leading: IconButton(
-          icon: const Icon(
+          icon: Icon(
             Icons.arrow_back_ios_new_rounded,
-            color: AppTheme.textPrimary,
+            color: context.colors.textPrimary,
           ),
           onPressed: () {
             cubit.checkPermissions();
@@ -112,7 +112,7 @@ class _AiModeScreenState extends State<AiModeScreen> {
                     Text(
                       'You can change this anytime in settings.',
                       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        color: AppTheme.textSecondary,
+                        color: context.colors.textSecondary,
                       ),
                     ),
                     const SizedBox(height: 32),
@@ -182,7 +182,8 @@ class _AiModeScreenState extends State<AiModeScreen> {
                                               .titleMedium
                                               ?.copyWith(
                                                 fontWeight: FontWeight.bold,
-                                                color: AppTheme.textPrimary,
+                                                color:
+                                                    context.colors.textPrimary,
                                               ),
                                         ),
                                         Text(
@@ -192,7 +193,8 @@ class _AiModeScreenState extends State<AiModeScreen> {
                                               .titleMedium
                                               ?.copyWith(
                                                 fontWeight: FontWeight.bold,
-                                                color: AppTheme.primaryGreen,
+                                                color:
+                                                    context.colors.primaryGreen,
                                               ),
                                         ),
                                       ],
@@ -203,10 +205,11 @@ class _AiModeScreenState extends State<AiModeScreen> {
                                       child: LinearProgressIndicator(
                                         value: downloadProgress,
                                         minHeight: 12,
-                                        backgroundColor: AppTheme.dividerColor,
+                                        backgroundColor:
+                                            context.colors.dividerColor,
                                         valueColor:
-                                            const AlwaysStoppedAnimation<Color>(
-                                              AppTheme.primaryGreen,
+                                            AlwaysStoppedAnimation<Color>(
+                                              context.colors.primaryGreen,
                                             ),
                                       ),
                                     ),
@@ -264,7 +267,7 @@ class _AiModeScreenState extends State<AiModeScreen> {
           'API Key',
           style: Theme.of(
             context,
-          ).textTheme.labelLarge?.copyWith(color: AppTheme.textPrimary),
+          ).textTheme.labelLarge?.copyWith(color: context.colors.textPrimary),
         ),
         const SizedBox(height: 8),
         TextField(
@@ -272,9 +275,9 @@ class _AiModeScreenState extends State<AiModeScreen> {
           obscureText: true,
           decoration: InputDecoration(
             hintText: 'sk-...',
-            hintStyle: const TextStyle(color: AppTheme.textSecondary),
+            hintStyle: TextStyle(color: context.colors.textSecondary),
             filled: true,
-            fillColor: AppTheme.backgroundLight,
+            fillColor: context.colors.background,
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 16,
               vertical: 12,
@@ -289,7 +292,7 @@ class _AiModeScreenState extends State<AiModeScreen> {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: AppTheme.primaryGreen),
+              borderSide: BorderSide(color: context.colors.primaryGreen),
             ),
           ),
         ),

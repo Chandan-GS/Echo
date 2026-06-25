@@ -4,7 +4,7 @@ import 'package:project_echo/main.dart';
 void main() {
   testWidgets('Echo smoke test', (WidgetTester tester) async {
     // Build our app and trigger a frame.
-    await tester.pumpWidget(const Echo(isOnboardingFinished: false));
+    await tester.pumpWidget(Echo(isOnboardingFinished: true));
 
     // Basic assertion that the welcome text/button exists.
     expect(find.text('Echo'), findsOneWidget);

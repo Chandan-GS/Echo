@@ -1,146 +1,216 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
+import 'package:project_echo/core/presentation/widgets/echo_app_bar.dart';
 import 'package:project_echo/features/echo/presentation/widgets/siri_waveform_visualizer.dart';
 import 'package:project_echo/features/echo/presentation/widgets/rich_transcript.dart';
 
-class DailyBriefingScreen extends StatelessWidget {
+class DailyBriefingScreen extends StatefulWidget {
   final String rawText;
   final String ttsText;
-  final bool isPlaying;
-  final VoidCallback onTogglePlay;
   final VoidCallback onReset;
 
   const DailyBriefingScreen({
     super.key,
     required this.rawText,
     required this.ttsText,
-    required this.isPlaying,
-    required this.onTogglePlay,
     required this.onReset,
   });
 
   @override
+  State<DailyBriefingScreen> createState() => _DailyBriefingScreenState();
+}
+
+class _DailyBriefingScreenState extends State<DailyBriefingScreen> {
+  final FlutterTts _tts = FlutterTts();
+  bool _isPlaying = false;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(const Duration(milliseconds: 1000), () {
+      if (mounted) _setupTts();
+    });
+  }
+
+  Future<void> _setupTts() async {
+    await _tts.setLanguage('en-US');
+    await _tts.setSpeechRate(0.48);
+    await _tts.setPitch(1.0);
+    await _tts.setVolume(1.0);
+
+    try {
+      final voices = await _tts.getVoices;
+      for (var voice in voices) {
+        final name = voice['name'].toString().toLowerCase();
+        final locale = voice['locale'].toString().toLowerCase();
+        if ((locale.contains('en-gb')) &&
+            (name.contains('male') ||
+                name.contains('daniel') ||
+                name.contains('network'))) {
+          await _tts.setVoice({
+            "name": voice["name"],
+            "locale": voice["locale"],
+          });
+          break;
+        }
+      }
+    } catch (_) {}
+
+    _tts.setStartHandler(() {
+      if (mounted) setState(() => _isPlaying = true);
+    });
+    _tts.setCompletionHandler(() {
+      if (mounted) setState(() => _isPlaying = false);
+    });
+    _tts.setCancelHandler(() {
+      if (mounted) setState(() => _isPlaying = false);
+    });
+  }
+
+  @override
+  void dispose() {
+    _tts.stop();
+    super.dispose();
+  }
+
+  void _togglePlayback() async {
+    if (_isPlaying) {
+      await _tts.stop();
+    } else {
+      await _tts.speak(widget.ttsText);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Column(
-        children: [
-          // ── Top half: Waveform (tap to play/pause) ──────────────────────
-          Expanded(
-            flex: 4,
-            child: Column(
-              children: [
-                // Header row
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 12, 8, 0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      IconButton(
-                        icon: const Icon(
-                          Icons.arrow_back_ios_new_rounded,
-                          size: 28,
-                        ),
-                        color: AppTheme.textPrimary,
-                        onPressed: onReset,
-                      ),
-                      Text(
-                        'MORNING BRIEFING',
-                        style: GoogleFonts.nunito(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 2,
-                          color: AppTheme.textSecondary,
-                        ),
-                      ),
-                      const SizedBox(width: 48),
-                    ],
-                  ),
-                ),
-                const Spacer(),
-                // Waveform — tap it to play/pause
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: SiriWaveformVisualizer(
-                    isPlaying: isPlaying,
-                    onTap: onTogglePlay,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                // Subtle hint text
-                AnimatedOpacity(
-                  opacity: isPlaying ? 0.0 : 1.0,
-                  duration: const Duration(milliseconds: 400),
-                  child: Text(
-                    'Tap to play',
-                    style: GoogleFonts.nunito(
-                      fontSize: 12,
-                      color: AppTheme.textSecondary,
-                      letterSpacing: 0.5,
+    return PopScope(
+      canPop: true,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) {
+          widget.onReset();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: context.colors.background,
+        appBar: EchoAppBar(
+          title: 'Morning Briefing',
+          onBackPressed: () => Navigator.of(context, rootNavigator: true).pop(),
+        ),
+        body: Column(
+          children: [
+            // ── Top half: Waveform (tap to play/pause) ──────────────────────
+            Expanded(
+              flex: 3,
+              child: Column(
+                children: [
+                  const Spacer(),
+                  // Waveform — tap it to play/pause
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: SiriWaveformVisualizer(
+                      isPlaying: _isPlaying,
+                      onTap: _togglePlayback,
+                      amplitude: 3,
                     ),
                   ),
-                ),
-                const Spacer(),
-              ],
-            ),
-          ),
-
-          // ── Bottom half: Rich Transcript ─────────────────────────────────
-          Expanded(
-            flex: 6,
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(28, 28, 28, 0),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(36),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 24,
-                    offset: const Offset(0, -6),
+                  const SizedBox(height: 12),
+                  // Subtle hint text
+                  AnimatedOpacity(
+                    opacity: _isPlaying ? 0.0 : 1.0,
+                    duration: const Duration(milliseconds: 400),
+                    child: Text(
+                      'Tap to play',
+                      style: GoogleFonts.nunito(
+                        fontSize: 12,
+                        color: context.colors.textSecondary,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
                   ),
+                  const Spacer(),
                 ],
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            ),
+
+            // ── Bottom half: Rich Transcript ─────────────────────────────────
+            Expanded(
+              flex: 6,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(28, 28, 28, 0),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [context.colors.surface, context.colors.background],
+                  ),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(36),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.05),
+                      blurRadius: 24,
+                      offset: const Offset(0, -6),
+                    ),
+                  ],
+                ),
+                child: SafeArea(
+                  top: false,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Transcript',
-                        style: GoogleFonts.oldStandardTt(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w700,
-                          color: AppTheme.textPrimary,
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppTheme.primaryGreen.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(
-                              Icons.lock_outline,
-                              size: 14,
-                              color: AppTheme.primaryGreen,
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Transcript',
+                            style: GoogleFonts.oldStandardTt(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w700,
+                              color: context.colors.textPrimary,
                             ),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Local',
-                              style: GoogleFonts.nunito(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                color: AppTheme.primaryGreen,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      Expanded(
+                        child: Stack(
+                          children: [
+                            Positioned.fill(
+                              child: SingleChildScrollView(
+                                physics: const BouncingScrollPhysics(),
+                                child: Padding(
+                                  padding: const EdgeInsets.only(bottom: 60),
+                                  child: RichTranscript(
+                                    rawText: widget.rawText,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            // Fade gradient overlay at the bottom
+                            Positioned(
+                              left: 0,
+                              right: 0,
+                              bottom: 0,
+                              height: 60,
+                              child: IgnorePointer(
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topCenter,
+                                      end: Alignment.bottomCenter,
+                                      colors: [
+                                        context.colors.background.withValues(
+                                          alpha: 0.0,
+                                        ),
+                                        context.colors.background,
+                                      ],
+                                    ),
+                                  ),
+                                ),
                               ),
                             ),
                           ],
@@ -148,21 +218,11 @@ class DailyBriefingScreen extends StatelessWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 20),
-                  Expanded(
-                    child: SingleChildScrollView(
-                      physics: const BouncingScrollPhysics(),
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 32),
-                        child: RichTranscript(rawText: rawText),
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

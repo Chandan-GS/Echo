@@ -20,15 +20,15 @@ class PermissionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         border: Border(
-          bottom: BorderSide(color: AppTheme.dividerColor, width: 1),
+          bottom: BorderSide(color: context.colors.dividerColor, width: 1),
         ),
       ),
       padding: const EdgeInsets.symmetric(vertical: 20.0),
       child: Row(
         children: [
-          Icon(icon, color: AppTheme.textSecondary, size: 26),
+          Icon(icon, color: context.colors.textSecondary, size: 26),
           const SizedBox(width: 16),
           Expanded(
             child: Column(

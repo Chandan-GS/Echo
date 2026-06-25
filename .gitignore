@@ -12,6 +12,7 @@
 .swiftpm/
 migrate_working_dir/
 .venv/
+venv/
 
 # IntelliJ related
 *.iml
@@ -44,3 +45,32 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# ML models and weights
+*.tflite
+*.bin
+*.onnx
+*.pb
+*.h5
+
+# Local environments and environment variables
+.env
+.env.*
+venv/
+.venv/
+env/
+ENV/
+
+# Databases and local storage logs
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-shm
+*.db-wal
+
+# iOS/macOS Pods and generated files
+**/ios/Pods/
+**/macos/Pods/
+**/.symlinks/
+

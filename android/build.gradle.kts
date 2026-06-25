@@ -29,5 +29,10 @@ subprojects {
         if (android.namespace == null) {
             android.namespace = project.group.toString()
         }
+        android.ndkVersion = "26.1.10909125"
+    }
+    pluginManager.withPlugin("com.android.application") {
+        val android = extensions.getByName("android") as com.android.build.gradle.internal.dsl.BaseAppModuleExtension
+        android.ndkVersion = "26.1.10909125"
     }
 }

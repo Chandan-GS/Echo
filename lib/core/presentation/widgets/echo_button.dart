@@ -27,10 +27,10 @@ class EchoButton extends StatelessWidget {
       height: 56,
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(
-          backgroundColor: backgroundColor ?? AppTheme.buttonDark,
-          foregroundColor: textColor ?? Colors.white,
-          disabledBackgroundColor: AppTheme.dividerColor,
-          disabledForegroundColor: AppTheme.textSecondary.withValues(
+          backgroundColor: backgroundColor ?? context.colors.buttonDark,
+          foregroundColor: textColor ?? context.colors.textInverse,
+          disabledBackgroundColor: context.colors.dividerColor,
+          disabledForegroundColor: context.colors.textSecondary.withValues(
             alpha: 0.5,
           ),
           elevation: 0,

@@ -49,16 +49,16 @@ class _PermissionScreenState extends State<PermissionScreen>
         return Scaffold(
           appBar: AppBar(
             leading: IconButton(
-              icon: const Icon(
+              icon: Icon(
                 Icons.arrow_back_ios_new_rounded,
-                color: AppTheme.textPrimary,
+                color: context.colors.textPrimary,
               ),
               onPressed: () {
                 cubit.startOnboarding();
               },
             ),
           ),
-          backgroundColor: AppTheme.backgroundLight,
+          backgroundColor: context.colors.background,
           body: SafeArea(
             child: Padding(
               padding: const EdgeInsets.symmetric(
@@ -71,7 +71,7 @@ class _PermissionScreenState extends State<PermissionScreen>
                   Text(
                     'Echo needs to listen quietly.',
                     style: Theme.of(context).textTheme.displayMedium?.copyWith(
-                      color: AppTheme.textPrimary,
+                      color: context.colors.textPrimary,
                       fontSize: 28,
                     ),
                   ),
@@ -81,7 +81,7 @@ class _PermissionScreenState extends State<PermissionScreen>
                   RichText(
                     text: TextSpan(
                       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        color: AppTheme.textSecondary,
+                        color: context.colors.textSecondary,
                         height: 1.5,
                       ),
                       children: [
@@ -93,8 +93,8 @@ class _PermissionScreenState extends State<PermissionScreen>
                           alignment: PlaceholderAlignment.middle,
                           child: ChipLabel(
                             text: 'choose it',
-                            backgroundColor: AppTheme.lightGreenBackground,
-                            textColor: AppTheme.primaryGreen,
+                            backgroundColor: context.colors.lightGreenBackground,
+                            textColor: context.colors.primaryGreen,
                             isOutline: false,
                           ),
                         ),

@@ -11,7 +11,7 @@ class ChipLabel extends StatelessWidget {
     super.key,
     required this.text,
     this.backgroundColor = Colors.transparent,
-    this.textColor = const Color(0xFF5A5A5A),
+    this.textColor = const Color.fromARGB(255, 128, 128, 128),
     this.isOutline = true,
   });
 
@@ -22,10 +22,6 @@ class ChipLabel extends StatelessWidget {
       decoration: BoxDecoration(
         color: isOutline ? Colors.transparent : backgroundColor,
         borderRadius: BorderRadius.circular(5),
-        border: Border.all(
-          color: isOutline ? const Color(0xFFE0E0E0) : Colors.transparent,
-          width: 1,
-        ),
       ),
       child: Text(
         text,

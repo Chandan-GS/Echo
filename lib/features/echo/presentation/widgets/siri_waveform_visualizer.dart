@@ -7,11 +7,15 @@ import 'package:project_echo/core/theme/app_theme.dart';
 class SiriWaveformVisualizer extends StatefulWidget {
   final bool isPlaying;
   final VoidCallback onTap;
+  final double amplitude;
+  final double height;
 
   const SiriWaveformVisualizer({
     super.key,
     required this.isPlaying,
     required this.onTap,
+    required this.amplitude,
+    this.height = 180,
   });
 
   @override
@@ -20,20 +24,13 @@ class SiriWaveformVisualizer extends StatefulWidget {
 
 class _SiriWaveformVisualizerState extends State<SiriWaveformVisualizer>
     with SingleTickerProviderStateMixin {
-  late IOS9SiriWaveformController _waveController;
+  IOS9SiriWaveformController? _waveController;
   late AnimationController _iconFadeController;
   late Animation<double> _iconOpacity;
 
   @override
   void initState() {
     super.initState();
-
-    _waveController = IOS9SiriWaveformController(
-      amplitude: widget.isPlaying ? 1.0 : 0.05,
-      color1: AppTheme.primaryGreen,
-      color2: AppTheme.textPrimary,
-      color3: AppTheme.lightGreenBackground,
-    );
 
     _iconFadeController = AnimationController(
       vsync: this,
@@ -46,10 +43,21 @@ class _SiriWaveformVisualizerState extends State<SiriWaveformVisualizer>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _waveController ??= IOS9SiriWaveformController(
+      amplitude: widget.isPlaying ? widget.amplitude : 0.5,
+      color1: context.colors.primaryGreen,
+      color2: context.colors.textPrimary,
+      color3: context.colors.lightGreenBackground,
+    );
+  }
+
+  @override
   void didUpdateWidget(covariant SiriWaveformVisualizer oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.isPlaying != oldWidget.isPlaying) {
-      _waveController.amplitude = widget.isPlaying ? 1.0 : 0.05;
+      _waveController?.amplitude = widget.isPlaying ? widget.amplitude : 0.5;
     }
   }
 
@@ -75,41 +83,14 @@ class _SiriWaveformVisualizerState extends State<SiriWaveformVisualizer>
       onTap: _handleTap,
       behavior: HitTestBehavior.opaque,
       child: SizedBox(
-        height: 180,
+        height: widget.height,
         width: double.infinity,
         child: Stack(
           alignment: Alignment.center,
           children: [
-            // Waveform
             SiriWaveform.ios9(
-              controller: _waveController,
-              options: const IOS9SiriWaveformOptions(height: 180),
-            ),
-
-            // Tap feedback icon — fades in then out
-            FadeTransition(
-              opacity: _iconOpacity,
-              child: Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  color: AppTheme.backgroundLight.withValues(alpha: 0.85),
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.12),
-                      blurRadius: 16,
-                    )
-                  ],
-                ),
-                child: Icon(
-                  widget.isPlaying
-                      ? Icons.pause_rounded
-                      : Icons.play_arrow_rounded,
-                  size: 28,
-                  color: AppTheme.textPrimary,
-                ),
-              ),
+              controller: _waveController!,
+              options: IOS9SiriWaveformOptions(height: widget.height),
             ),
           ],
         ),

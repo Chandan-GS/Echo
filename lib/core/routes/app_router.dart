@@ -1,5 +1,6 @@
 import 'package:go_router/go_router.dart';
 import 'package:project_echo/features/echo/presentation/screens/echo_home_screen.dart';
+import 'package:project_echo/features/echo/presentation/screens/ask_ai_screen.dart';
 import 'package:project_echo/features/onboarding/presentation/screens/start_screen.dart';
 import 'package:project_echo/core/presentation/screens/main_scaffold.dart';
 import 'package:project_echo/features/vault/presentation/screens/vault_screen.dart';
@@ -9,6 +10,10 @@ GoRouter createRouter(bool isOnboardingFinished) => GoRouter(
   initialLocation: isOnboardingFinished ? '/echo' : '/',
   routes: [
     GoRoute(path: '/', builder: (context, state) => const StartScreen()),
+    GoRoute(
+      path: '/echo/chat',
+      builder: (context, state) => const AskAiScreen(),
+    ),
     ShellRoute(
       builder: (context, state, child) {
         return MainScaffold(child: child);

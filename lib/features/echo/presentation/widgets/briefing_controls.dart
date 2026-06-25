@@ -26,11 +26,11 @@ class BriefingControls extends StatelessWidget {
               trackHeight: 3,
               thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
               overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
-              activeTrackColor: AppTheme.textPrimary,
-              inactiveTrackColor: AppTheme.textSecondary.withValues(
+              activeTrackColor: context.colors.textPrimary,
+              inactiveTrackColor: context.colors.textSecondary.withValues(
                 alpha: 0.15,
               ),
-              thumbColor: AppTheme.textPrimary,
+              thumbColor: context.colors.textPrimary,
             ),
             child: Slider(value: progress.clamp(0.0, 1.0), onChanged: (_) {}),
           ),
@@ -42,7 +42,7 @@ class BriefingControls extends StatelessWidget {
           children: [
             IconButton(
               icon: const Icon(Icons.replay_10_rounded, size: 30),
-              color: AppTheme.textSecondary,
+              color: context.colors.textSecondary,
               onPressed: () {},
             ),
             const SizedBox(width: 32),
@@ -52,11 +52,11 @@ class BriefingControls extends StatelessWidget {
                 width: 70,
                 height: 70,
                 decoration: BoxDecoration(
-                  color: AppTheme.textPrimary,
+                  color: context.colors.textPrimary,
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: AppTheme.textPrimary.withValues(alpha: 0.25),
+                      color: context.colors.textPrimary.withValues(alpha: 0.25),
                       blurRadius: 20,
                       offset: const Offset(0, 8),
                     )
@@ -65,14 +65,14 @@ class BriefingControls extends StatelessWidget {
                 child: Icon(
                   isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
                   size: 36,
-                  color: AppTheme.backgroundLight,
+                  color: context.colors.background,
                 ),
               ),
             ),
             const SizedBox(width: 32),
             IconButton(
               icon: const Icon(Icons.forward_10_rounded, size: 30),
-              color: AppTheme.textSecondary,
+              color: context.colors.textSecondary,
               onPressed: () {},
             ),
           ],

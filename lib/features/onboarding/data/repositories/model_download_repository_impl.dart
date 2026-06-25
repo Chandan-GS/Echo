@@ -5,7 +5,7 @@ import '../../domain/repositories/model_download_repository.dart';
 
 class ModelDownloadRepositoryImpl implements ModelDownloadRepository {
   final String modelUrl =
-      "https://huggingface.co/litert-community/DeepSeek-R1-Distill-Qwen-1.5B/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B_multi-prefill-seq_q8_ekv4096.litertlm";
+      "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q3_k_m.gguf";
 
   @override
   Future<String> downloadModel({
@@ -13,7 +13,28 @@ class ModelDownloadRepositoryImpl implements ModelDownloadRepository {
   }) async {
     // 1. Get the app's internal documents directory
     final dir = await getApplicationDocumentsDirectory();
-    final filePath = "${dir.path}/deepseek_r1_1_5b.litertlm";
+
+    // Clean up old LiteRT model if present
+    final oldFilePath = "${dir.path}/deepseek_r1_1_5b.litertlm";
+    final oldFile = File(oldFilePath);
+    if (await oldFile.exists()) {
+      try {
+        await oldFile.delete();
+        print("🗑️ Deleted old LiteRT model file at: $oldFilePath");
+      } catch (_) {}
+    }
+
+    // Clean up old q8_0 model if present
+    final oldQ8FilePath = "${dir.path}/qwen2.5_1.5b_instruct_q8_0.gguf";
+    final oldQ8File = File(oldQ8FilePath);
+    if (await oldQ8File.exists()) {
+      try {
+        await oldQ8File.delete();
+        print("🗑️ Deleted old q8_0 model file at: $oldQ8FilePath");
+      } catch (_) {}
+    }
+
+    final filePath = "${dir.path}/qwen2.5_1.5b_instruct_q3_k_m.gguf";
     final file = File(filePath);
 
     // 2. Check if the model already exists
@@ -43,7 +64,7 @@ class ModelDownloadRepositoryImpl implements ModelDownloadRepository {
   @override
   Future<bool> isModelDownloaded() async {
     final dir = await getApplicationDocumentsDirectory();
-    final filePath = "${dir.path}/deepseek_r1_1_5b.litertlm";
+    final filePath = "${dir.path}/qwen2.5_1.5b_instruct_q3_k_m.gguf";
     final file = File(filePath);
     return await file.exists();
   }

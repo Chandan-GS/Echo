@@ -13,11 +13,11 @@ class RichTranscript extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final spans = _parseSpans(rawText);
+    final spans = _parseSpans(rawText, context);
     return RichText(text: TextSpan(children: spans));
   }
 
-  List<InlineSpan> _parseSpans(String text) {
+  List<InlineSpan> _parseSpans(String text, BuildContext context) {
     final List<InlineSpan> spans = [];
     // Regex to find **bold** segments
     final regex = RegExp(r'\*\*(.+?)\*\*');
@@ -29,7 +29,7 @@ class RichTranscript extends StatelessWidget {
         spans.add(
           TextSpan(
             text: text.substring(cursor, match.start),
-            style: _bodyStyle,
+            style: _bodyStyle(context),
           ),
         );
       }
@@ -42,8 +42,8 @@ class RichTranscript extends StatelessWidget {
           child: ChipLabel(
             isOutline: false,
             text: word,
-            backgroundColor: AppTheme.lightGreenBackground,
-            textColor: AppTheme.primaryGreen,
+            backgroundColor: context.colors.lightGreenBackground,
+            textColor: context.colors.primaryGreen,
           ),
         ),
       );
@@ -53,15 +53,15 @@ class RichTranscript extends StatelessWidget {
 
     // Remaining text after last match
     if (cursor < text.length) {
-      spans.add(TextSpan(text: text.substring(cursor), style: _bodyStyle));
+      spans.add(TextSpan(text: text.substring(cursor), style: _bodyStyle(context)));
     }
 
     return spans;
   }
 
-  static final TextStyle _bodyStyle = GoogleFonts.nunito(
+  TextStyle _bodyStyle(BuildContext context) => GoogleFonts.nunito(
     fontSize: 16,
     height: 1.8,
-    color: AppTheme.textPrimary,
+    color: context.colors.textPrimary,
   );
 }

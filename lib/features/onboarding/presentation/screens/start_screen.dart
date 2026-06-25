@@ -5,7 +5,6 @@ import 'package:project_echo/features/onboarding/presentation/cubit/on_boarding_
 import 'package:project_echo/features/onboarding/presentation/screens/permission_screen.dart';
 import 'package:project_echo/features/onboarding/presentation/screens/ai_mode_screen.dart';
 import 'package:project_echo/features/onboarding/presentation/screens/welcome_screen.dart';
-import 'package:project_echo/features/echo/presentation/screens/echo_home_screen.dart';
 
 class StartScreen extends StatelessWidget {
   const StartScreen({super.key});

@@ -25,10 +25,10 @@ class StepIndicator extends StatelessWidget {
               height: 8,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: isActive ? AppTheme.textPrimary : Colors.transparent,
+                color: isActive ? context.colors.textPrimary : Colors.transparent,
                 border: Border.all(
                   color: isActive
-                      ? AppTheme.textPrimary
+                      ? context.colors.textPrimary
                       : const Color(0xFFC4C4C4),
                   width: 1,
                 ),
@@ -41,7 +41,7 @@ class StepIndicator extends StatelessWidget {
           'STEP $currentStep OF $totalSteps',
           style: Theme.of(
             context,
-          ).textTheme.labelLarge?.copyWith(color: AppTheme.textSecondary),
+          ).textTheme.labelLarge?.copyWith(color: context.colors.textSecondary),
         ),
       ],
     );
