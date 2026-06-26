@@ -19,10 +19,10 @@ IconData getSourceIcon(String source) {
   }
 }
 
-IconData getCategoryIcon(String source, Map<String, int> customIcons) {
-  final lowerSource = source.toLowerCase().trim();
-  if (customIcons.containsKey(lowerSource)) {
-    return IconData(customIcons[lowerSource]!, fontFamily: 'MaterialIcons');
-  }
-  return getSourceIcon(source);
-}
+// IconData getCategoryIcon(String source, Map<String, int> customIcons) {
+//   final lowerSource = source.toLowerCase().trim();
+//   if (customIcons.containsKey(lowerSource)) {
+//     return IconData(customIcons[lowerSource]!, fontFamily: 'MaterialIcons');
+//   }
+//   return getSourceIcon(source);
+// }

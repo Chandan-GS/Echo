@@ -16,7 +16,7 @@ final class PermissionsStep extends OnBoardingState {
     required this.smsGranted,
   });
 
-  bool get canContinue => notificationGranted && calendarGranted && smsGranted;
+  bool get canContinue => notificationGranted && calendarGranted;
 }
 
 final class AiModeStep extends OnBoardingState {

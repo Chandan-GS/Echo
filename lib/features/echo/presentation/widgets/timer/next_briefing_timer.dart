@@ -3,7 +3,7 @@ import 'dart:math' as math;
 import 'dart:ui' show Tangent;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/features/settings/presentation/cubit/settings_cubit.dart';
 import 'package:project_echo/features/settings/presentation/cubit/settings_state.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
@@ -129,37 +129,45 @@ class _NextBriefingTimerState extends State<NextBriefingTimer>
                       );
                     },
                   ),
-                  Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'Next Briefing in',
-                        style: GoogleFonts.nunito(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: context.colors.textSecondary,
-                        ),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: width * 0.1),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Next Briefing in',
+                            style: GoogleFonts.nunito(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: context.colors.textSecondary,
+                            ),
+                          ),
+                          SizedBox(height: height * 0.02),
+                          Text(
+                            _formatDuration(remaining),
+                            style: GoogleFonts.nunito(
+                              fontSize: height * 0.25,
+                              fontWeight: FontWeight.bold,
+                              color: context.colors.textPrimary,
+                              fontFeatures: const [
+                                FontFeature.tabularFigures(),
+                              ],
+                            ),
+                          ),
+                          SizedBox(height: height * 0.02),
+                          Text(
+                            'at ${_formatTime(nextBriefing)}',
+                            style: GoogleFonts.nunito(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: primaryColor,
+                            ),
+                          ),
+                        ],
                       ),
-                      SizedBox(height: height * 0.02),
-                      Text(
-                        _formatDuration(remaining),
-                        style: GoogleFonts.nunito(
-                          fontSize: height * 0.25,
-                          fontWeight: FontWeight.bold,
-                          color: context.colors.textPrimary,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                      SizedBox(height: height * 0.02),
-                      Text(
-                        'at ${_formatTime(nextBriefing)}',
-                        style: GoogleFonts.nunito(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: primaryColor,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ],
               );

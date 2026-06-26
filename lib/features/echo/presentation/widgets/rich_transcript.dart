@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/presentation/widgets/chip_label.dart';
 
@@ -43,7 +43,7 @@ class RichTranscript extends StatelessWidget {
             isOutline: false,
             text: word,
             backgroundColor: context.colors.lightGreenBackground,
-            textColor: context.colors.primaryGreen,
+            textColor: Colors.black,
           ),
         ),
       );
@@ -53,7 +53,9 @@ class RichTranscript extends StatelessWidget {
 
     // Remaining text after last match
     if (cursor < text.length) {
-      spans.add(TextSpan(text: text.substring(cursor), style: _bodyStyle(context)));
+      spans.add(
+        TextSpan(text: text.substring(cursor), style: _bodyStyle(context)),
+      );
     }
 
     return spans;

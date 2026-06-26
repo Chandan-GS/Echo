@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:project_echo/core/theme/google_fonts.dart';
 
 class AppColors {
   final Color background;

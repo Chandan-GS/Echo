@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:project_echo/features/onboarding/presentation/cubit/on_boarding_cubit.dart';
@@ -14,10 +15,11 @@ import 'package:project_echo/core/services/schedule_service.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 void main() async {
+  GoogleFonts.config.allowRuntimeFetching = false;
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
   bool isOnboardingFinished = prefs.getBool('onboarding_finished') ?? false;
-  // bool isOnboardingFinished = false;
+
   if (Platform.isAndroid) {
     final status = await Permission.notification.status;
     if (status.isDenied) {
@@ -25,7 +27,6 @@ void main() async {
     }
   }
 
-  // Safety check: if they completed onboarding but the model is missing, force them back to onboarding!
   if (isOnboardingFinished) {
     final dir = await getApplicationDocumentsDirectory();
     final modelPath = '${dir.path}/qwen2.5_1.5b_instruct_q3_k_m.gguf';

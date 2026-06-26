@@ -87,18 +87,19 @@ class _PermissionScreenState extends State<PermissionScreen>
                       children: [
                         const TextSpan(
                           text:
-                              'These permissions stay on your device. Nothing leaves unless you ',
+                              'No data is collected from the app. Your data stays entirely on your device, and is only sent to ',
                         ),
                         WidgetSpan(
                           alignment: PlaceholderAlignment.middle,
                           child: ChipLabel(
-                            text: 'choose it',
-                            backgroundColor: context.colors.lightGreenBackground,
-                            textColor: context.colors.primaryGreen,
+                            text: 'Cloud AI',
+                            backgroundColor:
+                                context.colors.lightGreenBackground,
+                            textColor: Colors.black,
                             isOutline: false,
                           ),
                         ),
-                        const TextSpan(text: '.'),
+                        const TextSpan(text: ' if you choose it.'),
                       ],
                     ),
                   ),

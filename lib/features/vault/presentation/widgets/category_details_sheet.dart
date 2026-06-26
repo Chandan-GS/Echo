@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/features/vault/data/vault_icons.dart';
 import 'package:project_echo/features/vault/presentation/cubit/vault_cubit.dart';
@@ -314,7 +314,7 @@ class _CategoryDetailsSheet extends StatelessWidget {
           return const SizedBox.shrink();
         }
 
-        final currentIcon = getCategoryIcon(category, state.categoryIcons);
+        final currentIcon = getSourceIcon(category);
 
         return Container(
           height: MediaQuery.of(context).size.height * 0.85,

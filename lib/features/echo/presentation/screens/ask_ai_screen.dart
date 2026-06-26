@@ -1,7 +1,8 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/presentation/widgets/echo_app_bar.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
@@ -190,11 +191,13 @@ class _AskAiViewState extends State<_AskAiView> {
 
     if (lastMsg.sender == 'echo') {
       if (state.isSearching) {
-        if (_audioState != AudioState.processing)
+        if (_audioState != AudioState.processing) {
           setState(() => _audioState = AudioState.processing);
+        }
       } else {
-        if (_audioState != AudioState.speaking)
+        if (_audioState != AudioState.speaking) {
           setState(() => _audioState = AudioState.speaking);
+        }
 
         String currentText = lastMsg.text;
         if (currentText.length > _spokenLength) {
@@ -340,15 +343,8 @@ class _AskAiViewState extends State<_AskAiView> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(
-                        Icons
-                            .bedtime_outlined, // Moon icon like "Echo is listening"
-                        color: context.colors.textPrimary,
-                        size: 48,
-                      ),
-                      const SizedBox(height: 24),
                       Text(
-                        'Echo is listening.',
+                        'How can I help?',
                         textAlign: TextAlign.center,
                         style: GoogleFonts.oldStandardTt(
                           fontSize: 28,
@@ -359,7 +355,7 @@ class _AskAiViewState extends State<_AskAiView> {
                       ),
                       const SizedBox(height: 16),
                       Text(
-                        'Ask about your notifications, schedule, or recent messages. Your vault is searched securely on-device.',
+                        'Ask me about your schedule, recent messages, or dive into your secure local vault.',
                         textAlign: TextAlign.center,
                         style: GoogleFonts.nunito(
                           fontSize: 15,
@@ -485,6 +481,7 @@ class _AskAiViewState extends State<_AskAiView> {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Expanded(
               child: AnimatedSwitcher(
@@ -501,17 +498,26 @@ class _AskAiViewState extends State<_AskAiView> {
               onTap: isDisabled && !_isAudioMode ? null : _toggleAudioMode,
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
-                width: 48,
-                height: 48,
+                width: _isAudioMode ? 100 : 48,
+                height: _isAudioMode ? 100 : 48,
                 decoration: BoxDecoration(
                   color: context.colors.background,
                   shape: BoxShape.circle,
                 ),
-                child: Icon(
-                  _isAudioMode ? Icons.close_rounded : Icons.mic_rounded,
-
-                  size: 24,
-                ),
+                child: _isAudioMode
+                    ? Icon(Icons.close_rounded, size: 22)
+                    : Padding(
+                        padding: const EdgeInsets.all(10.0),
+                        child: SvgPicture.asset(
+                          colorFilter: ColorFilter.mode(
+                            context.colors.textPrimary,
+                            BlendMode.srcIn,
+                          ),
+                          "assets/icons/audio_wave.svg",
+                          height: 22,
+                          width: 22,
+                        ),
+                      ),
               ),
             ),
             if (!_isAudioMode) ...[
@@ -593,6 +599,10 @@ class _AskAiViewState extends State<_AskAiView> {
       controller: _inputController,
       enabled: !isDisabled,
       focusNode: _focusNode,
+      minLines: 1,
+      maxLines: 5,
+      keyboardType: TextInputType.multiline,
+      textInputAction: TextInputAction.send,
       style: GoogleFonts.nunito(
         fontSize: 16,
         color: context.colors.textPrimary,
