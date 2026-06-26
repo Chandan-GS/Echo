@@ -1,7 +1,6 @@
 <div align="center">
   <img src="docs/logo.png" alt="Echo Logo" width="220" />
-  <h3>Echo</h3>
-  <p><strong>Your silent AI assistant that listens so you don't have to.</strong></p>
+  <h1>Echo</h1>
   <p>Echo passively monitors your notifications, SMS, and calendar — then delivers a concise spoken daily briefing, on-device or in the cloud, privately and on your terms.</p>
 </div>
 
@@ -159,7 +158,3 @@ docs/                      # Screenshots
 ```
 
 ---
-
-## 📄 License
-
-This project is private and not licensed for public distribution.
