@@ -17,20 +17,57 @@ import 'package:project_echo/features/settings/presentation/widgets/tone_setting
 import 'package:project_echo/features/settings/presentation/widgets/model_management_section.dart';
 import 'package:project_echo/core/presentation/animations/app_motion.dart';
 import 'package:project_echo/core/presentation/animations/fade_slide_in.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:project_echo/core/services/local_notification_service.dart';
+import 'package:project_echo/core/services/streak_service.dart';
+import 'package:project_echo/core/services/widget_refresh_service.dart';
+import 'package:project_echo/features/echo/presentation/screens/streak_celebration_screen.dart';
+import 'package:project_echo/features/profile/presentation/widgets/streak_calendar.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 
+/// The Profile tab: your streak calendar up top, then all app settings merged
+/// into the same screen (appearance, voice, tone, AI engine, schedule, debug).
 class SettingsScreen extends StatelessWidget {
-  const SettingsScreen({Key? key}) : super(key: key);
+  const SettingsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return const _SettingsView();
+    return const _ProfileView();
   }
 }
 
-class _SettingsView extends StatelessWidget {
-  const _SettingsView();
+class _ProfileView extends StatefulWidget {
+  const _ProfileView();
+
+  @override
+  State<_ProfileView> createState() => _ProfileViewState();
+}
+
+class _ProfileViewState extends State<_ProfileView>
+    with WidgetsBindingObserver {
+  final _calendarKey = GlobalKey<StreakCalendarState>();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _calendarKey.currentState?.reload();
+    }
+  }
+
+  void _refreshCalendar() => _calendarKey.currentState?.reload();
 
   @override
   Widget build(BuildContext context) {
@@ -43,10 +80,10 @@ class _SettingsView extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
               FadeSlideIn(
                 child: Text(
-                  'Settings',
+                  'Profile',
                   style: GoogleFonts.oldStandardTt(
                     fontSize: 40,
                     fontWeight: FontWeight.w700,
@@ -54,6 +91,13 @@ class _SettingsView extends StatelessWidget {
                     height: 1.15,
                   ),
                 ),
+              ),
+
+              const SizedBox(height: 20),
+
+              // Streak — the default view is the calendar, not the animation.
+              FadeSlideIn(
+                child: StreakCalendar(key: _calendarKey),
               ),
 
               const SizedBox(height: 32),
@@ -206,7 +250,8 @@ class _SettingsView extends StatelessWidget {
                   ],
                 ),
               ),
-              // Debug-only: jump back into the onboarding flow for testing.
+              // Debug-only tools: exercise flows that normally require waiting
+              // for a real scheduled time or several real days to pass.
               if (kDebugMode) ...[
                 const SizedBox(height: 8),
                 Align(
@@ -221,6 +266,50 @@ class _SettingsView extends StatelessWidget {
                     },
                     icon: const Icon(Icons.replay_rounded, size: 18),
                     label: const Text('Replay onboarding (debug)'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: context.colors.textSecondary,
+                    ),
+                  ),
+                ),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: () => _sendTestNotification(context),
+                    icon: const Icon(Icons.notifications_active_outlined, size: 18),
+                    label: const Text('Send test briefing notification (debug)'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: context.colors.textSecondary,
+                    ),
+                  ),
+                ),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: () => _bumpStreak(context),
+                    icon: const Icon(Icons.local_fire_department_outlined, size: 18),
+                    label: const Text('+1 streak day (debug)'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: context.colors.textSecondary,
+                    ),
+                  ),
+                ),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: () => _resetStreak(context),
+                    icon: const Icon(Icons.restart_alt_rounded, size: 18),
+                    label: const Text('Reset streak (debug)'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: context.colors.textSecondary,
+                    ),
+                  ),
+                ),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: () => _previewStreakAnimation(context),
+                    icon: const Icon(Icons.play_circle_outline_rounded, size: 18),
+                    label: const Text('Preview streak animation (debug)'),
                     style: TextButton.styleFrom(
                       foregroundColor: context.colors.textSecondary,
                     ),
@@ -250,5 +339,93 @@ class _SettingsView extends StatelessWidget {
       // Ignore
     }
     return null;
+  }
+
+  /// Debug-only: fires the same notification `alarmCallback` shows when a
+  /// scheduled briefing is ready — including the "Play" action — without
+  /// waiting for a real scheduled time. Swipe the app away first to test the
+  /// fully-terminated tap-to-play path.
+  Future<void> _sendTestNotification(BuildContext context) async {
+    final prefs = await SharedPreferences.getInstance();
+    final today = DateTime.now().toIso8601String().split('T').first;
+    if (prefs.getString('cached_briefing_date') != today) {
+      await prefs.setString('cached_briefing_date', today);
+      await prefs.setString(
+        'cached_briefing_text',
+        'This is a debug test briefing so you can try tap-to-play from the '
+            'notification without waiting for a real one.',
+      );
+    }
+
+    final streak = await StreakService().current();
+    final service = LocalNotificationService();
+    await service.init();
+    await service.showNotification(
+      id: 999999,
+      title: 'Daily Briefing Ready (debug)',
+      body: streak.current > 0
+          ? 'Day ${streak.current} — tap to keep your streak going.'
+          : 'Your personalized AI briefing is ready for today!',
+    );
+
+    // Give a clear, honest signal instead of a silent no-op: on Android 13+
+    // the OS requires POST_NOTIFICATIONS to be granted, which `init()` now
+    // requests — but the user may still have denied it.
+    final androidPlugin = service.flutterLocalNotificationsPlugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+    final enabled = await androidPlugin?.areNotificationsEnabled() ?? true;
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            enabled
+                ? 'Test notification sent — check your notification shade.'
+                : 'Notifications are disabled for Echo — enable them in system '
+                    'settings to see this.',
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _bumpStreak(BuildContext context) async {
+    final info = await StreakService().debugBumpStreak();
+    _refreshCalendar();
+    WidgetRefreshService.refresh();
+    if (context.mounted) {
+      Navigator.of(context, rootNavigator: true).push(
+        MaterialPageRoute(
+          builder: (_) => StreakCelebrationScreen(days: info.current),
+        ),
+      );
+    }
+  }
+
+  /// Non-destructive: replays the celebration animation without touching the
+  /// real streak count, so you can restest the visual as many times as you
+  /// like. Falls back to a demo value when there's no streak yet.
+  Future<void> _previewStreakAnimation(BuildContext context) async {
+    final info = await StreakService().current();
+    final days = info.current > 0 ? info.current : 3;
+    if (context.mounted) {
+      Navigator.of(context, rootNavigator: true).push(
+        MaterialPageRoute(
+          builder: (_) => StreakCelebrationScreen(days: days),
+        ),
+      );
+    }
+  }
+
+  Future<void> _resetStreak(BuildContext context) async {
+    await StreakService().debugResetStreak();
+    _refreshCalendar();
+    WidgetRefreshService.refresh();
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Streak reset to 0.')),
+      );
+    }
   }
 }

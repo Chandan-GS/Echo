@@ -11,12 +11,35 @@ import 'package:go_router/go_router.dart';
 import 'package:project_echo/features/onboarding/data/repositories/model_download_repository_impl.dart';
 import 'package:project_echo/features/echo/data/services/notification_service.dart';
 import 'package:project_echo/core/services/schedule_service.dart';
+import 'package:project_echo/core/services/local_notification_service.dart';
 
 void main() async {
   GoogleFonts.config.allowRuntimeFetching = false;
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
   bool isOnboardingFinished = prefs.getBool('onboarding_finished') ?? false;
+
+  // Stamp the first-ever launch so the Profile screen can show "Member for N
+  // days". Set once, never overwritten.
+  if (prefs.getString('first_launch_date') == null) {
+    await prefs.setString(
+      'first_launch_date',
+      DateTime.now().toIso8601String(),
+    );
+  }
+
+  // Register the daily-briefing notification's tap handlers for this process
+  // (covers taps while the app is alive), and detect a cold start caused by
+  // tapping the notification body itself (the background-action case is
+  // handled separately by `notificationTapBackgroundHandler`) — either way,
+  // marks today's briefing to autoplay once EchoHomeScreen loads it.
+  final localNotifications = LocalNotificationService();
+  await localNotifications.init();
+  final launchDetails = await localNotifications.flutterLocalNotificationsPlugin
+      .getNotificationAppLaunchDetails();
+  if (launchDetails?.didNotificationLaunchApp ?? false) {
+    await prefs.setBool('pending_autoplay', true);
+  }
 
   // Note: notification permission is requested in-context during onboarding
   // (the Permissions step), not abruptly at cold start.

@@ -1,22 +1,32 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:project_echo/core/services/echo_tts.dart';
+import 'package:project_echo/core/services/streak_service.dart';
+import 'package:project_echo/core/services/widget_refresh_service.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/presentation/widgets/echo_app_bar.dart';
 import 'package:project_echo/features/echo/presentation/widgets/siri_waveform_visualizer.dart';
 import 'package:project_echo/features/echo/presentation/widgets/rich_transcript.dart';
+import 'package:project_echo/features/echo/presentation/screens/streak_celebration_screen.dart';
 
 class DailyBriefingScreen extends StatefulWidget {
   final String rawText;
   final String ttsText;
   final VoidCallback onReset;
 
+  /// When true, playback starts immediately once TTS is ready — used when the
+  /// screen was reached via a notification/widget tap-to-play, so the user
+  /// doesn't have to tap the waveform themselves.
+  final bool autoPlay;
+
   const DailyBriefingScreen({
     super.key,
     required this.rawText,
     required this.ttsText,
     required this.onReset,
+    this.autoPlay = false,
   });
 
   @override
@@ -42,6 +52,7 @@ class _DailyBriefingScreenState extends State<DailyBriefingScreen> {
 
     _tts.setStartHandler(() {
       if (mounted) setState(() => _isPlaying = true);
+      _celebrateStreakIfAdvanced();
     });
     _tts.setCompletionHandler(() {
       if (mounted) setState(() => _isPlaying = false);
@@ -49,6 +60,28 @@ class _DailyBriefingScreenState extends State<DailyBriefingScreen> {
     _tts.setCancelHandler(() {
       if (mounted) setState(() => _isPlaying = false);
     });
+
+    if (widget.autoPlay) {
+      await _tts.speak(widget.ttsText);
+    }
+  }
+
+  /// Records that a briefing was heard and, if the streak actually advanced
+  /// (i.e. this is the first play today — recordHeard() is a no-op on
+  /// subsequent toggles the same day), shows the full-screen celebration.
+  Future<void> _celebrateStreakIfAdvanced() async {
+    final service = StreakService();
+    final before = await service.current();
+    final after = await service.recordHeard();
+    // Push the fresh streak/heard-days to the home-screen widgets.
+    WidgetRefreshService.refresh();
+    if (mounted && after.current != before.current) {
+      Navigator.of(context, rootNavigator: true).push(
+        MaterialPageRoute(
+          builder: (_) => StreakCelebrationScreen(days: after.current),
+        ),
+      );
+    }
   }
 
   @override
@@ -58,6 +91,7 @@ class _DailyBriefingScreenState extends State<DailyBriefingScreen> {
   }
 
   void _togglePlayback() async {
+    HapticFeedback.lightImpact();
     if (_isPlaying) {
       await _tts.stop();
     } else {
