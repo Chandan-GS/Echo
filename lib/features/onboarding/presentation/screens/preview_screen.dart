@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
@@ -106,7 +107,10 @@ class _PreviewScreenState extends State<PreviewScreen> {
       scrollableBody: false,
       footer: EchoButton(
         text: 'Sounds great — finish setup',
-        onPressed: cubit.finishOnboarding,
+        onPressed: () {
+          HapticFeedback.mediumImpact(); // milestone: setup complete
+          cubit.finishOnboarding();
+        },
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

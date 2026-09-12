@@ -34,13 +34,27 @@ class VoiceStudio extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ── Live preview ────────────────────────────────────────────────
+        // ── Live preview (gradient hero card, matching the streak widget) ──
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.fromLTRB(20, 14, 20, 18),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 14),
           decoration: BoxDecoration(
-            color: colors.lightGreenBackground,
-            borderRadius: BorderRadius.circular(28),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                colors.primaryGreen,
+                Color.lerp(colors.primaryGreen, Colors.black, 0.42)!,
+              ],
+            ),
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: colors.primaryGreen.withValues(alpha: 0.28),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
+              ),
+            ],
           ),
           child: Column(
             children: [
@@ -48,9 +62,12 @@ class VoiceStudio extends StatelessWidget {
                 isPlaying: isPlaying,
                 onTap: onTogglePlay,
                 amplitude: 2.5,
-                height: 82,
+                height: 78,
+                color1: Colors.white,
+                color2: Colors.white.withValues(alpha: 0.55),
+                color3: Colors.white.withValues(alpha: 0.85),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 6),
               _PlayButton(isPlaying: isPlaying, onTap: onTogglePlay),
             ],
           ),
@@ -168,30 +185,29 @@ class _PlayButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final onColor = context.onSelection;
     return Material(
-      color: context.selectionFill,
+      color: Colors.white.withValues(alpha: 0.18),
       borderRadius: BorderRadius.circular(30),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
                 isPlaying ? Icons.stop_rounded : Icons.play_arrow_rounded,
                 size: 20,
-                color: onColor,
+                color: Colors.white,
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               Text(
                 isPlaying ? 'Playing…' : 'Play sample',
                 style: GoogleFonts.nunito(
                   fontSize: 14,
                   fontWeight: FontWeight.w800,
-                  color: onColor,
+                  color: Colors.white,
                 ),
               ),
             ],

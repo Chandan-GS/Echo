@@ -10,12 +10,22 @@ class SiriWaveformVisualizer extends StatefulWidget {
   final double amplitude;
   final double height;
 
+  /// Optional color overrides for the three wave layers. When null, the
+  /// theme's green palette is used. Provide light colors when the visualizer
+  /// sits on a dark/green gradient background.
+  final Color? color1;
+  final Color? color2;
+  final Color? color3;
+
   const SiriWaveformVisualizer({
     super.key,
     required this.isPlaying,
     required this.onTap,
     required this.amplitude,
     this.height = 180,
+    this.color1,
+    this.color2,
+    this.color3,
   });
 
   @override
@@ -47,9 +57,9 @@ class _SiriWaveformVisualizerState extends State<SiriWaveformVisualizer>
     super.didChangeDependencies();
     _waveController ??= IOS9SiriWaveformController(
       amplitude: widget.isPlaying ? widget.amplitude : 0.5,
-      color1: context.colors.primaryGreen,
-      color2: context.colors.textPrimary,
-      color3: context.colors.lightGreenBackground,
+      color1: widget.color1 ?? context.colors.primaryGreen,
+      color2: widget.color2 ?? context.colors.textPrimary,
+      color3: widget.color3 ?? context.colors.lightGreenBackground,
     );
   }
 

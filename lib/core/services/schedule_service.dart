@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:project_echo/core/services/local_notification_service.dart';
+import 'package:project_echo/core/services/streak_service.dart';
+import 'package:project_echo/core/services/widget_refresh_service.dart';
 import 'package:project_echo/features/echo/presentation/cubit/briefing_cubit.dart';
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -55,10 +57,19 @@ Future<void> alarmCallback() async {
     if (state is BriefingReady) {
       await prefs.setString('cached_briefing_slot', matchedTimeSlot!);
       await LocalNotificationService().init();
+
+      // Read-only: the streak itself is only recorded once playback actually
+      // starts (see StreakService.recordHeard in daily_briefing_screen.dart).
+      // A live streak here just personalizes today's notification body.
+      final streak = await StreakService().current();
+      final body = streak.current > 0
+          ? 'Day ${streak.current} — tap to keep your streak going.'
+          : 'Your personalized AI briefing is ready for today!';
+
       await LocalNotificationService().showNotification(
         id: now.hour * 100 + now.minute, // Unique per hour+minute slot
         title: 'Daily Briefing Ready',
-        body: 'Your personalized AI briefing is ready for today!',
+        body: body,
       );
     }
 
@@ -97,6 +108,8 @@ class ScheduleService {
         await AndroidAlarmManager.cancel(i);
       }
 
+      DateTime? earliest;
+
       for (int i = 0; i < times.length; i++) {
         final parsed = parseBriefingTime(times[i]);
         if (parsed == null) continue; // Skip malformed entries instead of crashing
@@ -115,6 +128,10 @@ class ScheduleService {
           alarmTime = alarmTime.add(const Duration(days: 1));
         }
 
+        if (earliest == null || alarmTime.isBefore(earliest)) {
+          earliest = alarmTime;
+        }
+
         final alarmId = parsed.hour * 100 + parsed.minute;
         // Wrap per-alarm so one failure (e.g. missing exact-alarm permission)
         // does not abort scheduling of the remaining times.
@@ -131,6 +148,18 @@ class ScheduleService {
         } catch (e) {
           debugPrint('Failed to schedule alarm for ${times[i]}: $e');
         }
+      }
+
+      // Persisted for the native widget, which can't easily decode Dart's
+      // internal StringList encoding — a plain epoch millis is robust to read
+      // directly, and lets the widget compute its own "ready in Xh Ym" text.
+      if (earliest != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setInt(
+          'next_briefing_epoch_ms',
+          earliest.millisecondsSinceEpoch,
+        );
+        await WidgetRefreshService.refresh();
       }
     } else {
       // iOS uses generic periodic task, exact scheduling is not possible

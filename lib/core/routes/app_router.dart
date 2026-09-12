@@ -35,12 +35,12 @@ GoRouter createRouter(bool isOnboardingFinished) => GoRouter(
           pageBuilder: (context, state) =>
               fadeThroughPage(key: state.pageKey, child: const VaultScreen()),
         ),
+        // The Profile tab now holds the streak calendar + all app settings,
+        // merged into one screen.
         GoRoute(
-          path: '/settings',
-          pageBuilder: (context, state) => fadeThroughPage(
-            key: state.pageKey,
-            child: const SettingsScreen(),
-          ),
+          path: '/profile',
+          pageBuilder: (context, state) =>
+              fadeThroughPage(key: state.pageKey, child: const SettingsScreen()),
         ),
       ],
     ),

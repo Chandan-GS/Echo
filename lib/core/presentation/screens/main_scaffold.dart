@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/presentation/animations/fade_indexed_stack.dart';
-import 'package:project_echo/core/presentation/widgets/echo_wave_icon.dart';
 import 'package:project_echo/core/presentation/widgets/animated_nav_icons.dart';
 import 'package:project_echo/features/echo/presentation/screens/echo_home_screen.dart';
 import 'package:project_echo/features/vault/presentation/screens/vault_screen.dart';
@@ -49,7 +49,7 @@ class _MainScaffoldState extends State<MainScaffold> {
     if (location.startsWith('/vault')) {
       return 1;
     }
-    if (location.startsWith('/settings')) {
+    if (location.startsWith('/profile')) {
       return 2;
     }
     return 0;
@@ -58,6 +58,7 @@ class _MainScaffoldState extends State<MainScaffold> {
   void _onItemTapped(int index) {
     if (index == _selectedIndex) return;
 
+    HapticFeedback.selectionClick();
     setState(() {
       _selectedIndex = index;
     });
@@ -74,7 +75,7 @@ class _MainScaffoldState extends State<MainScaffold> {
         context.go('/vault');
         break;
       case 2:
-        context.go('/settings');
+        context.go('/profile');
         break;
     }
   }
@@ -133,8 +134,13 @@ class _FloatingNavBar extends StatelessWidget {
     final items = [
       _NavBarItem(
         label: 'Today',
-        iconBuilder: (isSelected, color) =>
-            EchoWaveIcon(active: isSelected, color: color, size: 24),
+        iconBuilder: (isSelected, color) => BounceInIcon(
+          isSelected: isSelected,
+          selectedIcon: Icons.home_rounded,
+          unselectedIcon: Icons.home_outlined,
+          color: color,
+          size: 26,
+        ),
       ),
       _NavBarItem(
         label: 'Vault',
@@ -147,11 +153,11 @@ class _FloatingNavBar extends StatelessWidget {
         ),
       ),
       _NavBarItem(
-        label: 'Settings',
-        iconBuilder: (isSelected, color) => SpinInIcon(
+        label: 'Profile',
+        iconBuilder: (isSelected, color) => BounceInIcon(
           isSelected: isSelected,
-          selectedIcon: Icons.settings,
-          unselectedIcon: Icons.settings_outlined,
+          selectedIcon: Icons.person,
+          unselectedIcon: Icons.person_outline,
           color: color,
           size: 26,
         ),

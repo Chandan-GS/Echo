@@ -13,6 +13,7 @@ import 'package:project_echo/features/echo/data/datasources/priority_query_embed
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:project_echo/core/services/gemini_service.dart';
+import 'package:project_echo/core/services/widget_refresh_service.dart';
 
 part 'briefing_state.dart';
 
@@ -31,7 +32,19 @@ class BriefingCubit extends Cubit<BriefingState> {
 
       final today = DateTime.now().toIso8601String().split('T').first;
       if (dateStr == today && rawText != null && rawText.isNotEmpty) {
-        emit(BriefingCached(rawText: rawText, ttsText: stripForTts(rawText)));
+        // Normally a cached briefing just sits there for the user to tap
+        // "Play Today's Briefing" (BriefingCached). But if we got here because
+        // the user tapped the notification/widget's tap-to-play (see
+        // EchoHomeScreen's listener, which reads-and-clears this same flag),
+        // skip straight to BriefingReady so the existing auto-navigate +
+        // autoplay path actually fires instead of silently doing nothing.
+        final autoPlay = prefs.getBool('pending_autoplay') ?? false;
+        final ttsText = stripForTts(rawText);
+        if (autoPlay) {
+          emit(BriefingReady(rawText: rawText, ttsText: ttsText));
+        } else {
+          emit(BriefingCached(rawText: rawText, ttsText: ttsText));
+        }
       }
     } catch (_) {}
   }
@@ -121,6 +134,10 @@ class BriefingCubit extends Cubit<BriefingState> {
               final today = DateTime.now().toIso8601String().split('T').first;
               await prefs.setString('cached_briefing_date', today);
               await prefs.setString('cached_briefing_text', rawText);
+              // Best-effort: no-ops when this runs in the headless alarm
+              // isolate (no Activity to receive it) — the widget's own
+              // periodic tick covers that case instead.
+              WidgetRefreshService.refresh();
             } catch (_) {}
             emit(BriefingReady(rawText: rawText, ttsText: ttsText));
           }
