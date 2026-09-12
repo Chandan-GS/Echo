@@ -116,7 +116,7 @@ class _MainScaffoldState extends State<MainScaffold> {
             Positioned(
               left: 0,
               right: 0,
-              bottom: 96,
+              bottom: 140,
               child: BlocBuilder<BriefingCubit, BriefingState>(
                 builder: (context, state) {
                   final show =
@@ -140,12 +140,9 @@ class _MainScaffoldState extends State<MainScaffold> {
               right: 0,
               bottom: 20,
               child: Center(
-                child: BlocBuilder<BriefingCubit, BriefingState>(
-                  builder: (context, state) => _FloatingNavBar(
-                    selectedIndex: _selectedIndex,
-                    onItemSelected: _onItemTapped,
-                    isGenerating: state is BriefingGenerating,
-                  ),
+                child: _FloatingNavBar(
+                  selectedIndex: _selectedIndex,
+                  onItemSelected: _onItemTapped,
                 ),
               ),
             ),
@@ -159,12 +156,10 @@ class _MainScaffoldState extends State<MainScaffold> {
 class _FloatingNavBar extends StatelessWidget {
   final int selectedIndex;
   final ValueChanged<int> onItemSelected;
-  final bool isGenerating;
 
   const _FloatingNavBar({
     required this.selectedIndex,
     required this.onItemSelected,
-    this.isGenerating = false,
   });
 
   @override
@@ -260,14 +255,9 @@ class _FloatingNavBar extends StatelessWidget {
                                 child: Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    _NavIcon(
-                                      icon: item.iconBuilder(
-                                        isSelected,
-                                        context.colors.textPrimary,
-                                      ),
-                                      // A pulse dot on Today signals a briefing
-                                      // is being generated in the background.
-                                      showDot: index == 0 && isGenerating,
+                                    item.iconBuilder(
+                                      isSelected,
+                                      context.colors.textPrimary,
                                     ),
                                   ],
                                 ),
@@ -295,34 +285,10 @@ class _NavBarItem {
   _NavBarItem({required this.label, required this.iconBuilder});
 }
 
-/// A nav icon that optionally carries a pulsing status dot at its top-right.
-class _NavIcon extends StatelessWidget {
-  final Widget icon;
-  final bool showDot;
-  const _NavIcon({required this.icon, required this.showDot});
-
-  @override
-  Widget build(BuildContext context) {
-    if (!showDot) return icon;
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        icon,
-        Positioned(
-          right: -3,
-          top: -3,
-          child: _PulseDot(border: context.colors.background),
-        ),
-      ],
-    );
-  }
-}
-
 /// A small breathing dot used to signal ongoing background work.
 class _PulseDot extends StatefulWidget {
   final Color? color;
-  final Color? border;
-  const _PulseDot({this.color, this.border});
+  const _PulseDot({this.color});
 
   @override
   State<_PulseDot> createState() => _PulseDotState();
@@ -358,9 +324,6 @@ class _PulseDotState extends State<_PulseDot>
         decoration: BoxDecoration(
           color: color,
           shape: BoxShape.circle,
-          border: widget.border != null
-              ? Border.all(color: widget.border!, width: 1.5)
-              : null,
         ),
       ),
     );
