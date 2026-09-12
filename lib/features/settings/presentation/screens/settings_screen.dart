@@ -22,6 +22,7 @@ import 'package:project_echo/core/services/local_notification_service.dart';
 import 'package:project_echo/core/services/streak_service.dart';
 import 'package:project_echo/core/services/widget_refresh_service.dart';
 import 'package:project_echo/features/echo/presentation/screens/streak_celebration_screen.dart';
+import 'package:project_echo/features/echo/presentation/screens/echo_mascot_preview.dart';
 import 'package:project_echo/features/profile/presentation/widgets/streak_calendar.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
@@ -310,6 +311,21 @@ class _ProfileViewState extends State<_ProfileView>
                     onPressed: () => _previewStreakAnimation(context),
                     icon: const Icon(Icons.play_circle_outline_rounded, size: 18),
                     label: const Text('Preview streak animation (debug)'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: context.colors.textSecondary,
+                    ),
+                  ),
+                ),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: () => Navigator.of(context, rootNavigator: true).push(
+                      MaterialPageRoute(
+                        builder: (_) => const EchoMascotPreview(),
+                      ),
+                    ),
+                    icon: const Icon(Icons.blur_on_rounded, size: 18),
+                    label: const Text('Preview Echo mascot (debug)'),
                     style: TextButton.styleFrom(
                       foregroundColor: context.colors.textSecondary,
                     ),
