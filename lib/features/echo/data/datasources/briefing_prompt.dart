@@ -37,6 +37,8 @@ String getBriefingSystemInstruction(
       'STRICT RULE: Do NOT hallucinate, assume, or invent any meetings, tasks, or plans that are not explicitly present in the provided text. '
       'Every name, event, time, and place in your briefing MUST come from the notifications below — never from these instructions or any example. '
       'Base your briefing ONLY on the actual notification text given below. '
+      'STYLE: Write the entire briefing as flowing, conversational prose in short paragraphs. '
+      'Do NOT use numbered lists, bullet points, dashes, or any list format — never write "1. … 2. … 3. …" or an "agenda as follows" list. Weave everything into sentences. '
       'FORMATTING: Make the key details pop by wrapping them in **double asterisks** — specifically dates, times, deadlines, locations or venues, and the important event, project, or person names. '
       'Bold ONLY short, specific phrases (for example **10:30 AM**, **Saturday**, **June 27**, or **Seminar Hall-1**), never whole sentences, and bold each detail at most once.';
 
@@ -190,6 +192,31 @@ String stripFillerCommentary(String text) {
 /// (event/project/person names) are left to the model's own ** markup; this
 /// function is careful never to bold *inside* an already-bolded span, so it
 /// won't corrupt that markup.
+/// Safety net for the display transcript: the briefing should read as prose,
+/// but if the model still emits an inline numbered/bulleted list (e.g.
+/// "as follows: 1. … 2. … 3. …"), break each item onto its own line so it
+/// doesn't render as one run-on sentence. The TTS text strips these markers
+/// separately (see [stripForTts]).
+String separateListItems(String text) {
+  var t = text;
+
+  // Inline numbered items — " 1. " / " 2) " that aren't already line-leading.
+  t = t.replaceAllMapped(
+    RegExp(r'(\S)[ \t]+(\d{1,2}[\.\)])[ \t]+'),
+    (m) => '${m.group(1)}\n${m.group(2)} ',
+  );
+
+  // Inline bullet markers — " - " / " • " / " * " mid-sentence.
+  t = t.replaceAllMapped(
+    RegExp(r'(\S)[ \t]+([-•*])[ \t]+'),
+    (m) => '${m.group(1)}\n${m.group(2)} ',
+  );
+
+  // Collapse any accidental 3+ newline runs.
+  t = t.replaceAll(RegExp(r'\n{3,}'), '\n\n');
+  return t.trim();
+}
+
 String autoBold(String text) {
   var result = text;
 
