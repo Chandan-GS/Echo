@@ -11,6 +11,7 @@ import 'package:project_echo/features/echo/presentation/cubit/ask_ai_cubit.dart'
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:project_echo/features/echo/presentation/widgets/siri_waveform_visualizer.dart';
+import 'package:project_echo/features/echo/presentation/widgets/echo_mascot.dart';
 
 class AskAiScreen extends StatelessWidget {
   const AskAiScreen({super.key});
@@ -325,6 +326,8 @@ class _AskAiViewState extends State<_AskAiView> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      const EchoMascot(state: EchoState.idle, size: 104),
+                      const SizedBox(height: 12),
                       Text(
                         'How can I help?',
                         textAlign: TextAlign.center,

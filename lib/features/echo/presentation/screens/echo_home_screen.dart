@@ -318,16 +318,26 @@ class _HomeShellState extends State<_HomeShell> {
             const SizedBox(height: 24),
 
             FadeSlideIn(
-              child: Text(
-                '$greeting,\n$name',
-                    style: GoogleFonts.oldStandardTt(
-                      fontSize: 40,
-                      fontWeight: FontWeight.w700,
-                      color: context.colors.textPrimary,
-                      height: 1.15,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: Text(
+                      '$greeting,\n$name',
+                      style: GoogleFonts.oldStandardTt(
+                        fontSize: 40,
+                        fontWeight: FontWeight.w700,
+                        color: context.colors.textPrimary,
+                        height: 1.15,
+                      ),
                     ),
                   ),
-                ),
+                  const SizedBox(width: 12),
+                  // Echo greets you — a calm presence by your name.
+                  const EchoMascot(state: EchoState.idle, size: 84),
+                ],
+              ),
+            ),
                 const SizedBox(height: 24),
 
                 FadeSlideIn(
@@ -347,15 +357,7 @@ class _HomeShellState extends State<_HomeShell> {
               child: Center(
                 child: FadeSlideIn(
                   delay: AppMotion.staggerDelay(3),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: const [
-                      // Echo, resting nearby until your next briefing.
-                      EchoMascot(state: EchoState.idle, size: 128),
-                      SizedBox(height: 22),
-                      NextBriefingTimer(),
-                    ],
-                  ),
+                  child: const NextBriefingTimer(),
                 ),
               ),
             ),
