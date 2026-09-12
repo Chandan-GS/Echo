@@ -93,6 +93,30 @@ void main() {
       expect(instr.toLowerCase(), isNot(contains('do not bold')));
     });
 
+    test('includes the few-shot example by default (for the cloud model)', () {
+      final instr = getBriefingSystemInstruction('Ada');
+      expect(instr, contains('Perfect example output'));
+      expect(instr, contains('Daily Standup'));
+    });
+
+    test('omits the copyable example when includeExample is false (offline)', () {
+      final instr =
+          getBriefingSystemInstruction('Ada', includeExample: false);
+      expect(instr, isNot(contains('Perfect example output')));
+      expect(instr, isNot(contains('Daily Standup')));
+      expect(instr, isNot(contains('Mike')));
+      // Still keeps the real instructions + formatting rule.
+      expect(instr, contains('double asterisks'));
+      expect(instr, contains('ONLY on the actual notification text'));
+    });
+
+    test('buildQwenPrompt drops the example when asked (offline path)', () {
+      final prompt = buildQwenPrompt('Meeting notes', 'Ada',
+          includeExample: false);
+      expect(prompt, isNot(contains('Daily Standup')));
+      expect(prompt, contains('<|im_start|>system'));
+    });
+
     test('injects a custom tone instruction when provided', () {
       final instr = getBriefingSystemInstruction(
         'Ada',
