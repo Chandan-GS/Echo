@@ -3,6 +3,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:project_echo/features/onboarding/data/onboarding_personalization.dart';
+import 'package:project_echo/features/onboarding/data/voice_preference.dart';
 
 part 'on_boarding_state.dart';
 
@@ -123,9 +125,68 @@ class OnBoardingCubit extends Cubit<OnBoardingState> {
     emit(AiModeStep());
   }
 
-  Future<void> saveUserNameAndFinish(String name) async {
+  /// Saves the user's name and advances to the personalization step (no longer
+  /// the last step — the reward/preview now comes before finishing).
+  Future<void> saveUserNameAndContinue(String name) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('user_name', name.trim());
+    emit(PersonalizeStep());
+  }
+
+  void goBackToName() {
+    emit(NameInputStep());
+  }
+
+  /// Persists the tone + interests and advances to the voice picker.
+  Future<void> completePersonalize({
+    required OnboardingTone tone,
+    required Set<OnboardingInterest> interests,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('briefing_tone', tone.id);
+    await prefs.setStringList(
+      'briefing_interests',
+      interests.map((e) => e.id).toList(),
+    );
+    final name = prefs.getString('user_name') ?? '';
+    emit(VoiceStep(name: name, tone: tone, interests: interests));
+  }
+
+  void goBackToPersonalize() {
+    emit(PersonalizeStep());
+  }
+
+  /// Persists the shaped voice and advances to the spoken preview.
+  Future<void> completeVoice(VoicePreference voice) async {
+    final current = state;
+    if (current is! VoiceStep) return;
+    final prefs = await SharedPreferences.getInstance();
+    await voice.persist(prefs);
+    emit(
+      PreviewStep(
+        name: current.name,
+        tone: current.tone,
+        interests: current.interests,
+        voice: voice,
+      ),
+    );
+  }
+
+  void goBackToVoice() {
+    final current = state;
+    if (current is PreviewStep) {
+      emit(
+        VoiceStep(
+          name: current.name,
+          tone: current.tone,
+          interests: current.interests,
+        ),
+      );
+    }
+  }
+
+  Future<void> finishOnboarding() async {
+    final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('onboarding_finished', true);
     emit(OnBoardingFinished());
   }

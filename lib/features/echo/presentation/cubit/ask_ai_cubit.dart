@@ -29,6 +29,11 @@ class AskAiCubit extends Cubit<AskAiState> {
       AskAiMessageReceived(messages: List.from(_messages), isSearching: true),
     );
 
+    // Index of the echo placeholder for THIS request. Captured once so that
+    // streaming callbacks always write to their own message even if the list
+    // grows from a later request (appends never shift earlier indices).
+    int? echoIndex;
+
     try {
       final dir = await getApplicationDocumentsDirectory();
       final modelPath = '${dir.path}/qwen2.5_1.5b_instruct_q3_k_m.gguf';
@@ -161,6 +166,7 @@ class AskAiCubit extends Cubit<AskAiState> {
         ragSources: ragSources,
       );
       _messages.add(echoMsgPlaceholder);
+      echoIndex = _messages.length - 1;
 
       emit(
         AskAiMessageReceived(
@@ -192,7 +198,7 @@ class AskAiCubit extends Cubit<AskAiState> {
           final chunk = response.text ?? '';
           if (chunk.isNotEmpty) {
             cumulativeBuffer += chunk;
-            final lastIdx = _messages.length - 1;
+            final lastIdx = echoIndex;
             _messages[lastIdx] = _messages[lastIdx].copyWith(
               text: cumulativeBuffer,
             );
@@ -200,7 +206,7 @@ class AskAiCubit extends Cubit<AskAiState> {
           }
         }
 
-        final lastIdx = _messages.length - 1;
+        final lastIdx = echoIndex;
         _messages[lastIdx] = _messages[lastIdx].copyWith(isGenerating: false);
 
         var cleanText = _messages[lastIdx].text.trim();
@@ -240,7 +246,7 @@ class AskAiCubit extends Cubit<AskAiState> {
             final delta = cumulative.substring(cumulativeBuffer.length);
             cumulativeBuffer = cumulative;
 
-            final lastIdx = _messages.length - 1;
+            final lastIdx = echoIndex!;
             _messages[lastIdx] = _messages[lastIdx].copyWith(
               text: _messages[lastIdx].text + delta,
             );
@@ -248,7 +254,7 @@ class AskAiCubit extends Cubit<AskAiState> {
           }
 
           if (isDone) {
-            final lastIdx = _messages.length - 1;
+            final lastIdx = echoIndex!;
             _messages[lastIdx] = _messages[lastIdx].copyWith(
               isGenerating: false,
             );
@@ -273,10 +279,14 @@ class AskAiCubit extends Cubit<AskAiState> {
         await done.future;
       }
     } catch (e) {
-      if (_messages.isNotEmpty &&
-          _messages.last.sender == 'echo' &&
-          _messages.last.text.isEmpty) {
-        _messages.removeLast();
+      // Remove this request's own placeholder if it never received any text,
+      // identified by its captured index rather than "the last message".
+      if (echoIndex != null &&
+          echoIndex >= 0 &&
+          echoIndex < _messages.length &&
+          _messages[echoIndex].sender == 'echo' &&
+          _messages[echoIndex].text.isEmpty) {
+        _messages.removeAt(echoIndex);
       }
       _messages.add(
         ChatMessage(

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -6,9 +7,6 @@ import 'package:isar/isar.dart';
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
 import 'package:project_echo/features/echo/data/datasources/tflite_embedding_service.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
-import 'package:flutter/foundation.dart';
-import 'package:permission_handler/permission_handler.dart';
-
 import 'package:permission_handler/permission_handler.dart';
 
 class NotificationService with WidgetsBindingObserver {
@@ -17,42 +15,80 @@ class NotificationService with WidgetsBindingObserver {
   final _methodChannel = const MethodChannel('project_echo/notifications');
   final _eventChannel = const EventChannel('project_echo/notification_stream');
 
+  bool _initialized = false;
+  StreamSubscription<dynamic>? _streamSubscription;
+
   NotificationService._();
 
   Future<void> initialize() async {
+    // Guard against double-initialization (e.g. hot restart / re-entry) which
+    // would add a second lifecycle observer and a second stream listener,
+    // causing every notification to be written twice.
+    if (_initialized) return;
+    _initialized = true;
+
     try {
       WidgetsBinding.instance.addObserver(this);
 
-      // Cleanup old notifications on launch
-      await IsarDataSource.deleteOldNotifications();
-
-      // 0. Fetch today's calendar events silently
-      await _fetchAndProcessCalendarEvents();
-
-      // 1. Drain the native buffer (missed notifications while app was closed)
-      await _drainBuffer();
-
-      // 2. Listen to live stream for new notifications while app is open
-      _eventChannel.receiveBroadcastStream().listen(
+      // Listen to the live stream for new notifications. Cheap to wire up, so
+      // it happens synchronously during init.
+      _streamSubscription = _eventChannel.receiveBroadcastStream().listen(
         (data) {
-          if (data is String) {
-            final Map<String, dynamic> item = jsonDecode(data);
-            _processNotification(item);
+          try {
+            if (data is String) {
+              final decoded = jsonDecode(data);
+              if (decoded is Map<String, dynamic>) {
+                _processNotification(decoded);
+              }
+            }
+          } catch (e) {
+            debugPrint('Error decoding live notification: $e');
           }
         },
         onError: (e) {
           debugPrint('EventChannel error: $e');
         },
       );
+
+      // Heavy backlog work (cleanup, calendar, draining the missed-notification
+      // buffer) must NOT block the first frame. Draining can process hundreds
+      // of notifications, each running a TFLite embedding + Isar write on the
+      // main isolate — awaiting it here (main() awaits initialize() before
+      // runApp) froze the app on the splash screen. Run it in the background
+      // after startup instead.
+      unawaited(_bootstrapBacklog());
     } catch (e) {
       debugPrint('Error initializing NotificationService: $e');
     }
+  }
+
+  /// One-time, non-blocking startup work: prune stale entries, pull today's
+  /// calendar, then drain any notifications missed while the app was closed.
+  /// Deliberately not awaited by [initialize] so it can never delay first frame.
+  Future<void> _bootstrapBacklog() async {
+    try {
+      await IsarDataSource.deleteOldNotifications();
+      await _fetchAndProcessCalendarEvents();
+      await _drainBuffer();
+    } catch (e) {
+      debugPrint('Error bootstrapping notification backlog: $e');
+    }
+  }
+
+  Future<void> dispose() async {
+    WidgetsBinding.instance.removeObserver(this);
+    await _streamSubscription?.cancel();
+    _streamSubscription = null;
+    _initialized = false;
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _drainBuffer();
+      // Prune stale notifications when returning to the foreground (this no
+      // longer runs on every single write — see _processNotification).
+      IsarDataSource.deleteOldNotifications();
     }
   }
 
@@ -66,6 +102,9 @@ class NotificationService with WidgetsBindingObserver {
         for (final item in buffer) {
           if (item is Map<String, dynamic>) {
             await _processNotification(item);
+            // Yield to the event loop between items so a large backlog can't
+            // starve the UI thread — frames get a chance to paint in between.
+            await Future<void>.delayed(Duration.zero);
           }
         }
       }
@@ -155,9 +194,9 @@ class NotificationService with WidgetsBindingObserver {
       });
 
       debugPrint('Saved notification from $source to Isar.');
-      
-      // Auto-cleanup old notifications (older than 24 hours)
-      await IsarDataSource.deleteOldNotifications();
+      // Note: old-notification cleanup runs on launch and on app resume, not
+      // per-write — running a full-collection delete after every single save
+      // was O(n) per notification and raced with concurrent buffer drains.
     } catch (e) {
       debugPrint('Error processing notification: $e');
     }

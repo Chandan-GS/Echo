@@ -6,6 +6,8 @@ import 'package:project_echo/features/vault/presentation/cubit/vault_cubit.dart'
 import 'package:project_echo/features/vault/presentation/widgets/notification_card_widget.dart';
 import 'package:project_echo/features/vault/presentation/widgets/category_pie_chart.dart';
 import 'package:project_echo/features/vault/presentation/widgets/category_details_sheet.dart';
+import 'package:project_echo/core/presentation/animations/app_motion.dart';
+import 'package:project_echo/core/presentation/animations/fade_slide_in.dart';
 
 class VaultScreen extends StatelessWidget {
   const VaultScreen({super.key});
@@ -119,13 +121,15 @@ class _VaultViewState extends State<_VaultView> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: 24),
-              Text(
-                'The Vault',
-                style: GoogleFonts.oldStandardTt(
-                  fontSize: 40,
-                  fontWeight: FontWeight.w700,
-                  color: context.colors.textPrimary,
-                  height: 1.15,
+              FadeSlideIn(
+                child: Text(
+                  'The Vault',
+                  style: GoogleFonts.oldStandardTt(
+                    fontSize: 40,
+                    fontWeight: FontWeight.w700,
+                    color: context.colors.textPrimary,
+                    height: 1.15,
+                  ),
                 ),
               ),
               const SizedBox(height: 24),
@@ -213,8 +217,14 @@ class _VaultViewState extends State<_VaultView> {
             padding: const EdgeInsets.symmetric(vertical: 8.0),
             itemCount: state.displayedItems.length,
             itemBuilder: (context, index) {
-              return NotificationCardWidget(
-                notification: state.displayedItems[index],
+              // Cascade the first screenful on load; items scrolled into view
+              // later just fade up immediately (no stale long delay).
+              return FadeSlideIn(
+                delay: index < 8 ? AppMotion.staggerDelay(index) : Duration.zero,
+                offsetY: 12,
+                child: NotificationCardWidget(
+                  notification: state.displayedItems[index],
+                ),
               );
             },
           ),

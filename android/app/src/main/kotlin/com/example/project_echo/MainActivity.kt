@@ -17,12 +17,50 @@ class MainActivity : FlutterActivity() {
     private val PERMISSIONS_CHANNEL = "project_echo/permissions"
     private val NOTIFICATIONS_METHOD_CHANNEL = "project_echo/notifications"
     private val NOTIFICATIONS_EVENT_CHANNEL = "project_echo/notification_stream"
+    private val WIDGET_CHANNEL = "project_echo/widget"
 
     private var notificationReceiver: BroadcastReceiver? = null
     private var eventSink: EventChannel.EventSink? = null
 
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        // Must run before super.onCreate(), which is what boots the Flutter
+        // engine / runs Dart main() — the autoplay flag needs to already be
+        // written by the time EchoHomeScreen reads it.
+        handleWidgetLaunchIntent(intent)
+        super.onCreate(savedInstanceState)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleWidgetLaunchIntent(intent)
+    }
+
+    /** If this launch came from tapping the home-screen widget, mark today's
+     * briefing to autoplay — the same one-shot flag the notification "Play"
+     * action uses, so EchoHomeScreen needs no widget-specific handling. */
+    private fun handleWidgetLaunchIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra(EchoBriefingWidgetProvider.EXTRA_AUTOPLAY, false) == true) {
+            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            prefs.edit().putBoolean("flutter.pending_autoplay", true).apply()
+            intent.removeExtra(EchoBriefingWidgetProvider.EXTRA_AUTOPLAY)
+        }
+    }
+
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, WIDGET_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "refresh" -> {
+                    EchoBriefingWidgetProvider.updateAll(this)
+                    EchoStreakWidgetProvider.updateAll(this)
+                    result.success(null)
+                }
+                else -> {
+                    result.notImplemented()
+                }
+            }
+        }
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, PERMISSIONS_CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {

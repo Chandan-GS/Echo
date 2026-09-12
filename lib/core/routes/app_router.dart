@@ -3,16 +3,22 @@ import 'package:project_echo/features/echo/presentation/screens/echo_home_screen
 import 'package:project_echo/features/echo/presentation/screens/ask_ai_screen.dart';
 import 'package:project_echo/features/onboarding/presentation/screens/start_screen.dart';
 import 'package:project_echo/core/presentation/screens/main_scaffold.dart';
+import 'package:project_echo/core/presentation/animations/page_transitions.dart';
 import 'package:project_echo/features/vault/presentation/screens/vault_screen.dart';
 import 'package:project_echo/features/settings/presentation/screens/settings_screen.dart';
 
 GoRouter createRouter(bool isOnboardingFinished) => GoRouter(
   initialLocation: isOnboardingFinished ? '/echo' : '/',
   routes: [
-    GoRoute(path: '/', builder: (context, state) => const StartScreen()),
+    GoRoute(
+      path: '/',
+      pageBuilder: (context, state) =>
+          fadeThroughPage(key: state.pageKey, child: const StartScreen()),
+    ),
     GoRoute(
       path: '/echo/chat',
-      builder: (context, state) => const AskAiScreen(),
+      pageBuilder: (context, state) =>
+          slideUpPage(key: state.pageKey, child: const AskAiScreen()),
     ),
     ShellRoute(
       builder: (context, state, child) {
@@ -21,15 +27,20 @@ GoRouter createRouter(bool isOnboardingFinished) => GoRouter(
       routes: [
         GoRoute(
           path: '/echo',
-          builder: (context, state) => const EchoHomeScreen(),
+          pageBuilder: (context, state) =>
+              fadeThroughPage(key: state.pageKey, child: const EchoHomeScreen()),
         ),
         GoRoute(
           path: '/vault',
-          builder: (context, state) => const VaultScreen(),
+          pageBuilder: (context, state) =>
+              fadeThroughPage(key: state.pageKey, child: const VaultScreen()),
         ),
+        // The Profile tab now holds the streak calendar + all app settings,
+        // merged into one screen.
         GoRoute(
-          path: '/settings',
-          builder: (context, state) => const SettingsScreen(),
+          path: '/profile',
+          pageBuilder: (context, state) =>
+              fadeThroughPage(key: state.pageKey, child: const SettingsScreen()),
         ),
       ],
     ),
