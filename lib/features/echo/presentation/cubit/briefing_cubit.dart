@@ -175,7 +175,13 @@ class BriefingCubit extends Cubit<BriefingState> {
         });
       } else {
         final request = FllamaInferenceRequest(
-          contextSize: 4000,
+          // fllama runs a llama.cpp server that splits the context across
+          // DEFAULT_N_PARALLEL (4) slots, so the usable per-request window is
+          // contextSize / 4. 8192 therefore gives each briefing ~2048 tokens —
+          // enough for the system prompt + the top-20 notification context +
+          // the generated briefing. (At 4000 the slot was only ~1000 tokens,
+          // which overflowed and returned a "context size exceeded" error.)
+          contextSize: 8192,
           input: prompt,
           maxTokens: 4000,
           modelPath: modelPath,
@@ -318,9 +324,11 @@ class BriefingCubit extends Cubit<BriefingState> {
 
       final highestScore = scoredCandidates.first['score'] as double;
 
-      // STRICT CAP: Take Top 20 semantic matches
+      // STRICT CAP: Take Top 20 semantic matches. Keeping this tight matters
+      // for the offline model — every extra notification inflates the prompt,
+      // and an over-long prompt overflows the local model's context window.
       final topEntries = scoredCandidates
-          .take(40)
+          .take(20)
           .map((e) => e['entry'] as RawData)
           .toList();
 
