@@ -40,18 +40,44 @@ void main() {
       );
     });
 
-    test('autoBold wraps key entities in ** double asterisks if missing', () {
-      const input = 'Mike is late for the meeting at 3 PM on Friday. John is already there.';
+    test('autoBold wraps times and weekdays in ** double asterisks', () {
+      const input = 'The meeting is at 3 PM on Friday, and the lab exam is at 10:30 AM.';
       final bolded = autoBold(input);
 
-      expect(bolded, equals('**Mike** is late for the meeting at **3 PM** on **Friday**. **John** is already there.'));
+      expect(
+        bolded,
+        equals('The meeting is at **3 PM** on **Friday**, and the lab exam is at **10:30 AM**.'),
+      );
     });
 
-    test('autoBold does not double bold existing ** markers', () {
-      const input = '**Mike** is late for the meeting at **3 PM** on Friday.';
+    test('autoBold wraps calendar dates in both orders', () {
+      expect(
+        autoBold('The event is on June 27, 2026.'),
+        equals('The event is on **June 27, 2026**.'),
+      );
+      expect(
+        autoBold('Report by 2 July 2026 sharp.'),
+        equals('Report by **2 July 2026** sharp.'),
+      );
+    });
+
+    test('autoBold leaves semantic names to the model (no hardcoded list)', () {
+      const input = 'Mahesh needs the videos uploaded to the shared drive.';
+      expect(autoBold(input), equals(input));
+    });
+
+    test('autoBold does not double bold an already-wrapped entity', () {
+      const input = 'The standup at **3 PM** on Friday is on track.';
       final bolded = autoBold(input);
 
-      expect(bolded, equals('**Mike** is late for the meeting at **3 PM** on **Friday**.'));
+      expect(bolded, equals('The standup at **3 PM** on **Friday** is on track.'));
+    });
+
+    test('autoBold does not re-bold inside a longer model-bolded phrase', () {
+      // The model already bolded a phrase that happens to contain a time —
+      // re-bolding the time would produce broken nested markup.
+      const input = 'Attend the **placement talk at 9:30 AM in Hall-1** without fail.';
+      expect(autoBold(input), equals(input));
     });
   });
 
@@ -59,6 +85,36 @@ void main() {
     test('uses the default warm tone when none is provided', () {
       final instr = getBriefingSystemInstruction('Ada');
       expect(instr, contains('professional yet warm tone'));
+    });
+
+    test('instructs the model to bold key details (and never forbids it)', () {
+      final instr = getBriefingSystemInstruction('Ada');
+      expect(instr, contains('double asterisks'));
+      expect(instr.toLowerCase(), isNot(contains('do not bold')));
+    });
+
+    test('includes the few-shot example by default (for the cloud model)', () {
+      final instr = getBriefingSystemInstruction('Ada');
+      expect(instr, contains('Perfect example output'));
+      expect(instr, contains('Daily Standup'));
+    });
+
+    test('omits the copyable example when includeExample is false (offline)', () {
+      final instr =
+          getBriefingSystemInstruction('Ada', includeExample: false);
+      expect(instr, isNot(contains('Perfect example output')));
+      expect(instr, isNot(contains('Daily Standup')));
+      expect(instr, isNot(contains('Mike')));
+      // Still keeps the real instructions + formatting rule.
+      expect(instr, contains('double asterisks'));
+      expect(instr, contains('ONLY on the actual notification text'));
+    });
+
+    test('buildQwenPrompt drops the example when asked (offline path)', () {
+      final prompt = buildQwenPrompt('Meeting notes', 'Ada',
+          includeExample: false);
+      expect(prompt, isNot(contains('Daily Standup')));
+      expect(prompt, contains('<|im_start|>system'));
     });
 
     test('injects a custom tone instruction when provided', () {
@@ -115,6 +171,37 @@ void main() {
     test('keeps short-word-only sentences (no false dedup)', () {
       const input = 'See you at 3 PM. Call me now.';
       expect(deduplicateSentences(input), equals('See you at 3 PM. Call me now.'));
+    });
+  });
+
+  group('separateListItems', () {
+    test('breaks an inline numbered list onto separate lines', () {
+      const input =
+          'Today: 1. The Team BPA session continues. 2. Supabase is paused. 3. Play Protect scans apps.';
+      final out = separateListItems(input);
+      expect(out, contains('\n1. '));
+      expect(out, contains('\n2. '));
+      expect(out, contains('\n3. '));
+      // Each item now begins its own line.
+      expect(out.split('\n').length, greaterThanOrEqualTo(4));
+    });
+
+    test('leaves prose without lists unchanged', () {
+      const input = 'You have a meeting at 3 PM and a call at 5 PM today.';
+      expect(separateListItems(input), equals(input));
+    });
+
+    test('does not split decimals or times', () {
+      const input = 'The build is v1.2 and the demo is at 10.30 sharp.';
+      expect(separateListItems(input), equals(input));
+    });
+  });
+
+  group('getBriefingSystemInstruction style', () {
+    test('strictly forbids numbered lists / bullet points', () {
+      final instr = getBriefingSystemInstruction('Ada');
+      expect(instr, contains('NEVER use bullet points, numbered lists'));
+      expect(instr, contains('This rule is absolute'));
     });
   });
 

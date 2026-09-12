@@ -120,15 +120,18 @@ class _DailyBriefingScreenState extends State<DailyBriefingScreen> {
             Expanded(
               flex: 3,
               child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Spacer(),
-                  // Waveform — tap it to play/pause
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: SiriWaveformVisualizer(
-                      isPlaying: _isPlaying,
-                      onTap: _togglePlayback,
-                      amplitude: 3,
+                  // Waveform — tap it to play/pause. Flexible so it shrinks to
+                  // fit short/landscape layouts instead of overflowing.
+                  Flexible(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: SiriWaveformVisualizer(
+                        isPlaying: _isPlaying,
+                        onTap: _togglePlayback,
+                        amplitude: 3,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -145,7 +148,6 @@ class _DailyBriefingScreenState extends State<DailyBriefingScreen> {
                       ),
                     ),
                   ),
-                  const Spacer(),
                 ],
               ),
             ),
