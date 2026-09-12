@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:project_echo/core/services/echo_tts.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/presentation/widgets/echo_app_bar.dart';
@@ -35,28 +36,9 @@ class _DailyBriefingScreenState extends State<DailyBriefingScreen> {
   }
 
   Future<void> _setupTts() async {
-    await _tts.setLanguage('en-US');
-    await _tts.setSpeechRate(0.48);
-    await _tts.setPitch(1.0);
+    // Apply the voice + rate the user chose during onboarding (or in settings).
+    await EchoTts.applyVoicePreferences(_tts);
     await _tts.setVolume(1.0);
-
-    try {
-      final voices = await _tts.getVoices;
-      for (var voice in voices) {
-        final name = voice['name'].toString().toLowerCase();
-        final locale = voice['locale'].toString().toLowerCase();
-        if ((locale.contains('en-gb')) &&
-            (name.contains('male') ||
-                name.contains('daniel') ||
-                name.contains('network'))) {
-          await _tts.setVoice({
-            "name": voice["name"],
-            "locale": voice["locale"],
-          });
-          break;
-        }
-      }
-    } catch (_) {}
 
     _tts.setStartHandler(() {
       if (mounted) setState(() => _isPlaying = true);

@@ -10,6 +10,8 @@ import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:project_echo/features/echo/presentation/widgets/timer/next_briefing_timer.dart';
 import 'package:project_echo/features/echo/presentation/widgets/generating_view.dart';
+import 'package:project_echo/core/presentation/animations/app_motion.dart';
+import 'package:project_echo/core/presentation/animations/fade_slide_in.dart';
 
 class EchoHomeScreen extends StatelessWidget {
   const EchoHomeScreen({super.key});
@@ -303,32 +305,47 @@ class _HomeShellState extends State<_HomeShell> {
           children: [
             const SizedBox(height: 24),
 
-            Text(
-              '$greeting,\n$name',
-              style: GoogleFonts.oldStandardTt(
-                fontSize: 40,
-                fontWeight: FontWeight.w700,
-                color: context.colors.textPrimary,
-                height: 1.15,
+            FadeSlideIn(
+              child: Text(
+                '$greeting,\n$name',
+                style: GoogleFonts.oldStandardTt(
+                  fontSize: 40,
+                  fontWeight: FontWeight.w700,
+                  color: context.colors.textPrimary,
+                  height: 1.15,
+                ),
               ),
             ),
             const SizedBox(height: 24),
 
-            FutureBuilder<List<RawData>>(
-              future: IsarDataSource.getAllEntries(),
-              builder: (context, snapshot) {
-                final count = snapshot.data?.length ?? 0;
-                return _SignalCard(signalCount: count);
-              },
+            FadeSlideIn(
+              delay: AppMotion.staggerDelay(1),
+              child: FutureBuilder<List<RawData>>(
+                future: IsarDataSource.getAllEntries(),
+                builder: (context, snapshot) {
+                  final count = snapshot.data?.length ?? 0;
+                  return _SignalCard(signalCount: count);
+                },
+              ),
             ),
 
             const SizedBox(height: 24),
 
-            const Expanded(child: Center(child: NextBriefingTimer())),
+            Expanded(
+              child: Center(
+                child: FadeSlideIn(
+                  delay: AppMotion.staggerDelay(2),
+                  child: const NextBriefingTimer(),
+                ),
+              ),
+            ),
 
             const SizedBox(height: 24),
 
-            ...widget.actions,
+            ...staggeredColumn(
+              widget.actions,
+              initialDelay: AppMotion.staggerDelay(3),
+            ),
 
             const SizedBox(height: 48),
           ],

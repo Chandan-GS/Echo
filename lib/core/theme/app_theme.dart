@@ -30,6 +30,15 @@ class AppColors {
 extension AppThemeContext on BuildContext {
   bool get isDarkMode => Theme.of(this).brightness == Brightness.dark;
 
+  /// Background for a selected / filled control. A bright green in dark mode, a
+  /// pale green in light mode — both are light enough that dark [onSelection]
+  /// text reads with high contrast (≈8:1), unlike white on a mid-tone green.
+  Color get selectionFill =>
+      isDarkMode ? colors.primaryGreen : colors.lightGreenBackground;
+
+  /// The near-black green used for text/icons sitting on [selectionFill].
+  Color get onSelection => const Color(0xFF16301B);
+
   AppColors get colors => isDarkMode
       ? const AppColors(
           background: AppTheme.backgroundDark,

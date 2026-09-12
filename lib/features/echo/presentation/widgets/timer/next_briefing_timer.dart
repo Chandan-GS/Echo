@@ -7,6 +7,7 @@ import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/features/settings/presentation/cubit/settings_cubit.dart';
 import 'package:project_echo/features/settings/presentation/cubit/settings_state.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
+import 'package:project_echo/core/utils/time_utils.dart';
 
 class NextBriefingTimer extends StatefulWidget {
   const NextBriefingTimer({super.key});
@@ -81,14 +82,27 @@ class _NextBriefingTimerState extends State<NextBriefingTimer>
           _now.add(const Duration(days: 1)),
         ]) {
           for (final timeStr in times) {
-            final parts = timeStr.split(':');
-            if (parts.length != 2) continue;
-            final hour = int.tryParse(parts[0]) ?? 0;
-            final minute = int.tryParse(parts[1]) ?? 0;
+            final parsed = parseBriefingTime(timeStr);
+            if (parsed == null) continue;
             instances.add(
-              DateTime(date.year, date.month, date.day, hour, minute),
+              DateTime(
+                date.year,
+                date.month,
+                date.day,
+                parsed.hour,
+                parsed.minute,
+              ),
             );
           }
+        }
+
+        // If every stored time was malformed, fall back to a sane default so
+        // the countdown never shows a bogus 24h-out time.
+        if (instances.isEmpty) {
+          final fallback = _now.hour < 7
+              ? DateTime(_now.year, _now.month, _now.day, 7, 0)
+              : DateTime(_now.year, _now.month, _now.day + 1, 7, 0);
+          instances.add(fallback);
         }
         instances.sort();
 

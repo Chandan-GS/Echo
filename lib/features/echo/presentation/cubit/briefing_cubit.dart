@@ -7,11 +7,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:fllama/fllama.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:project_echo/features/echo/data/datasources/briefing_prompt.dart';
+import 'package:project_echo/features/onboarding/data/onboarding_personalization.dart';
 import 'package:project_echo/features/echo/data/datasources/priority_query_embedding.dart';
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
-import 'package:project_echo/features/echo/data/datasources/tflite_embedding_service.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:project_echo/core/services/gemini_service.dart';
 
@@ -42,6 +41,11 @@ class BriefingCubit extends Cubit<BriefingState> {
   }
 
   Future<void> generateBriefing() async {
+    // Cancel any in-flight generation stream so a stale "Regenerate" run can't
+    // fire its onDone and overwrite the new run's state.
+    await _streamSub?.cancel();
+    _streamSub = null;
+
     emit(BriefingGenerating());
 
     try {
@@ -128,8 +132,13 @@ class BriefingCubit extends Cubit<BriefingState> {
       final isOfflineEngine = prefs.getBool('is_offline_engine') ?? true;
       final geminiApiKey = prefs.getString('gemini_api_key') ?? '';
       final userName = prefs.getString('user_name') ?? 'Sir';
+      final tone = onboardingToneFromId(prefs.getString('briefing_tone'));
 
-      final prompt = buildQwenPrompt(contextObj['context'] as String, userName);
+      final prompt = buildQwenPrompt(
+        contextObj['context'] as String,
+        userName,
+        toneInstruction: tone.promptInstruction,
+      );
 
       _debugPrintLongString(
         '=== LLM INPUT PROMPT ===\n$prompt\n========================',
