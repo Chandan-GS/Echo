@@ -20,10 +20,9 @@ class EchoHomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider(
-      create: (context) => BriefingCubit(),
-      child: const _EchoView(),
-    );
+    // BriefingCubit is provided by MainScaffold (app-scoped) so a briefing
+    // keeps generating across tab switches; this screen just renders the view.
+    return const _EchoView();
   }
 }
 
