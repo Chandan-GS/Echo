@@ -8,6 +8,7 @@ import 'package:project_echo/features/vault/presentation/widgets/category_pie_ch
 import 'package:project_echo/features/vault/presentation/widgets/category_details_sheet.dart';
 import 'package:project_echo/core/presentation/animations/app_motion.dart';
 import 'package:project_echo/core/presentation/animations/fade_slide_in.dart';
+import 'package:project_echo/features/echo/presentation/widgets/echo_mascot.dart';
 
 class VaultScreen extends StatelessWidget {
   const VaultScreen({super.key});
@@ -159,12 +160,22 @@ class _VaultViewState extends State<_VaultView> {
                     if (state is VaultLoaded) {
                       if (state.allItems.isEmpty) {
                         return Center(
-                          child: Text(
-                            'No signals captured yet',
-                            style: GoogleFonts.nunito(
-                              fontSize: 16,
-                              color: context.colors.textSecondary,
-                            ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const EchoMascot(
+                                state: EchoState.sleeping,
+                                size: 120,
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                'No signals captured yet',
+                                style: GoogleFonts.nunito(
+                                  fontSize: 16,
+                                  color: context.colors.textSecondary,
+                                ),
+                              ),
+                            ],
                           ),
                         );
                       }
