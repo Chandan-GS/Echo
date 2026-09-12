@@ -12,7 +12,14 @@ class GeminiService {
       final cleanKey = apiKey.trim();
       if (cleanKey.isEmpty) return false;
 
-      final dio = Dio();
+      final dio = Dio(
+        BaseOptions(
+          // Bound the request so the validation spinner can never hang forever
+          // on a stalled or offline network.
+          connectTimeout: const Duration(seconds: 15),
+          receiveTimeout: const Duration(seconds: 15),
+        ),
+      );
       final response = await dio.get(
         'https://generativelanguage.googleapis.com/v1beta/models',
         queryParameters: {'key': cleanKey},

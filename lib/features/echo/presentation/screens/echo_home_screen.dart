@@ -1,15 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:project_echo/features/echo/presentation/cubit/briefing_cubit.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
+import 'package:project_echo/core/services/widget_refresh_service.dart';
 import 'package:project_echo/features/echo/presentation/screens/daily_briefing_screen.dart';
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:project_echo/features/echo/presentation/widgets/timer/next_briefing_timer.dart';
 import 'package:project_echo/features/echo/presentation/widgets/generating_view.dart';
+import 'package:project_echo/core/presentation/animations/app_motion.dart';
+import 'package:project_echo/core/presentation/animations/fade_slide_in.dart';
 
 class EchoHomeScreen extends StatelessWidget {
   const EchoHomeScreen({super.key});
@@ -47,6 +51,7 @@ class _EchoViewState extends State<_EchoView> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       context.read<BriefingCubit>().loadCachedBriefing();
+      WidgetRefreshService.refresh();
     }
   }
 
@@ -56,13 +61,22 @@ class _EchoViewState extends State<_EchoView> with WidgetsBindingObserver {
       resizeToAvoidBottomInset: false,
       backgroundColor: context.colors.background,
       body: BlocConsumer<BriefingCubit, BriefingState>(
-        listener: (context, state) {
+        listener: (context, state) async {
           if (state is BriefingReady) {
+            // Read-and-clear the one-shot flag set when the user reached the
+            // app via the notification's "Play" action (or by tapping it) —
+            // see local_notification_service.dart / main.dart.
+            final prefs = await SharedPreferences.getInstance();
+            final autoPlay = prefs.getBool('pending_autoplay') ?? false;
+            if (autoPlay) await prefs.remove('pending_autoplay');
+            if (!context.mounted) return;
+
             Navigator.of(context, rootNavigator: true).push(
               MaterialPageRoute(
                 builder: (_) => DailyBriefingScreen(
                   rawText: state.rawText,
                   ttsText: state.ttsText,
+                  autoPlay: autoPlay,
                   onReset: () {
                     context.read<BriefingCubit>().goBack();
                   },
@@ -303,32 +317,47 @@ class _HomeShellState extends State<_HomeShell> {
           children: [
             const SizedBox(height: 24),
 
-            Text(
-              '$greeting,\n$name',
-              style: GoogleFonts.oldStandardTt(
-                fontSize: 40,
-                fontWeight: FontWeight.w700,
-                color: context.colors.textPrimary,
-                height: 1.15,
+            FadeSlideIn(
+              child: Text(
+                '$greeting,\n$name',
+                    style: GoogleFonts.oldStandardTt(
+                      fontSize: 40,
+                      fontWeight: FontWeight.w700,
+                      color: context.colors.textPrimary,
+                      height: 1.15,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                FadeSlideIn(
+                  delay: AppMotion.staggerDelay(2),
+              child: FutureBuilder<List<RawData>>(
+                future: IsarDataSource.getAllEntries(),
+                builder: (context, snapshot) {
+                  final count = snapshot.data?.length ?? 0;
+                  return _SignalCard(signalCount: count);
+                },
               ),
             ),
+
             const SizedBox(height: 24),
 
-            FutureBuilder<List<RawData>>(
-              future: IsarDataSource.getAllEntries(),
-              builder: (context, snapshot) {
-                final count = snapshot.data?.length ?? 0;
-                return _SignalCard(signalCount: count);
-              },
+            Expanded(
+              child: Center(
+                child: FadeSlideIn(
+                  delay: AppMotion.staggerDelay(3),
+                  child: const NextBriefingTimer(),
+                ),
+              ),
             ),
 
             const SizedBox(height: 24),
 
-            const Expanded(child: Center(child: NextBriefingTimer())),
-
-            const SizedBox(height: 24),
-
-            ...widget.actions,
+            ...staggeredColumn(
+              widget.actions,
+              initialDelay: AppMotion.staggerDelay(4),
+            ),
 
             const SizedBox(height: 48),
           ],
@@ -399,6 +428,7 @@ class _ActionCardState extends State<_ActionCard>
       onTapDown: (_) => _controller.forward(),
       onTapUp: (_) {
         _controller.reverse();
+        HapticFeedback.lightImpact();
         widget.onTap();
       },
       onTapCancel: () => _controller.reverse(),

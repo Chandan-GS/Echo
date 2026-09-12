@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:project_echo/core/services/echo_tts.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
@@ -56,28 +57,9 @@ class _AskAiViewState extends State<_AskAiView> {
   }
 
   Future<void> _initAudio() async {
-    await _flutterTts.setLanguage('en-US');
-    await _flutterTts.setSpeechRate(0.48);
-    await _flutterTts.setPitch(1.0);
+    // Apply the voice + rate the user chose during onboarding (or in settings).
+    await EchoTts.applyVoicePreferences(_flutterTts);
     await _flutterTts.setVolume(1.0);
-
-    try {
-      final voices = await _flutterTts.getVoices;
-      for (var voice in voices) {
-        final name = voice['name'].toString().toLowerCase();
-        final locale = voice['locale'].toString().toLowerCase();
-        if ((locale.contains('en-gb')) &&
-            (name.contains('male') ||
-                name.contains('daniel') ||
-                name.contains('network'))) {
-          await _flutterTts.setVoice({
-            "name": voice["name"],
-            "locale": voice["locale"],
-          });
-          break;
-        }
-      }
-    } catch (_) {}
 
     _flutterTts.setCompletionHandler(() {
       _isSpeaking = false;

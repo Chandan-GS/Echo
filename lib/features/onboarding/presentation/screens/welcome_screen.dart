@@ -135,6 +135,21 @@ class _WelcomeScreenState extends State<WelcomeScreen>
                         ),
                       ),
 
+                      const SizedBox(height: 16),
+
+                      // Value proposition — sets the promise before any ask.
+                      Opacity(
+                        opacity: _titleFade.value,
+                        child: Text(
+                          'Your day, briefed aloud each morning.\nPrivate, and entirely on your phone.',
+                          style: GoogleFonts.nunito(
+                            fontSize: 18,
+                            height: 1.4,
+                            color: Colors.white.withValues(alpha: 0.85),
+                          ),
+                        ),
+                      ),
+
                       const SizedBox(height: 32),
 
                       EchoButton(

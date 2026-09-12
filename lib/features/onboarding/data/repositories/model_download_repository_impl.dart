@@ -7,6 +7,11 @@ class ModelDownloadRepositoryImpl implements ModelDownloadRepository {
   final String modelUrl =
       "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q3_k_m.gguf";
 
+  /// The q3_k_m model is ~0.8 GB. Anything much smaller than this on disk is a
+  /// truncated/partial download and must be treated as "not downloaded" so we
+  /// don't hand a corrupt GGUF to the inference engine.
+  static const int _minValidModelBytes = 200 * 1024 * 1024; // 200 MB
+
   @override
   Future<String> downloadModel({
     required Function(int progress, int total) onProgress,
@@ -37,28 +42,56 @@ class ModelDownloadRepositoryImpl implements ModelDownloadRepository {
     final filePath = "${dir.path}/qwen2.5_1.5b_instruct_q3_k_m.gguf";
     final file = File(filePath);
 
-    // 2. Check if the model already exists
-    if (await file.exists()) {
+    // 2. Check if a *complete* model already exists. A partial file left by a
+    // previous interrupted download would otherwise be reported as valid.
+    if (await file.exists() && await file.length() >= _minValidModelBytes) {
       print("✅ Model already exists at: $filePath");
       return filePath;
     }
 
     print("⬇️ Downloading model...");
 
-    // 3. Download the file using Dio with progress tracking
+    // 3. Download to a temporary `.part` file, then atomically rename on
+    // success. On any failure, delete the partial so it can't poison the
+    // "already exists" checks on the next attempt.
+    final partPath = "$filePath.part";
+    final partFile = File(partPath);
     final dio = Dio();
-    await dio.download(
-      modelUrl,
-      filePath,
-      onReceiveProgress: (received, total) {
-        if (total != -1) {
-          onProgress(received, total);
-        }
-      },
-    );
+    try {
+      await dio.download(
+        modelUrl,
+        partPath,
+        deleteOnError: true,
+        onReceiveProgress: (received, total) {
+          if (total != -1) {
+            onProgress(received, total);
+          }
+        },
+      );
 
-    print("✅ Model downloaded to: $filePath");
-    return filePath;
+      // Guard against a "successful" but empty/truncated response.
+      if (await partFile.length() < _minValidModelBytes) {
+        throw Exception(
+          'Downloaded file is too small (${await partFile.length()} bytes) — likely truncated.',
+        );
+      }
+
+      // Replace any stale/partial final file, then promote the temp file.
+      if (await file.exists()) {
+        await file.delete();
+      }
+      await partFile.rename(filePath);
+
+      print("✅ Model downloaded to: $filePath");
+      return filePath;
+    } catch (e) {
+      // Best-effort cleanup of any leftover partial file.
+      try {
+        if (await partFile.exists()) await partFile.delete();
+      } catch (_) {}
+      print("❌ Model download failed: $e");
+      rethrow;
+    }
   }
 
   @override
@@ -66,6 +99,8 @@ class ModelDownloadRepositoryImpl implements ModelDownloadRepository {
     final dir = await getApplicationDocumentsDirectory();
     final filePath = "${dir.path}/qwen2.5_1.5b_instruct_q3_k_m.gguf";
     final file = File(filePath);
-    return await file.exists();
+    if (!await file.exists()) return false;
+    // Reject truncated/partial files that would crash offline inference.
+    return await file.length() >= _minValidModelBytes;
   }
 }
