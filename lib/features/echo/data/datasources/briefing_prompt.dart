@@ -37,8 +37,10 @@ String getBriefingSystemInstruction(
       'STRICT RULE: Do NOT hallucinate, assume, or invent any meetings, tasks, or plans that are not explicitly present in the provided text. '
       'Every name, event, time, and place in your briefing MUST come from the notifications below — never from these instructions or any example. '
       'Base your briefing ONLY on the actual notification text given below. '
-      'STYLE: Write the entire briefing as flowing, conversational prose in short paragraphs. '
-      'Do NOT use numbered lists, bullet points, dashes, or any list format — never write "1. … 2. … 3. …" or an "agenda as follows" list. Weave everything into sentences. '
+      'STYLE — STRICT: Write the entire briefing as flowing, conversational prose in short paragraphs, and nothing else. '
+      'You must NEVER use bullet points, numbered lists, dashes, asterisks as bullets, or any list or outline format. '
+      'Do NOT number your points (no "1.", "2.", "3."), do NOT write "agenda as follows", and do NOT put items on separate list lines. '
+      'Every point must be woven into full sentences inside paragraphs. This rule is absolute. '
       'FORMATTING: Make the key details pop by wrapping them in **double asterisks** — specifically dates, times, deadlines, locations or venues, and the important event, project, or person names. '
       'Bold ONLY short, specific phrases (for example **10:30 AM**, **Saturday**, **June 27**, or **Seminar Hall-1**), never whole sentences, and bold each detail at most once.';
 

@@ -198,9 +198,10 @@ void main() {
   });
 
   group('getBriefingSystemInstruction style', () {
-    test('forbids numbered lists / bullet points', () {
+    test('strictly forbids numbered lists / bullet points', () {
       final instr = getBriefingSystemInstruction('Ada');
-      expect(instr, contains('Do NOT use numbered lists'));
+      expect(instr, contains('NEVER use bullet points, numbered lists'));
+      expect(instr, contains('This rule is absolute'));
     });
   });
 
