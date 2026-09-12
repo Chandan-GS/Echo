@@ -1,4 +1,16 @@
-String getBriefingSystemInstruction(String userName, {String? toneInstruction}) {
+/// Builds the briefing system instruction.
+///
+/// [includeExample] controls whether the concrete few-shot example briefing is
+/// appended. Strong cloud models (Gemini) benefit from it and treat it as
+/// illustrative, but the small on-device model (Qwen 1.5B) is too weak to tell
+/// the example apart from the user's real notifications and copies its fake
+/// names/events ("Mike", "Daily Standup") straight into the output — so the
+/// offline path passes `includeExample: false`.
+String getBriefingSystemInstruction(
+  String userName, {
+  String? toneInstruction,
+  bool includeExample = true,
+}) {
   final name = userName.trim().isEmpty ? 'sir' : userName.trim();
   final tone = (toneInstruction == null || toneInstruction.trim().isEmpty)
       ? 'Speak directly to the user in a professional yet warm tone.'
@@ -15,20 +27,32 @@ String getBriefingSystemInstruction(String userName, {String? toneInstruction}) 
     greeting = 'Good night';
   }
 
-  return 'You are "Echo", an elite personal assistant. Your job is to deliver a concise, natural, and highly synthesized briefing for the user. '
+  final base =
+      'You are "Echo", an elite personal assistant. Your job is to deliver a concise, natural, and highly synthesized briefing for the user. '
       'Do not mechanically list notifications one by one. Instead, weave them together into a smooth, conversational summary. '
       'Group related topics (e.g., work, personal, news). '
       'Focus heavily on ACTIONABLE items and FUTURE events for today or tomorrow. Completely IGNORE any events or notifications that have already passed. '
       'Start with a brief "$greeting $name". \n'
       '$tone '
       'STRICT RULE: Do NOT hallucinate, assume, or invent any meetings, tasks, or plans that are not explicitly present in the provided text. '
-      'Base your briefing ONLY on the actual notification text given below. And Do not bold texts in the briefing'
+      'Every name, event, time, and place in your briefing MUST come from the notifications below — never from these instructions or any example. '
+      'Base your briefing ONLY on the actual notification text given below. '
+      'STYLE — STRICT: Write the entire briefing as flowing, conversational prose in short paragraphs, and nothing else. '
+      'You must NEVER use bullet points, numbered lists, dashes, asterisks as bullets, or any list or outline format. '
+      'Do NOT number your points (no "1.", "2.", "3."), do NOT write "agenda as follows", and do NOT put items on separate list lines. '
+      'Every point must be woven into full sentences inside paragraphs. This rule is absolute. '
+      'FORMATTING: Make the key details pop by wrapping them in **double asterisks** — specifically dates, times, deadlines, locations or venues, and the important event, project, or person names. '
+      'Bold ONLY short, specific phrases (for example **10:30 AM**, **Saturday**, **June 27**, or **Seminar Hall-1**), never whole sentences, and bold each detail at most once.';
+
+  if (!includeExample) return base;
+
+  return '$base'
       '\n\n'
       'Perfect example output (note the natural flow and grouping):\n'
       '$greeting, $name.\nLooking at your day, systems are healthy after a clean overnight deployment. '
-      'On the work front, Mike needs to push your meeting to 3 PM, but your 10 AM Daily Standup is still on track. '
-      'Also, John from Legal needs your liability cap confirmation before sending the contract, and Priya sent over the Figma links for the Q3 Design Assets. '
-      'Later today, you have a dentist appointment at 4:30 PM. Finally, your Swiggy delivery is on its way, and your mum asked if you\'re joining for Sunday dinner. '
+      'On the work front, **Mike** needs to push your meeting to **3 PM**, but your **10 AM Daily Standup** is still on track. '
+      'Also, **John from Legal** needs your liability cap confirmation before sending the contract, and **Priya** sent over the Figma links for the **Q3 Design Assets**. '
+      'Later today, you have a dentist appointment at **4:30 PM**. Finally, your Swiggy delivery is on its way, and your mum asked if you\'re joining for **Sunday dinner**. '
       'A full day ahead, $name.';
 }
 
@@ -40,8 +64,9 @@ String buildQwenPrompt(
   String notificationContext,
   String userName, {
   String? toneInstruction,
+  bool includeExample = true,
 }) {
-  return '<|im_start|>system\n${getBriefingSystemInstruction(userName, toneInstruction: toneInstruction)}<|im_end|>\n'
+  return '<|im_start|>system\n${getBriefingSystemInstruction(userName, toneInstruction: toneInstruction, includeExample: includeExample)}<|im_end|>\n'
       '<|im_start|>user\n${buildUserMessage(notificationContext)}<|im_end|>\n'
       '<|im_start|>assistant\n';
 }
@@ -163,28 +188,70 @@ String stripFillerCommentary(String text) {
   return cleaned;
 }
 
+/// Deterministic safety net that highlights the entity types a regex can catch
+/// reliably — times, calendar dates, and weekdays — so they always render as
+/// green chips even if the model forgets to bold them. Semantic highlights
+/// (event/project/person names) are left to the model's own ** markup; this
+/// function is careful never to bold *inside* an already-bolded span, so it
+/// won't corrupt that markup.
+/// Safety net for the display transcript: the briefing should read as prose,
+/// but if the model still emits an inline numbered/bulleted list (e.g.
+/// "as follows: 1. … 2. … 3. …"), break each item onto its own line so it
+/// doesn't render as one run-on sentence. The TTS text strips these markers
+/// separately (see [stripForTts]).
+String separateListItems(String text) {
+  var t = text;
+
+  // Inline numbered items — " 1. " / " 2) " that aren't already line-leading.
+  t = t.replaceAllMapped(
+    RegExp(r'(\S)[ \t]+(\d{1,2}[\.\)])[ \t]+'),
+    (m) => '${m.group(1)}\n${m.group(2)} ',
+  );
+
+  // Inline bullet markers — " - " / " • " / " * " mid-sentence.
+  t = t.replaceAllMapped(
+    RegExp(r'(\S)[ \t]+([-•*])[ \t]+'),
+    (m) => '${m.group(1)}\n${m.group(2)} ',
+  );
+
+  // Collapse any accidental 3+ newline runs.
+  t = t.replaceAll(RegExp(r'\n{3,}'), '\n\n');
+  return t.trim();
+}
+
 String autoBold(String text) {
   var result = text;
 
-  // Auto-bold times: 10:00 AM, 3 PM, 4:30 PM
-  final timeRegex = RegExp(
-    r'\b\d{1,2}(?::\d{2})?\s*(?:AM|PM)\b',
-    caseSensitive: false,
-  );
-  result = _boldPatternIfNotBolded(result, timeRegex);
+  const month =
+      r'(?:January|February|March|April|May|June|July|August|September|October|November|December)';
 
-  // Auto-bold days of the week
-  final dayRegex = RegExp(
-    r'\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b',
-    caseSensitive: false,
+  // Times: 10:00 AM, 3 PM, 4:30 PM
+  result = _boldPatternIfNotBolded(
+    result,
+    RegExp(r'\b\d{1,2}(?::\d{2})?\s*(?:AM|PM)\b', caseSensitive: false),
   );
-  result = _boldPatternIfNotBolded(result, dayRegex);
 
-  // Auto-bold key names and specific terms
-  final nameRegex = RegExp(
-    r'\b(Mike|Priya|John|Sarah|Mom|Swiggy|DevOps Bot)\b',
+  // Dates written "Month Day" / "Month Day, Year" — e.g. June 27, 2026
+  result = _boldPatternIfNotBolded(
+    result,
+    RegExp('\\b$month\\s+\\d{1,2}(?:,\\s*\\d{4})?\\b', caseSensitive: false),
   );
-  result = _boldPatternIfNotBolded(result, nameRegex);
+
+  // Dates written "Day Month" / "Day Month Year" — e.g. 27 June 2026
+  result = _boldPatternIfNotBolded(
+    result,
+    RegExp('\\b\\d{1,2}(?:st|nd|rd|th)?\\s+$month(?:\\s+\\d{4})?\\b',
+        caseSensitive: false),
+  );
+
+  // Days of the week
+  result = _boldPatternIfNotBolded(
+    result,
+    RegExp(
+      r'\b(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b',
+      caseSensitive: false,
+    ),
+  );
 
   return result;
 }
@@ -194,17 +261,24 @@ String _boldPatternIfNotBolded(String text, RegExp pattern) {
     final start = match.start;
     final end = match.end;
 
-    // Check if the match is already surrounded by **
-    bool isBoldedBefore =
-        start >= 2 && text.substring(start - 2, start) == '**';
-    bool isBoldedAfter =
-        end <= text.length - 2 && text.substring(end, end + 2) == '**';
+    // Skip matches that fall inside an already-open ** span: if the number of
+    // '**' markers before this point is odd, we're currently between an
+    // opening and closing pair (e.g. the model bolded a longer phrase around
+    // it), and re-bolding would produce broken, nested markup.
+    if ('**'.allMatches(text.substring(0, start)).length.isOdd) {
+      return match.group(0)!;
+    }
 
+    // Already tightly wrapped in its own ** pair?
+    final isBoldedBefore =
+        start >= 2 && text.substring(start - 2, start) == '**';
+    final isBoldedAfter =
+        end <= text.length - 2 && text.substring(end, end + 2) == '**';
     if (isBoldedBefore && isBoldedAfter) {
       return match.group(0)!;
-    } else {
-      return '**${match.group(0)}**';
     }
+
+    return '**${match.group(0)}**';
   });
 }
 

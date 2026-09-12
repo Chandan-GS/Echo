@@ -53,7 +53,11 @@ class BriefingCubit extends Cubit<BriefingState> {
     emit(BriefingReady(rawText: rawText, ttsText: stripForTts(rawText)));
   }
 
-  Future<void> generateBriefing() async {
+  /// [attempt] is used internally to retry once when the on-device model
+  /// returns an empty response — the first inference right after the model is
+  /// (re)loaded can occasionally come back blank, and a single retry against
+  /// the now-warm model reliably produces a briefing.
+  Future<void> generateBriefing({int attempt = 0}) async {
     // Cancel any in-flight generation stream so a stale "Regenerate" run can't
     // fire its onDone and overwrite the new run's state.
     await _streamSub?.cancel();
@@ -95,6 +99,12 @@ class BriefingCubit extends Cubit<BriefingState> {
       // ── 3. REDUCE PHASE: Final briefing generation ────────────────────────
       emit(BriefingGenerating(partial: 'Synthesizing briefing...'));
 
+      final prefs = await SharedPreferences.getInstance();
+      final isOfflineEngine = prefs.getBool('is_offline_engine') ?? true;
+      final geminiApiKey = prefs.getString('gemini_api_key') ?? '';
+      final userName = prefs.getString('user_name') ?? 'Sir';
+      final tone = onboardingToneFromId(prefs.getString('briefing_tone'));
+
       final StringBuffer buffer = StringBuffer();
       final Completer<void> done = Completer<void>();
       final controller = StreamController<String>();
@@ -119,6 +129,7 @@ class BriefingCubit extends Cubit<BriefingState> {
           rawText = stripSignOff(rawText);
           rawText = deduplicateSentences(rawText);
           rawText = stripFillerCommentary(rawText);
+          rawText = separateListItems(rawText);
           rawText = autoBold(rawText);
 
           print(
@@ -126,6 +137,13 @@ class BriefingCubit extends Cubit<BriefingState> {
           );
 
           if (rawText.isEmpty) {
+            // The on-device model's first inference after a (re)load can come
+            // back blank; retry once against the now-warm model before failing.
+            if (isOfflineEngine && attempt == 0) {
+              if (!done.isCompleted) done.complete();
+              generateBriefing(attempt: 1);
+              return;
+            }
             emit(BriefingError('The model produced an empty response.'));
           } else {
             final ttsText = stripForTts(rawText);
@@ -145,16 +163,13 @@ class BriefingCubit extends Cubit<BriefingState> {
         },
       );
 
-      final prefs = await SharedPreferences.getInstance();
-      final isOfflineEngine = prefs.getBool('is_offline_engine') ?? true;
-      final geminiApiKey = prefs.getString('gemini_api_key') ?? '';
-      final userName = prefs.getString('user_name') ?? 'Sir';
-      final tone = onboardingToneFromId(prefs.getString('briefing_tone'));
-
       final prompt = buildQwenPrompt(
         contextObj['context'] as String,
         userName,
         toneInstruction: tone.promptInstruction,
+        // The on-device model copies the few-shot example verbatim; only give
+        // the concrete example to the stronger cloud model.
+        includeExample: !isOfflineEngine,
       );
 
       _debugPrintLongString(
@@ -175,7 +190,15 @@ class BriefingCubit extends Cubit<BriefingState> {
         });
       } else {
         final request = FllamaInferenceRequest(
-          contextSize: 4000,
+          // fllama runs a llama.cpp server that splits the context across
+          // parallel slots, so the usable per-request window is only
+          // contextSize / n_parallel. 16384 keeps each briefing's slot at
+          // ~2048+ tokens even in the worst case — comfortably fitting the
+          // system prompt + trimmed notification context + the output.
+          // NOTE: the native model is cached for the app's lifetime and only
+          // reloads when this value changes AND the process restarts; a hot
+          // reload alone will keep using the previously-loaded context size.
+          contextSize: 16384,
           input: prompt,
           maxTokens: 4000,
           modelPath: modelPath,
@@ -318,9 +341,11 @@ class BriefingCubit extends Cubit<BriefingState> {
 
       final highestScore = scoredCandidates.first['score'] as double;
 
-      // STRICT CAP: Take Top 20 semantic matches
+      // STRICT CAP: Take Top 15 semantic matches. Keeping this tight matters
+      // for the offline model — every extra notification inflates the prompt,
+      // and an over-long prompt overflows the local model's context window.
       final topEntries = scoredCandidates
-          .take(40)
+          .take(15)
           .map((e) => e['entry'] as RawData)
           .toList();
 
