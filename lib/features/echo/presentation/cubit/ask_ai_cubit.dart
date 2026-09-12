@@ -220,7 +220,11 @@ class AskAiCubit extends Cubit<AskAiState> {
         emit(AskAiMessageReceived(messages: List.from(_messages)));
       } else {
         final request = FllamaInferenceRequest(
-          contextSize: 1200,
+          // fllama splits the context across 4 parallel slots, so the usable
+          // window is contextSize / 4. 8192 → ~2048 usable tokens, and keeping
+          // it identical to the briefing request lets the loaded model be
+          // reused instead of reloaded when switching between the two.
+          contextSize: 8192,
           input: prompt,
           maxTokens: 500,
           modelPath: modelPath,
