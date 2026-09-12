@@ -74,49 +74,53 @@ class _GeneratingViewState extends State<GeneratingView>
               ),
             ),
 
-            const Spacer(),
-
-            Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SizedBox(
-                    width: 90,
-                    height: 90,
-                    child: AnimatedBuilder(
-                      animation: _controller,
-                      builder: (context, child) {
-                        return RepaintBoundary(
-                          child: CustomPaint(
-                            painter: _MinimalSpinnerPainter(
-                              animationValue: _controller.value,
-                              primaryColor: context.colors.primaryGreen,
-                              dividerColor: context.colors.dividerColor,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 40),
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 300),
-                    child: Text(
-                      statusText,
-                      key: ValueKey<String>(statusText),
-                      style: GoogleFonts.nunito(
-                        fontSize: 16,
-                        fontStyle: FontStyle.italic,
-                        color: context.colors.textSecondary,
+            // Expanded + scrollable center: keeps the spinner centered in the
+            // available space, but degrades gracefully (scrolls instead of
+            // overflowing) on short/landscape layouts.
+            Expanded(
+              child: Center(
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 90,
+                        height: 90,
+                        child: AnimatedBuilder(
+                          animation: _controller,
+                          builder: (context, child) {
+                            return RepaintBoundary(
+                              child: CustomPaint(
+                                painter: _MinimalSpinnerPainter(
+                                  animationValue: _controller.value,
+                                  primaryColor: context.colors.primaryGreen,
+                                  dividerColor: context.colors.dividerColor,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
                       ),
-                      textAlign: TextAlign.center,
-                    ),
+                      const SizedBox(height: 40),
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 300),
+                        child: Text(
+                          statusText,
+                          key: ValueKey<String>(statusText),
+                          style: GoogleFonts.nunito(
+                            fontSize: 16,
+                            fontStyle: FontStyle.italic,
+                            color: context.colors.textSecondary,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
 
-            const Spacer(),
             const SizedBox(height: 48),
           ],
         ),
