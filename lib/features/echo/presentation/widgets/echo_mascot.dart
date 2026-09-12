@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// The moods Echo — the "sound sprite" mascot — can express. Each maps to a
 /// real app moment: [idle] resting on the home screen, [listening] while
@@ -17,15 +18,25 @@ class EchoMascot extends StatefulWidget {
   final EchoState state;
   final double size;
 
-  const EchoMascot({super.key, this.state = EchoState.idle, this.size = 140});
+  /// Called when Echo is tapped (after her playful bounce). When null she still
+  /// reacts to touch — the reaction is always on.
+  final VoidCallback? onTap;
+
+  const EchoMascot({
+    super.key,
+    this.state = EchoState.idle,
+    this.size = 140,
+    this.onTap,
+  });
 
   @override
   State<EchoMascot> createState() => _EchoMascotState();
 }
 
 class _EchoMascotState extends State<EchoMascot>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final AnimationController _c;
+  late final AnimationController _react;
 
   @override
   void initState() {
@@ -34,24 +45,40 @@ class _EchoMascotState extends State<EchoMascot>
       vsync: this,
       duration: const Duration(milliseconds: 2800),
     )..repeat();
+    _react = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 520),
+    );
   }
 
   @override
   void dispose() {
     _c.dispose();
+    _react.dispose();
     super.dispose();
+  }
+
+  void _onTap() {
+    HapticFeedback.lightImpact();
+    _react.forward(from: 0);
+    widget.onTap?.call();
   }
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: widget.size,
-      height: widget.size,
-      child: RepaintBoundary(
-        child: AnimatedBuilder(
-          animation: _c,
-          builder: (context, _) =>
-              CustomPaint(painter: _EchoPainter(_c.value, widget.state)),
+    return GestureDetector(
+      onTap: _onTap,
+      behavior: HitTestBehavior.opaque,
+      child: SizedBox(
+        width: widget.size,
+        height: widget.size,
+        child: RepaintBoundary(
+          child: AnimatedBuilder(
+            animation: Listenable.merge([_c, _react]),
+            builder: (context, _) => CustomPaint(
+              painter: _EchoPainter(_c.value, widget.state, _react.value),
+            ),
+          ),
         ),
       ),
     );
@@ -67,7 +94,8 @@ const _botShade = Color(0xFF5E8568);
 class _EchoPainter extends CustomPainter {
   final double t; // repeating 0..1
   final EchoState state;
-  _EchoPainter(this.t, this.state);
+  final double reaction; // one-shot 0..1 tap bounce
+  _EchoPainter(this.t, this.state, this.reaction);
 
   static const _tau = 2 * math.pi;
 
@@ -114,9 +142,16 @@ class _EchoPainter extends CustomPainter {
         break;
     }
 
-    // ── Orb + face (gentle float + breathe) ─────────────────────────────────
-    final floatDy = s(dim ? 3 : 4) * math.sin(t * _tau);
-    final breathe = 1 + 0.03 * math.sin(t * _tau);
+    // ── Tap reaction: a ripple burst emanating outward ──────────────────────
+    final rq = math.sin(reaction.clamp(0.0, 1.0) * math.pi); // 0→1→0
+    if (reaction > 0.0 && reaction < 1.0) {
+      _ring(canvas, orbC, orbR * (1.0 + reaction * 1.05),
+          ((1 - reaction) * 0.7).clamp(0.0, 0.75), k);
+    }
+
+    // ── Orb + face (gentle float + breathe + tap bounce) ────────────────────
+    final floatDy = s(dim ? 3 : 4) * math.sin(t * _tau) - s(9) * rq;
+    final breathe = (1 + 0.03 * math.sin(t * _tau)) * (1 + 0.14 * rq);
     canvas.save();
     canvas.translate(0, floatDy);
     canvas.translate(orbC.dx, orbC.dy);
@@ -314,5 +349,5 @@ class _EchoPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _EchoPainter old) =>
-      old.t != t || old.state != state;
+      old.t != t || old.state != state || old.reaction != reaction;
 }

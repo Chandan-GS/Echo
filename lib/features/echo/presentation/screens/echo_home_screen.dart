@@ -318,24 +318,14 @@ class _HomeShellState extends State<_HomeShell> {
             const SizedBox(height: 24),
 
             FadeSlideIn(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: Text(
-                      '$greeting,\n$name',
-                      style: GoogleFonts.oldStandardTt(
-                        fontSize: 40,
-                        fontWeight: FontWeight.w700,
-                        color: context.colors.textPrimary,
-                        height: 1.15,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  // Echo greets you — a calm presence by your name.
-                  const EchoMascot(state: EchoState.idle, size: 84),
-                ],
+              child: Text(
+                '$greeting,\n$name',
+                style: GoogleFonts.oldStandardTt(
+                  fontSize: 40,
+                  fontWeight: FontWeight.w700,
+                  color: context.colors.textPrimary,
+                  height: 1.15,
+                ),
               ),
             ),
                 const SizedBox(height: 24),
@@ -353,12 +343,36 @@ class _HomeShellState extends State<_HomeShell> {
 
             const SizedBox(height: 24),
 
+            // Echo as the calm hero of the home screen, with the countdown
+            // sized to fit beneath her. Both are computed from the available
+            // height so nothing overflows on any device.
             Expanded(
-              child: Center(
-                child: FadeSlideIn(
-                  delay: AppMotion.staggerDelay(3),
-                  child: const NextBriefingTimer(),
-                ),
+              child: LayoutBuilder(
+                builder: (context, c) {
+                  final availH = c.maxHeight;
+                  final mascotSize = (availH * 0.5).clamp(120.0, 188.0);
+                  final timerH = (availH - mascotSize - 24).clamp(72.0, 176.0);
+                  final timerW = (timerH * 1.6).clamp(120.0, c.maxWidth);
+                  return Center(
+                    child: FadeSlideIn(
+                      delay: AppMotion.staggerDelay(3),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          EchoMascot(
+                            state: EchoState.idle,
+                            size: mascotSize,
+                          ),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: timerW,
+                            child: const NextBriefingTimer(),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
               ),
             ),
 
