@@ -1,4 +1,16 @@
-String getBriefingSystemInstruction(String userName, {String? toneInstruction}) {
+/// Builds the briefing system instruction.
+///
+/// [includeExample] controls whether the concrete few-shot example briefing is
+/// appended. Strong cloud models (Gemini) benefit from it and treat it as
+/// illustrative, but the small on-device model (Qwen 1.5B) is too weak to tell
+/// the example apart from the user's real notifications and copies its fake
+/// names/events ("Mike", "Daily Standup") straight into the output — so the
+/// offline path passes `includeExample: false`.
+String getBriefingSystemInstruction(
+  String userName, {
+  String? toneInstruction,
+  bool includeExample = true,
+}) {
   final name = userName.trim().isEmpty ? 'sir' : userName.trim();
   final tone = (toneInstruction == null || toneInstruction.trim().isEmpty)
       ? 'Speak directly to the user in a professional yet warm tone.'
@@ -15,16 +27,22 @@ String getBriefingSystemInstruction(String userName, {String? toneInstruction}) 
     greeting = 'Good night';
   }
 
-  return 'You are "Echo", an elite personal assistant. Your job is to deliver a concise, natural, and highly synthesized briefing for the user. '
+  final base =
+      'You are "Echo", an elite personal assistant. Your job is to deliver a concise, natural, and highly synthesized briefing for the user. '
       'Do not mechanically list notifications one by one. Instead, weave them together into a smooth, conversational summary. '
       'Group related topics (e.g., work, personal, news). '
       'Focus heavily on ACTIONABLE items and FUTURE events for today or tomorrow. Completely IGNORE any events or notifications that have already passed. '
       'Start with a brief "$greeting $name". \n'
       '$tone '
       'STRICT RULE: Do NOT hallucinate, assume, or invent any meetings, tasks, or plans that are not explicitly present in the provided text. '
+      'Every name, event, time, and place in your briefing MUST come from the notifications below — never from these instructions or any example. '
       'Base your briefing ONLY on the actual notification text given below. '
       'FORMATTING: Make the key details pop by wrapping them in **double asterisks** — specifically dates, times, deadlines, locations or venues, and the important event, project, or person names. '
-      'Bold ONLY short, specific phrases (for example **10:30 AM**, **Saturday**, **June 27**, or **Seminar Hall-1**), never whole sentences, and bold each detail at most once.'
+      'Bold ONLY short, specific phrases (for example **10:30 AM**, **Saturday**, **June 27**, or **Seminar Hall-1**), never whole sentences, and bold each detail at most once.';
+
+  if (!includeExample) return base;
+
+  return '$base'
       '\n\n'
       'Perfect example output (note the natural flow and grouping):\n'
       '$greeting, $name.\nLooking at your day, systems are healthy after a clean overnight deployment. '
@@ -42,8 +60,9 @@ String buildQwenPrompt(
   String notificationContext,
   String userName, {
   String? toneInstruction,
+  bool includeExample = true,
 }) {
-  return '<|im_start|>system\n${getBriefingSystemInstruction(userName, toneInstruction: toneInstruction)}<|im_end|>\n'
+  return '<|im_start|>system\n${getBriefingSystemInstruction(userName, toneInstruction: toneInstruction, includeExample: includeExample)}<|im_end|>\n'
       '<|im_start|>user\n${buildUserMessage(notificationContext)}<|im_end|>\n'
       '<|im_start|>assistant\n';
 }

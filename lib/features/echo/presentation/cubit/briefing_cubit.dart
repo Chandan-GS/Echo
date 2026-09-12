@@ -53,7 +53,11 @@ class BriefingCubit extends Cubit<BriefingState> {
     emit(BriefingReady(rawText: rawText, ttsText: stripForTts(rawText)));
   }
 
-  Future<void> generateBriefing() async {
+  /// [attempt] is used internally to retry once when the on-device model
+  /// returns an empty response — the first inference right after the model is
+  /// (re)loaded can occasionally come back blank, and a single retry against
+  /// the now-warm model reliably produces a briefing.
+  Future<void> generateBriefing({int attempt = 0}) async {
     // Cancel any in-flight generation stream so a stale "Regenerate" run can't
     // fire its onDone and overwrite the new run's state.
     await _streamSub?.cancel();
@@ -95,6 +99,12 @@ class BriefingCubit extends Cubit<BriefingState> {
       // ── 3. REDUCE PHASE: Final briefing generation ────────────────────────
       emit(BriefingGenerating(partial: 'Synthesizing briefing...'));
 
+      final prefs = await SharedPreferences.getInstance();
+      final isOfflineEngine = prefs.getBool('is_offline_engine') ?? true;
+      final geminiApiKey = prefs.getString('gemini_api_key') ?? '';
+      final userName = prefs.getString('user_name') ?? 'Sir';
+      final tone = onboardingToneFromId(prefs.getString('briefing_tone'));
+
       final StringBuffer buffer = StringBuffer();
       final Completer<void> done = Completer<void>();
       final controller = StreamController<String>();
@@ -126,6 +136,13 @@ class BriefingCubit extends Cubit<BriefingState> {
           );
 
           if (rawText.isEmpty) {
+            // The on-device model's first inference after a (re)load can come
+            // back blank; retry once against the now-warm model before failing.
+            if (isOfflineEngine && attempt == 0) {
+              if (!done.isCompleted) done.complete();
+              generateBriefing(attempt: 1);
+              return;
+            }
             emit(BriefingError('The model produced an empty response.'));
           } else {
             final ttsText = stripForTts(rawText);
@@ -145,16 +162,13 @@ class BriefingCubit extends Cubit<BriefingState> {
         },
       );
 
-      final prefs = await SharedPreferences.getInstance();
-      final isOfflineEngine = prefs.getBool('is_offline_engine') ?? true;
-      final geminiApiKey = prefs.getString('gemini_api_key') ?? '';
-      final userName = prefs.getString('user_name') ?? 'Sir';
-      final tone = onboardingToneFromId(prefs.getString('briefing_tone'));
-
       final prompt = buildQwenPrompt(
         contextObj['context'] as String,
         userName,
         toneInstruction: tone.promptInstruction,
+        // The on-device model copies the few-shot example verbatim; only give
+        // the concrete example to the stronger cloud model.
+        includeExample: !isOfflineEngine,
       );
 
       _debugPrintLongString(
