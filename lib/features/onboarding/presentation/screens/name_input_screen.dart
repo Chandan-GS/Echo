@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/core/presentation/widgets/echo_button.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/features/onboarding/presentation/cubit/on_boarding_cubit.dart';
+import 'package:project_echo/features/onboarding/presentation/widgets/onboarding_scaffold.dart';
 
 class NameInputScreen extends StatefulWidget {
   const NameInputScreen({super.key});
@@ -20,13 +22,24 @@ class _NameInputScreenState extends State<NameInputScreen> {
   void initState() {
     super.initState();
     _nameController.addListener(_onTextChanged);
+    _restoreName();
+  }
+
+  Future<void> _restoreName() async {
+    // Prefill if the user already typed a name and navigated back.
+    final prefs = await SharedPreferences.getInstance();
+    final existing = prefs.getString('user_name') ?? '';
+    if (existing.isNotEmpty && mounted) {
+      _nameController.text = existing;
+      setState(() => _isButtonEnabled = true);
+    }
   }
 
   void _onTextChanged() {
-    final text = _nameController.text.trim();
-    setState(() {
-      _isButtonEnabled = text.isNotEmpty;
-    });
+    final enabled = _nameController.text.trim().isNotEmpty;
+    if (enabled != _isButtonEnabled) {
+      setState(() => _isButtonEnabled = enabled);
+    }
   }
 
   @override
@@ -36,115 +49,55 @@ class _NameInputScreenState extends State<NameInputScreen> {
     super.dispose();
   }
 
+  void _submit(OnBoardingCubit cubit) {
+    if (_isButtonEnabled) {
+      cubit.saveUserNameAndContinue(_nameController.text);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final cubit = context.read<OnBoardingCubit>();
+    final colors = context.colors;
 
-    return Scaffold(
-      appBar: AppBar(
-        scrolledUnderElevation: 0,
-        leading: IconButton(
-          icon: Icon(
-            Icons.arrow_back_ios_new_rounded,
-            color: context.colors.textPrimary,
-          ),
-          onPressed: () {
-            cubit.goBackToAiMode();
-          },
-        ),
+    return OnboardingStepBody(
+      title: 'What should Echo call you?',
+      subtitle: 'Your name, “Boss”, whatever fits. Echo greets you by it.',
+      footer: EchoButton(
+        text: 'Continue',
+        showArrow: true,
+        onPressed: _isButtonEnabled ? () => _submit(cubit) : null,
       ),
-      backgroundColor: context.colors.background,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Title
-              Text(
-                'What should Echo\ncall you?',
-                style: GoogleFonts.oldStandardTt(
-                  fontSize: 40,
-                  fontWeight: FontWeight.w700,
-                  color: context.colors.textPrimary,
-                  height: 1.15,
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              // Subtitle/Humorous hint
-              Text(
-                'Type your name below. Or "Sir", "Boss" if you are feeling like royalty.',
-                style: GoogleFonts.nunito(
-                  fontSize: 16,
-                  color: context.colors.textSecondary,
-                  height: 1.4,
-                ),
-              ),
-
-              const SizedBox(height: 40),
-
-              // Custom text input
-              TextField(
-                controller: _nameController,
-                autofocus: true,
-                style: GoogleFonts.nunito(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: context.colors.textPrimary,
-                ),
-                cursorColor: context.colors.primaryGreen,
-                decoration: InputDecoration(
-                  hintText: 'Your name...',
-                  hintStyle: TextStyle(
-                    color: context.colors.textSecondary.withValues(alpha: 0.3),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    vertical: 12,
-                    horizontal: 4,
-                  ),
-                  enabledBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(
-                      color: context.colors.dividerColor.withValues(alpha: 0.5),
-                      width: 2,
-                    ),
-                  ),
-                  focusedBorder:
-                      BorderSide.none !=
-                          BorderSide
-                              .none // just standard UnderlineInputBorder
-                      ? UnderlineInputBorder(
-                          borderSide: BorderSide(
-                            color: context.colors.primaryGreen,
-                            width: 2,
-                          ),
-                        )
-                      : null,
-                ),
-                textCapitalization: TextCapitalization.words,
-                onSubmitted: (_) {
-                  if (_isButtonEnabled) {
-                    cubit.saveUserNameAndFinish(_nameController.text);
-                  }
-                },
-              ),
-
-              const Spacer(),
-
-              // Action Button
-              EchoButton(
-                text: 'Finish Setup',
-                onPressed: _isButtonEnabled
-                    ? () {
-                        cubit.saveUserNameAndFinish(_nameController.text);
-                      }
-                    : null,
-              ),
-              const SizedBox(height: 16),
-            ],
+      child: TextField(
+        controller: _nameController,
+        autofocus: true,
+        style: GoogleFonts.oldStandardTt(
+          fontSize: 30,
+          fontWeight: FontWeight.w700,
+          color: colors.textPrimary,
+        ),
+        cursorColor: colors.primaryGreen,
+        textCapitalization: TextCapitalization.words,
+        textInputAction: TextInputAction.done,
+        decoration: InputDecoration(
+          hintText: 'Your name…',
+          hintStyle: GoogleFonts.oldStandardTt(
+            fontSize: 30,
+            fontWeight: FontWeight.w700,
+            color: colors.textSecondary.withValues(alpha: 0.3),
+          ),
+          contentPadding: const EdgeInsets.symmetric(vertical: 14),
+          enabledBorder: UnderlineInputBorder(
+            borderSide: BorderSide(
+              color: colors.dividerColor.withValues(alpha: 0.6),
+              width: 2,
+            ),
+          ),
+          focusedBorder: UnderlineInputBorder(
+            borderSide: BorderSide(color: colors.primaryGreen, width: 2),
           ),
         ),
+        onSubmitted: (_) => _submit(cubit),
       ),
     );
   }

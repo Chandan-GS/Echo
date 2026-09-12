@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
+import 'package:project_echo/core/presentation/animations/fade_indexed_stack.dart';
+import 'package:project_echo/core/presentation/widgets/echo_wave_icon.dart';
+import 'package:project_echo/core/presentation/widgets/animated_nav_icons.dart';
 import 'package:project_echo/features/echo/presentation/screens/echo_home_screen.dart';
 import 'package:project_echo/features/vault/presentation/screens/vault_screen.dart';
 import 'package:project_echo/features/settings/presentation/screens/settings_screen.dart';
@@ -89,7 +92,7 @@ class _MainScaffoldState extends State<MainScaffold> {
           // Persistent screen area using IndexedStack to prevent rebuild jitter
           Positioned.fill(
             bottom: 80,
-            child: IndexedStack(
+            child: FadeIndexedStack(
               index: _selectedIndex,
               children: const [
                 EchoHomeScreen(),
@@ -129,19 +132,29 @@ class _FloatingNavBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final items = [
       _NavBarItem(
-        icon: Icons.home_outlined,
-        activeIcon: Icons.home_rounded,
         label: 'Today',
+        iconBuilder: (isSelected, color) =>
+            EchoWaveIcon(active: isSelected, color: color, size: 24),
       ),
       _NavBarItem(
-        icon: Icons.inbox_outlined,
-        activeIcon: Icons.inbox,
         label: 'Vault',
+        iconBuilder: (isSelected, color) => BounceInIcon(
+          isSelected: isSelected,
+          selectedIcon: Icons.inbox,
+          unselectedIcon: Icons.inbox_outlined,
+          color: color,
+          size: 26,
+        ),
       ),
       _NavBarItem(
-        icon: Icons.settings_outlined,
-        activeIcon: Icons.settings,
         label: 'Settings',
+        iconBuilder: (isSelected, color) => SpinInIcon(
+          isSelected: isSelected,
+          selectedIcon: Icons.settings,
+          unselectedIcon: Icons.settings_outlined,
+          color: color,
+          size: 26,
+        ),
       ),
     ];
 
@@ -203,10 +216,9 @@ class _FloatingNavBar extends StatelessWidget {
                                 child: Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    Icon(
-                                      isSelected ? item.activeIcon : item.icon,
-                                      size: 26,
-                                      color: context.colors.textPrimary,
+                                    item.iconBuilder(
+                                      isSelected,
+                                      context.colors.textPrimary,
                                     ),
                                   ],
                                 ),
@@ -228,13 +240,8 @@ class _FloatingNavBar extends StatelessWidget {
 }
 
 class _NavBarItem {
-  final IconData icon;
-  final IconData activeIcon;
   final String label;
+  final Widget Function(bool isSelected, Color color) iconBuilder;
 
-  _NavBarItem({
-    required this.icon,
-    required this.activeIcon,
-    required this.label,
-  });
+  _NavBarItem({required this.label, required this.iconBuilder});
 }

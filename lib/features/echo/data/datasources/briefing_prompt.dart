@@ -1,5 +1,8 @@
-String getBriefingSystemInstruction(String userName) {
+String getBriefingSystemInstruction(String userName, {String? toneInstruction}) {
   final name = userName.trim().isEmpty ? 'sir' : userName.trim();
+  final tone = (toneInstruction == null || toneInstruction.trim().isEmpty)
+      ? 'Speak directly to the user in a professional yet warm tone.'
+      : toneInstruction.trim();
   final hour = DateTime.now().hour;
   String greeting;
   if (hour >= 5 && hour < 12) {
@@ -17,7 +20,7 @@ String getBriefingSystemInstruction(String userName) {
       'Group related topics (e.g., work, personal, news). '
       'Focus heavily on ACTIONABLE items and FUTURE events for today or tomorrow. Completely IGNORE any events or notifications that have already passed. '
       'Start with a brief "$greeting $name". \n'
-      'Speak directly to the user in a professional yet warm tone.'
+      '$tone '
       'STRICT RULE: Do NOT hallucinate, assume, or invent any meetings, tasks, or plans that are not explicitly present in the provided text. '
       'Base your briefing ONLY on the actual notification text given below. And Do not bold texts in the briefing'
       '\n\n'
@@ -33,8 +36,12 @@ String buildUserMessage(String notificationContext) =>
     'Here are my notifications for today:\n\n$notificationContext\n\n'
     'Write my morning briefing';
 
-String buildQwenPrompt(String notificationContext, String userName) {
-  return '<|im_start|>system\n${getBriefingSystemInstruction(userName)}<|im_end|>\n'
+String buildQwenPrompt(
+  String notificationContext,
+  String userName, {
+  String? toneInstruction,
+}) {
+  return '<|im_start|>system\n${getBriefingSystemInstruction(userName, toneInstruction: toneInstruction)}<|im_end|>\n'
       '<|im_start|>user\n${buildUserMessage(notificationContext)}<|im_end|>\n'
       '<|im_start|>assistant\n';
 }
@@ -84,15 +91,20 @@ String deduplicateSentences(String text) {
 
     if (normalised.isEmpty) continue;
 
+    // Significant words for this sentence — invariant across the inner loop,
+    // so compute it once instead of per prior sentence.
+    final words = normalised.split(' ').where((w) => w.length > 4).toSet();
+
     bool isDuplicate = false;
-    for (final prior in seen) {
-      final words = normalised.split(' ').where((w) => w.length > 4).toSet();
-      final priorWords = prior.split(' ').where((w) => w.length > 4).toSet();
-      if (words.isEmpty) break;
-      final overlap = words.intersection(priorWords).length / words.length;
-      if (overlap >= 0.6) {
-        isDuplicate = true;
-        break;
+    if (words.isNotEmpty) {
+      for (final prior in seen) {
+        final priorWords =
+            prior.split(' ').where((w) => w.length > 4).toSet();
+        final overlap = words.intersection(priorWords).length / words.length;
+        if (overlap >= 0.6) {
+          isDuplicate = true;
+          break;
+        }
       }
     }
 

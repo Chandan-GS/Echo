@@ -1,7 +1,9 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
+import 'package:project_echo/features/vault/presentation/widgets/pie_chart_geometry.dart';
 
 class CategoryPieChart extends StatefulWidget {
   final Map<String, int> categoryCounts;
@@ -75,69 +77,29 @@ class _CategoryPieChartState extends State<CategoryPieChart>
   @override
   void didUpdateWidget(covariant CategoryPieChart oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.categoryCounts != widget.categoryCounts) {
+    if (!mapEquals(oldWidget.categoryCounts, widget.categoryCounts)) {
       _calculateSlices();
     }
   }
 
   void _calculateSlices() {
     _slices.clear();
-    final categories = widget.categoryCounts.keys
-        .where((k) => k != 'All')
-        .toList();
 
-    if (categories.isEmpty) return;
+    // Pure geometry: guards total<=0 and normalizes sweeps to exactly 2π so
+    // many tiny categories can't overflow past 360° and overlap.
+    final geometry = computePieSlices(widget.categoryCounts);
 
-    final int total = categories.fold(
-      0,
-      (sum, cat) => sum + widget.categoryCounts[cat]!,
-    );
-
-    // Ensure small slices are at least 15 degrees so they can be scrubbed
-    const double minSweepRadians = 15 * (math.pi / 180.0);
-    int bigCountTotal = 0;
-    int smallSlicesCount = 0;
-
-    for (final cat in categories) {
-      final proportion = widget.categoryCounts[cat]! / total;
-      if (proportion * 2 * math.pi < minSweepRadians) {
-        smallSlicesCount++;
-      } else {
-        bigCountTotal += widget.categoryCounts[cat]!;
-      }
-    }
-
-    final double availableRadians =
-        (2 * math.pi) - (smallSlicesCount * minSweepRadians);
-
-    double currentAngle = -math.pi / 2; // Start at top
-    int colorIdx = 0;
-
-    for (int i = 0; i < categories.length; i++) {
-      final cat = categories[i];
-      final count = widget.categoryCounts[cat]!;
-      final proportion = count / total;
-
-      double sweepAngle = proportion * 2 * math.pi;
-      if (sweepAngle < minSweepRadians) {
-        sweepAngle = minSweepRadians;
-      } else if (bigCountTotal > 0 && availableRadians > 0) {
-        // Recalculate based on available space for big slices
-        sweepAngle = (count / bigCountTotal) * availableRadians;
-      }
-
+    for (int i = 0; i < geometry.length; i++) {
+      final g = geometry[i];
       _slices.add(
         _PieSlice(
-          category: cat,
-          count: count,
-          startAngle: currentAngle,
-          sweepAngle: sweepAngle,
-          color: _palette[colorIdx % _palette.length],
+          category: g.category,
+          count: g.count,
+          startAngle: g.startAngle,
+          sweepAngle: g.sweepAngle,
+          color: _palette[i % _palette.length],
         ),
       );
-
-      currentAngle += sweepAngle;
-      colorIdx++;
 
       if (!_hoverValues.containsKey(i)) {
         _hoverValues[i] = 0.0;

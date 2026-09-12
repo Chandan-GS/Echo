@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -6,11 +7,13 @@ import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/presentation/widgets/echo_button.dart';
 import 'package:project_echo/features/onboarding/presentation/cubit/on_boarding_cubit.dart';
 import 'package:project_echo/features/onboarding/presentation/widgets/ai_mode_card.dart';
+import 'package:project_echo/features/onboarding/presentation/widgets/onboarding_scaffold.dart';
 import 'package:project_echo/features/onboarding/domain/repositories/model_download_repository.dart';
 import 'package:project_echo/features/onboarding/data/repositories/model_download_repository_impl.dart';
 import 'package:project_echo/features/settings/presentation/cubit/settings_cubit.dart';
 import 'package:project_echo/features/settings/presentation/cubit/settings_state.dart';
 import 'package:project_echo/features/settings/presentation/widgets/cloud_engine_card.dart';
+import 'package:project_echo/core/utils/download_utils.dart';
 
 class AiModeScreen extends StatefulWidget {
   const AiModeScreen({super.key});
@@ -35,9 +38,7 @@ class _AiModeScreenState extends State<AiModeScreen> {
   Future<void> _checkInitialDownloadState() async {
     final downloaded = await _downloadRepository.isModelDownloaded();
     if (mounted) {
-      setState(() {
-        isDownloaded = downloaded;
-      });
+      setState(() => isDownloaded = downloaded);
       if (downloaded) {
         context.read<OnBoardingCubit>().setModelDownloaded(true);
       }
@@ -54,7 +55,7 @@ class _AiModeScreenState extends State<AiModeScreen> {
       final modelPath = await _downloadRepository.downloadModel(
         onProgress: (received, total) {
           setState(() {
-            downloadProgress = received / total;
+            downloadProgress = computeDownloadProgress(received, total);
           });
         },
       );
@@ -68,11 +69,24 @@ class _AiModeScreenState extends State<AiModeScreen> {
       debugPrint("Model downloaded to $modelPath");
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        isDownloading = false;
-      });
+      setState(() => isDownloading = false);
       debugPrint("Download failed: $e");
     }
+  }
+
+  /// Starts the model download without blocking, then advances immediately.
+  /// The sample-briefing preview (later steps) uses on-device TTS rather than
+  /// the model, so setup can continue while ~0.9 GB downloads in the
+  /// background. Briefing generation checks the model file directly on disk.
+  void _downloadInBackgroundAndContinue() {
+    unawaited(() async {
+      try {
+        await _downloadRepository.downloadModel(onProgress: (_, _) {});
+      } catch (e) {
+        debugPrint('Background model download failed: $e');
+      }
+    }());
+    context.read<OnBoardingCubit>().completeAiMode();
   }
 
   Future<String?> _getModelSize() async {
@@ -85,7 +99,7 @@ class _AiModeScreenState extends State<AiModeScreen> {
         final gb = bytes / (1024 * 1024 * 1024);
         return '${gb.toStringAsFixed(1)} GB';
       }
-    } catch (e) {
+    } catch (_) {
       // Ignore
     }
     return null;
@@ -96,187 +110,177 @@ class _AiModeScreenState extends State<AiModeScreen> {
     final cubit = context.read<OnBoardingCubit>();
     return BlocBuilder<SettingsCubit, SettingsState>(
       builder: (context, settingsState) {
-        return Scaffold(
-          appBar: AppBar(
-            scrolledUnderElevation: 0,
-            leading: IconButton(
-              icon: Icon(
-                Icons.arrow_back_ios_new_rounded,
-                color: context.colors.textPrimary,
-              ),
-              onPressed: () {
-                cubit.checkPermissions();
-              },
-            ),
+        return OnboardingStepBody(
+          title: 'How should Echo think?',
+          subtitle: 'Change this anytime in settings.',
+          footer: _Footer(
+            settingsState: settingsState,
+            isDownloading: isDownloading,
+            isDownloaded: isDownloaded,
+            downloadProgress: downloadProgress,
+            onDownload: _startDownload,
+            onContinue: cubit.completeAiMode,
+            onBackgroundDownload: _downloadInBackgroundAndContinue,
           ),
-          body: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0),
-              child: CustomScrollView(
-                slivers: [
-                  SliverToBoxAdapter(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              FutureBuilder<String?>(
+                future: _getModelSize(),
+                builder: (context, snapshot) {
+                  final sizeStr = snapshot.data ?? '~0.9 GB';
+                  return AiModeCard(
+                    isSelected: settingsState.isOfflineEngine,
+                    icon: Icons.laptop_mac,
+                    title: 'Private (on your phone)',
+                    tags: const [
+                      'Runs offline',
+                      'No API cost',
+                      'Nothing leaves your device',
+                    ],
+                    speedLabel: 'Fast',
+                    isFast: true,
+                    onTap: () {
+                      context.read<SettingsCubit>().setAiEngine(
+                        isOffline: true,
+                      );
+                    },
+                    expandedContent: Row(
                       children: [
-                        Text(
-                          'How should Echo think?',
-                          style: Theme.of(context).textTheme.displayMedium,
+                        Icon(
+                          Icons.memory_rounded,
+                          size: 16,
+                          color: context.colors.textSecondary,
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'You can change this anytime in settings.',
-                          style: Theme.of(context).textTheme.bodyLarge
-                              ?.copyWith(color: context.colors.textSecondary),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'One-time download of Qwen2.5 1.5B ($sizeStr). After that, it works with no internet.',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
                         ),
-                        const SizedBox(height: 32),
-
-                        // Offline Card
-                        FutureBuilder<String?>(
-                          future: _getModelSize(),
-                          builder: (context, snapshot) {
-                            // final sizeStr = snapshot.data;
-                            return AiModeCard(
-                              isSelected: settingsState.isOfflineEngine,
-                              icon: Icons.laptop_mac,
-                              title: 'Offline (Private)',
-                              tags: ['Qwen2.5 1.5B', '0.9 GB', 'No API cost'],
-                              speedLabel: 'Fast',
-                              isFast: true,
-                              onTap: () {
-                                context.read<SettingsCubit>().setAiEngine(
-                                  isOffline: true,
-                                );
-                              },
-                            );
-                          },
-                        ),
-
-                        const SizedBox(height: 16),
-
-                        // Online Card
-                        const CloudEngineCard(),
-
-                        const SizedBox(height: 16),
                       ],
                     ),
-                  ),
-                  SliverFillRemaining(
-                    hasScrollBody: false,
-                    fillOverscroll: true,
-                    child: Align(
-                      alignment: Alignment.bottomCenter,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // Bottom Action
-                          AnimatedSwitcher(
-                            duration: const Duration(milliseconds: 300),
-                            child: isDownloading
-                                ? Container(
-                                    key: const ValueKey('downloading'),
-                                    width: double.infinity,
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 8,
-                                    ),
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Text(
-                                              'Downloading model...',
-                                              style: Theme.of(context)
-                                                  .textTheme
-                                                  .titleMedium
-                                                  ?.copyWith(
-                                                    fontWeight: FontWeight.bold,
-                                                    color: context
-                                                        .colors
-                                                        .textPrimary,
-                                                  ),
-                                            ),
-                                            Text(
-                                              '${(downloadProgress * 100).toInt()}%',
-                                              style: Theme.of(context)
-                                                  .textTheme
-                                                  .titleMedium
-                                                  ?.copyWith(
-                                                    fontWeight: FontWeight.bold,
-                                                    color: context
-                                                        .colors
-                                                        .primaryGreen,
-                                                  ),
-                                            ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 12),
-                                        ClipRRect(
-                                          borderRadius: BorderRadius.circular(
-                                            8,
-                                          ),
-                                          child: LinearProgressIndicator(
-                                            value: downloadProgress,
-                                            minHeight: 12,
-                                            backgroundColor:
-                                                context.colors.dividerColor,
-                                            valueColor:
-                                                AlwaysStoppedAnimation<Color>(
-                                                  context.colors.primaryGreen,
-                                                ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  )
-                                : EchoButton(
-                                    key: const ValueKey('button'),
-                                    text: settingsState.isOfflineEngine
-                                        ? (isDownloaded
-                                              ? 'Continue'
-                                              : 'Download Qwen2.5 model')
-                                        : 'Continue',
-                                    icon:
-                                        settingsState.isOfflineEngine &&
-                                            !isDownloaded
-                                        ? Icons.download_rounded
-                                        : null,
-                                    onPressed:
-                                        (settingsState.isOfflineEngine &&
-                                            !isDownloaded)
-                                        ? _startDownload
-                                        : (settingsState.isOfflineEngine ||
-                                              settingsState
-                                                  .geminiApiKey
-                                                  .isNotEmpty)
-                                        ? () {
-                                            cubit.completeAiMode();
-                                          }
-                                        : null,
-                                  ),
-                          ),
-                          const SizedBox(height: 16),
-                          Center(
-                            child: Text(
-                              settingsState.isOfflineEngine
-                                  ? 'Requires ~0.9GB of free space. Works without Wi-Fi.'
-                                  : 'Your key is encrypted locally via Android Keystore.',
-                              style: Theme.of(context).textTheme.bodyMedium,
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
+                  );
+                },
               ),
-            ),
+              const SizedBox(height: 16),
+              const CloudEngineCard(),
+            ],
           ),
         );
       },
+    );
+  }
+}
+
+/// The dynamic bottom area: shows a live download bar, the primary CTA, an
+/// optional "download in background" escape hatch, and a reassurance caption.
+class _Footer extends StatelessWidget {
+  final SettingsState settingsState;
+  final bool isDownloading;
+  final bool isDownloaded;
+  final double downloadProgress;
+  final VoidCallback onDownload;
+  final VoidCallback onContinue;
+  final VoidCallback onBackgroundDownload;
+
+  const _Footer({
+    required this.settingsState,
+    required this.isDownloading,
+    required this.isDownloaded,
+    required this.downloadProgress,
+    required this.onDownload,
+    required this.onContinue,
+    required this.onBackgroundDownload,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final isOffline = settingsState.isOfflineEngine;
+    final canContinue = isOffline || settingsState.geminiApiKey.isNotEmpty;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 300),
+          child: isDownloading
+              ? Column(
+                  key: const ValueKey('downloading'),
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Downloading model…',
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: colors.textPrimary,
+                              ),
+                        ),
+                        Text(
+                          '${(downloadProgress * 100).toInt()}%',
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: colors.primaryGreen,
+                              ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: LinearProgressIndicator(
+                        value: downloadProgress,
+                        minHeight: 12,
+                        backgroundColor: colors.dividerColor,
+                        valueColor:
+                            AlwaysStoppedAnimation<Color>(colors.primaryGreen),
+                      ),
+                    ),
+                  ],
+                )
+              : EchoButton(
+                  key: const ValueKey('button'),
+                  text: isOffline
+                      ? (isDownloaded ? 'Continue' : 'Download Qwen2.5 model')
+                      : 'Continue',
+                  showArrow: !(isOffline && !isDownloaded),
+                  icon: (isOffline && !isDownloaded)
+                      ? Icons.download_rounded
+                      : null,
+                  onPressed: (isOffline && !isDownloaded)
+                      ? onDownload
+                      : (canContinue ? onContinue : null),
+                ),
+        ),
+        if (isOffline && !isDownloaded && !isDownloading) ...[
+          const SizedBox(height: 4),
+          TextButton(
+            onPressed: onBackgroundDownload,
+            child: Text(
+              'Download in the background — continue setup',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: colors.primaryGreen,
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+          ),
+        ] else
+          const SizedBox(height: 12),
+        Text(
+          isOffline
+              ? 'Runs entirely on your phone. Works without Wi-Fi.'
+              : 'Your key is encrypted locally via Android Keystore.',
+          style: Theme.of(context).textTheme.bodyMedium,
+          textAlign: TextAlign.center,
+        ),
+      ],
     );
   }
 }
