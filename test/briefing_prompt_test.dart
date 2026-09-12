@@ -174,6 +174,36 @@ void main() {
     });
   });
 
+  group('separateListItems', () {
+    test('breaks an inline numbered list onto separate lines', () {
+      const input =
+          'Today: 1. The Team BPA session continues. 2. Supabase is paused. 3. Play Protect scans apps.';
+      final out = separateListItems(input);
+      expect(out, contains('\n1. '));
+      expect(out, contains('\n2. '));
+      expect(out, contains('\n3. '));
+      // Each item now begins its own line.
+      expect(out.split('\n').length, greaterThanOrEqualTo(4));
+    });
+
+    test('leaves prose without lists unchanged', () {
+      const input = 'You have a meeting at 3 PM and a call at 5 PM today.';
+      expect(separateListItems(input), equals(input));
+    });
+
+    test('does not split decimals or times', () {
+      const input = 'The build is v1.2 and the demo is at 10.30 sharp.';
+      expect(separateListItems(input), equals(input));
+    });
+  });
+
+  group('getBriefingSystemInstruction style', () {
+    test('forbids numbered lists / bullet points', () {
+      final instr = getBriefingSystemInstruction('Ada');
+      expect(instr, contains('Do NOT use numbered lists'));
+    });
+  });
+
   group('stripForTts', () {
     test('removes bold markers', () {
       expect(stripForTts('**Good morning**, sir.'), equals('Good morning, sir.'));

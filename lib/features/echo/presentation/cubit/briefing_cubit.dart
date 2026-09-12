@@ -129,6 +129,7 @@ class BriefingCubit extends Cubit<BriefingState> {
           rawText = stripSignOff(rawText);
           rawText = deduplicateSentences(rawText);
           rawText = stripFillerCommentary(rawText);
+          rawText = separateListItems(rawText);
           rawText = autoBold(rawText);
 
           print(
