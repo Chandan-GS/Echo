@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:project_echo/core/services/echo_tts.dart';
+import 'package:project_echo/core/presentation/animations/page_transitions.dart';
 import 'package:project_echo/core/services/streak_service.dart';
 import 'package:project_echo/core/services/widget_refresh_service.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
@@ -77,9 +78,7 @@ class _DailyBriefingScreenState extends State<DailyBriefingScreen> {
     WidgetRefreshService.refresh();
     if (mounted && after.current != before.current) {
       Navigator.of(context, rootNavigator: true).push(
-        MaterialPageRoute(
-          builder: (_) => StreakCelebrationScreen(days: after.current),
-        ),
+        bouncyRoute(StreakCelebrationScreen(days: after.current)),
       );
     }
   }

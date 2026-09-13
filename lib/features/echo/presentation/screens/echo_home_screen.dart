@@ -12,6 +12,7 @@ import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:project_echo/features/echo/presentation/widgets/timer/next_briefing_timer.dart';
 import 'package:project_echo/features/echo/presentation/widgets/generating_view.dart';
+import 'package:project_echo/core/presentation/animations/page_transitions.dart';
 import 'package:project_echo/features/echo/presentation/widgets/echo_mascot.dart';
 import 'package:project_echo/core/presentation/animations/app_motion.dart';
 import 'package:project_echo/core/presentation/animations/fade_slide_in.dart';
@@ -72,8 +73,8 @@ class _EchoViewState extends State<_EchoView> with WidgetsBindingObserver {
             if (!context.mounted) return;
 
             Navigator.of(context, rootNavigator: true).push(
-              MaterialPageRoute(
-                builder: (_) => DailyBriefingScreen(
+              bouncyRoute(
+                DailyBriefingScreen(
                   rawText: state.rawText,
                   ttsText: state.ttsText,
                   autoPlay: autoPlay,
