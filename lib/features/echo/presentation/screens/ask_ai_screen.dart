@@ -12,6 +12,7 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:project_echo/features/echo/presentation/widgets/siri_waveform_visualizer.dart';
 import 'package:project_echo/features/echo/presentation/widgets/echo_mascot.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AskAiScreen extends StatelessWidget {
   const AskAiScreen({super.key});
@@ -55,6 +56,15 @@ class _AskAiViewState extends State<_AskAiView> {
   void initState() {
     super.initState();
     _initAudio();
+    _loadUserName();
+  }
+
+  String? _userName;
+  Future<void> _loadUserName() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (mounted) setState(() => _userName = prefs.getString('user_name'));
+    } catch (_) {}
   }
 
   Future<void> _initAudio() async {
@@ -239,7 +249,10 @@ class _AskAiViewState extends State<_AskAiView> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: context.colors.background,
-      appBar: const EchoAppBar(title: 'Ask Echo'),
+      appBar: const EchoAppBar(
+        title: 'Ask Echo',
+        titleAvatar: EchoMascot(state: EchoState.idle, size: 32),
+      ),
       body: BlocConsumer<AskAiCubit, AskAiState>(
         listener: (context, state) {
           if (state is AskAiMessageReceived) {
@@ -297,106 +310,63 @@ class _AskAiViewState extends State<_AskAiView> {
     );
   }
 
-  Widget _buildEmptyState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24.0),
-        child: TweenAnimationBuilder<double>(
-          tween: Tween(begin: 0.0, end: 1.0),
-          duration: const Duration(milliseconds: 600),
-          curve: Curves.easeOutCubic,
-          builder: (context, value, child) {
-            return Transform.translate(
-              offset: Offset(0, 30 * (1 - value)),
-              child: Opacity(
-                opacity: value,
-                child: Container(
-                  padding: const EdgeInsets.all(32),
-                  decoration: BoxDecoration(
-                    color: context.colors.surface,
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.03),
-                        blurRadius: 20,
-                        offset: const Offset(0, 10),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const EchoMascot(state: EchoState.idle, size: 104),
-                      const SizedBox(height: 12),
-                      Text(
-                        'How can I help?',
-                        textAlign: TextAlign.center,
-                        style: GoogleFonts.oldStandardTt(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w700,
-                          color: context.colors.textPrimary,
-                          height: 1.2,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Ask me about your schedule, recent messages, or dive into your secure local vault.',
-                        textAlign: TextAlign.center,
-                        style: GoogleFonts.nunito(
-                          fontSize: 15,
-                          color: context.colors.textSecondary,
-                          height: 1.5,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
+  static const _suggestions = [
+    "What's on my schedule today?",
+    'Any messages from work I missed?',
+    'Summarize my notifications',
+  ];
 
-  Widget _buildSearchingIndicator() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: context.colors.lightGreenBackground,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: context.colors.primaryGreen.withValues(alpha: 0.1),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            width: 14,
-            height: 14,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              valueColor: AlwaysStoppedAnimation<Color>(
-                context.colors.primaryGreen,
+  Widget _buildEmptyState() {
+    final name = (_userName?.trim().isNotEmpty ?? false) ? _userName!.trim() : null;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 118),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const EchoMascot(state: EchoState.idle, size: 158),
+                  const SizedBox(height: 4),
+                  Text(
+                    name != null ? 'How can I help, $name?' : 'How can I help?',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.oldStandardTt(
+                      fontSize: 26,
+                      fontWeight: FontWeight.w700,
+                      color: context.colors.textPrimary,
+                      height: 1.2,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Ask about your schedule, messages, or anything in your local vault.',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.nunito(
+                      fontSize: 14.5,
+                      color: context.colors.textSecondary,
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 26),
+                  for (final s in _suggestions)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: _SuggestionChip(
+                        text: s,
+                        onTap: () =>
+                            context.read<AskAiCubit>().sendMessage(s),
+                      ),
+                    ),
+                ],
               ),
             ),
           ),
-          const SizedBox(width: 10),
-          Text(
-            'Searching local vault...',
-            style: GoogleFonts.nunito(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: context.colors.primaryGreen,
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -621,6 +591,55 @@ class _AskAiViewState extends State<_AskAiView> {
   }
 }
 
+/// A tappable starter prompt on the empty Ask Echo screen.
+class _SuggestionChip extends StatelessWidget {
+  final String text;
+  final VoidCallback onTap;
+  const _SuggestionChip({required this.text, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: context.colors.surface,
+      borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: context.colors.dividerColor.withValues(alpha: 0.6),
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.auto_awesome_rounded,
+                size: 16,
+                color: context.colors.primaryGreen,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  text,
+                  style: GoogleFonts.nunito(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w700,
+                    color: context.colors.textPrimary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _AnimatedMessage extends StatelessWidget {
   final ChatMessage message;
 
@@ -687,32 +706,63 @@ class _MessageContent extends StatelessWidget {
   }
 
   Widget _buildAiMessage(BuildContext context) {
-    return Container(
-      constraints: BoxConstraints(
-        maxWidth: MediaQuery.of(context).size.width * 0.85,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Editorial Text Body
-          if (message.text.isEmpty && message.isGenerating)
-            const SizedBox(
-              width: 32,
-              height: 20,
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: _TypingDotAnimation(),
-              ),
-            )
-          else
-            _buildEditorialText(message.text, context),
+    final generating = message.text.isEmpty && message.isGenerating;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        // Echo speaks as itself — thinking while it works, calm otherwise.
+        EchoMascot(
+          state: generating ? EchoState.thinking : EchoState.idle,
+          size: 42,
+        ),
+        const SizedBox(width: 8),
+        if (generating)
+          _thinkingBubble(context)
+        else
+          Container(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width * 0.70,
+            ),
+            padding: const EdgeInsets.fromLTRB(16, 13, 16, 14),
+            decoration: BoxDecoration(
+              color: context.colors.surface,
+              borderRadius: BorderRadius.circular(
+                20,
+              ).copyWith(bottomLeft: const Radius.circular(6)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildEditorialText(message.text, context),
+                if (message.ragSources.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  RagSourcesWidget(sources: message.ragSources),
+                ],
+              ],
+            ),
+          ),
+      ],
+    );
+  }
 
-          // RAG Sources Pill
-          if (message.ragSources.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            RagSourcesWidget(sources: message.ragSources),
-          ],
-        ],
+  Widget _thinkingBubble(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+      decoration: BoxDecoration(
+        color: context.selectionFill,
+        borderRadius: BorderRadius.circular(
+          18,
+        ).copyWith(bottomLeft: const Radius.circular(6)),
+      ),
+      child: Text(
+        'Echo is thinking…',
+        style: GoogleFonts.nunito(
+          fontSize: 13.5,
+          fontStyle: FontStyle.italic,
+          fontWeight: FontWeight.w700,
+          color: context.onSelection,
+        ),
       ),
     );
   }
@@ -727,9 +777,9 @@ class _MessageContent extends StatelessWidget {
         spans.add(
           TextSpan(
             text: text.substring(lastIndex, match.start),
-            style: GoogleFonts.oldStandardTt(
+            style: GoogleFonts.nunito(
               color: context.colors.textPrimary,
-              fontSize: 18,
+              fontSize: 15.5,
               height: 1.5,
             ),
           ),
@@ -738,10 +788,10 @@ class _MessageContent extends StatelessWidget {
       spans.add(
         TextSpan(
           text: match.group(1),
-          style: GoogleFonts.oldStandardTt(
-            color: context.colors.textPrimary,
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
+          style: GoogleFonts.nunito(
+            color: context.colors.primaryGreen,
+            fontSize: 15.5,
+            fontWeight: FontWeight.w800,
             height: 1.5,
           ),
         ),
