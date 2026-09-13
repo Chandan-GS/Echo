@@ -141,7 +141,6 @@ class _InitialView extends StatelessWidget {
         onTap: onGenerate,
         isPrimary: true,
       ),
-      secondaryLabel: 'More',
       secondary: _ActionCard(
         title: 'Ask Echo',
         subtitle: 'Chat with your secure assistant',
@@ -172,7 +171,6 @@ class _CachedView extends StatelessWidget {
         onTap: onPlay,
         isPrimary: true,
       ),
-      secondaryLabel: 'More',
       secondary: Row(
         children: [
           Expanded(
@@ -247,32 +245,16 @@ class _HomeShell extends StatefulWidget {
   /// Optional secondary actions (already laid out — a row or a single card).
   final Widget? secondary;
 
-  /// Optional uppercase section label shown above [secondary].
-  final String? secondaryLabel;
-
   const _HomeShell({
     required this.subtitle,
     required this.primary,
     this.secondary,
-    this.secondaryLabel,
   });
 
   @override
   State<_HomeShell> createState() => _HomeShellState();
 }
 
-Widget _sectionLabel(BuildContext context, String text) => Padding(
-  padding: const EdgeInsets.only(left: 4, bottom: 12),
-  child: Text(
-    text.toUpperCase(),
-    style: GoogleFonts.nunito(
-      fontSize: 11,
-      fontWeight: FontWeight.w800,
-      letterSpacing: 1.8,
-      color: context.colors.textSecondary.withValues(alpha: 0.75),
-    ),
-  ),
-);
 
 class _HomeShellState extends State<_HomeShell> {
   String? _userName;
@@ -373,12 +355,7 @@ class _HomeShellState extends State<_HomeShell> {
 
             // ── Secondary actions ─────────────────────────────────────────
             if (widget.secondary != null) ...[
-              const SizedBox(height: 28),
-              if (widget.secondaryLabel != null)
-                FadeSlideIn(
-                  delay: AppMotion.staggerDelay(4),
-                  child: _sectionLabel(context, widget.secondaryLabel!),
-                ),
+              const SizedBox(height: 22),
               FadeSlideIn(
                 delay: AppMotion.staggerDelay(4),
                 child: widget.secondary!,

@@ -83,15 +83,16 @@ class _EchoPainter extends CustomPainter {
     final orbR = s(56);
     final dim = state == EchoState.sleeping;
 
-    // ── Ambient glow ───────────────────────────────────────────────────────
+    // ── Ambient glow (softer on dark so Echo melts into the background) ──────
     final glowC = p(120, 122);
     final glowR = s(98);
+    final glowAlpha = dim ? 0.5 : (isDark ? 0.5 : 0.9);
     canvas.drawCircle(
       glowC,
       glowR,
       Paint()
         ..shader = RadialGradient(
-          colors: [_glow.withValues(alpha: dim ? 0.5 : 0.9), _glow.withValues(alpha: 0)],
+          colors: [_glow.withValues(alpha: glowAlpha), _glow.withValues(alpha: 0)],
         ).createShader(Rect.fromCircle(center: glowC, radius: glowR))
         ..maskFilter = MaskFilter.blur(BlurStyle.normal, s(6)),
     );
@@ -227,9 +228,9 @@ class _EchoPainter extends CustomPainter {
   void _ring(Canvas canvas, Offset c, double radius, double opacity, double k) {
     final rect = Rect.fromCircle(center: c, radius: radius);
     final f = opacity / 0.75;
-    final topA = (isDark ? 0.18 : 0.92) * f;
-    final midA = (isDark ? 0.40 : 0.6) * f;
-    final botA = (isDark ? 0.26 : 0.3) * f;
+    final topA = (isDark ? 0.06 : 0.92) * f;
+    final midA = (isDark ? 0.16 : 0.6) * f;
+    final botA = (isDark ? 0.12 : 0.3) * f;
     canvas.drawCircle(
       c,
       radius,
