@@ -12,6 +12,8 @@ import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:project_echo/features/echo/presentation/widgets/timer/next_briefing_timer.dart';
 import 'package:project_echo/features/echo/presentation/widgets/generating_view.dart';
+import 'package:project_echo/core/presentation/animations/page_transitions.dart';
+import 'package:project_echo/features/echo/presentation/widgets/echo_mascot.dart';
 import 'package:project_echo/core/presentation/animations/app_motion.dart';
 import 'package:project_echo/core/presentation/animations/fade_slide_in.dart';
 
@@ -71,8 +73,8 @@ class _EchoViewState extends State<_EchoView> with WidgetsBindingObserver {
             if (!context.mounted) return;
 
             Navigator.of(context, rootNavigator: true).push(
-              MaterialPageRoute(
-                builder: (_) => DailyBriefingScreen(
+              bouncyRoute(
+                DailyBriefingScreen(
                   rawText: state.rawText,
                   ttsText: state.ttsText,
                   autoPlay: autoPlay,
@@ -132,23 +134,21 @@ class _InitialView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _HomeShell(
-      actions: [
-        _ActionCard(
-          title: 'Generate Briefing',
-          subtitle: "Synthesize today's intelligence",
-          icon: Icons.auto_awesome_rounded,
-          onTap: onGenerate,
-          isPrimary: true,
-        ),
-        const SizedBox(height: 20),
-        _ActionCard(
-          title: 'Ask Echo',
-          subtitle: 'Chat with your secure assistant',
-          icon: Icons.chat_bubble_outline_rounded,
-          onTap: () => context.push('/echo/chat'),
-          isPrimary: false,
-        ),
-      ],
+      subtitle: "Generate today's briefing to get started.",
+      primary: _ActionCard(
+        title: 'Generate Briefing',
+        subtitle: "Synthesize today's intelligence",
+        icon: Icons.auto_awesome_rounded,
+        onTap: onGenerate,
+        isPrimary: true,
+      ),
+      secondary: _ActionCard(
+        title: 'Ask Echo',
+        subtitle: 'Chat with your secure assistant',
+        icon: Icons.chat_bubble_outline_rounded,
+        onTap: () => context.push('/echo/chat'),
+        isPrimary: false,
+      ),
     );
   }
 }
@@ -164,41 +164,39 @@ class _CachedView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _HomeShell(
-      actions: [
-        _ActionCard(
-          title: "Play Today's Briefing",
-          subtitle: 'Listen to the cached summary',
-          icon: Icons.play_arrow_rounded,
-          onTap: onPlay,
-          isPrimary: true,
-        ),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: _ActionCard(
-                title: 'Ask Echo',
-                subtitle: 'Chat',
-                icon: Icons.chat_bubble_outline_rounded,
-                onTap: () => context.push('/echo/chat'),
-                isPrimary: false,
-                isSmall: true,
-              ),
+      subtitle: 'Your briefing is ready.',
+      primary: _ActionCard(
+        title: "Play Today's Briefing",
+        subtitle: 'Listen to the cached summary',
+        icon: Icons.play_arrow_rounded,
+        onTap: onPlay,
+        isPrimary: true,
+      ),
+      secondary: Row(
+        children: [
+          Expanded(
+            child: _ActionCard(
+              title: 'Ask Echo',
+              subtitle: 'Chat',
+              icon: Icons.chat_bubble_outline_rounded,
+              onTap: () => context.push('/echo/chat'),
+              isPrimary: false,
+              isSmall: true,
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: _ActionCard(
-                title: 'Regenerate',
-                subtitle: 'Update summary',
-                icon: Icons.auto_awesome_rounded,
-                onTap: onRegenerate,
-                isPrimary: false,
-                isSmall: true,
-              ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: _ActionCard(
+              title: 'Regenerate',
+              subtitle: 'Update summary',
+              icon: Icons.auto_awesome_rounded,
+              onTap: onRegenerate,
+              isPrimary: false,
+              isSmall: true,
             ),
-          ],
-        ),
-      ],
+          ),
+        ],
+      ),
     );
   }
 }
@@ -214,47 +212,23 @@ class _ErrorView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _HomeShell(
-      actions: [
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Colors.red.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
-          ),
-          child: Column(
-            children: [
-              const Icon(Icons.error_outline, color: Colors.red, size: 32),
-              const SizedBox(height: 12),
-              Text(
-                'Failed to generate briefing.',
-                style: GoogleFonts.nunito(
-                  fontWeight: FontWeight.bold,
-                  color: context.colors.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                message,
-                style: GoogleFonts.nunito(
-                  fontSize: 12,
-                  color: context.colors.textSecondary,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
+      subtitle: "We couldn't generate your briefing.",
+      primary: _ActionCard(
+        title: 'Try Again',
+        subtitle: 'Attempt generation again',
+        icon: Icons.refresh_rounded,
+        onTap: onRetry,
+        isPrimary: true,
+      ),
+      // Surface the raw reason quietly below, without a section heading.
+      secondary: Text(
+        message,
+        textAlign: TextAlign.center,
+        style: GoogleFonts.nunito(
+          fontSize: 12.5,
+          color: context.colors.textSecondary,
         ),
-        const SizedBox(height: 20),
-        _ActionCard(
-          title: 'Try Again',
-          subtitle: 'Attempt generation again',
-          icon: Icons.refresh_rounded,
-          onTap: onRetry,
-          isPrimary: true,
-        ),
-      ],
+      ),
     );
   }
 }
@@ -263,12 +237,25 @@ class _ErrorView extends StatelessWidget {
 // Shared shell (header + signal card + action list)
 // ---------------------------------------------------------------------------
 class _HomeShell extends StatefulWidget {
-  final List<Widget> actions;
-  const _HomeShell({required this.actions});
+  /// One-line status under the greeting (state-dependent).
+  final String subtitle;
+
+  /// The single most important action for this state (Play / Generate / Retry).
+  final Widget primary;
+
+  /// Optional secondary actions (already laid out — a row or a single card).
+  final Widget? secondary;
+
+  const _HomeShell({
+    required this.subtitle,
+    required this.primary,
+    this.secondary,
+  });
 
   @override
   State<_HomeShell> createState() => _HomeShellState();
 }
+
 
 class _HomeShellState extends State<_HomeShell> {
   String? _userName;
@@ -309,28 +296,78 @@ class _HomeShellState extends State<_HomeShell> {
     final name = _userName ?? 'Sir';
 
     return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24.0),
+      bottom: false,
+      child: SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(24, 12, 24, 128),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const SizedBox(height: 24),
+            const SizedBox(height: 8),
 
+            // ── Hero: Echo, a calm luminous presence ──────────────────────
+            const FadeSlideIn(
+              child: Center(
+                child: EchoMascot(state: EchoState.idle, size: 190),
+              ),
+            ),
+            const SizedBox(height: 16),
             FadeSlideIn(
+              delay: AppMotion.staggerDelay(1),
               child: Text(
                 '$greeting,\n$name',
-                    style: GoogleFonts.oldStandardTt(
-                      fontSize: 40,
-                      fontWeight: FontWeight.w700,
-                      color: context.colors.textPrimary,
-                      height: 1.15,
-                    ),
-                  ),
+                textAlign: TextAlign.center,
+                style: GoogleFonts.oldStandardTt(
+                  fontSize: 34,
+                  fontWeight: FontWeight.w700,
+                  color: context.colors.textPrimary,
+                  height: 1.12,
                 ),
-                const SizedBox(height: 24),
+              ),
+            ),
+            const SizedBox(height: 8),
+            FadeSlideIn(
+              delay: AppMotion.staggerDelay(1),
+              child: Text(
+                widget.subtitle,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.nunito(
+                  fontSize: 15,
+                  color: context.colors.textSecondary,
+                ),
+              ),
+            ),
 
-                FadeSlideIn(
-                  delay: AppMotion.staggerDelay(2),
+            const SizedBox(height: 30),
+
+            // ── Primary action ────────────────────────────────────────────
+            FadeSlideIn(
+              delay: AppMotion.staggerDelay(2),
+              child: widget.primary,
+            ),
+
+            const SizedBox(height: 26),
+
+            // ── Next briefing countdown (self-labelled dial) ──────────────
+            FadeSlideIn(
+              delay: AppMotion.staggerDelay(3),
+              child: const NextBriefingTimer(),
+            ),
+
+            // ── Secondary actions ─────────────────────────────────────────
+            if (widget.secondary != null) ...[
+              const SizedBox(height: 22),
+              FadeSlideIn(
+                delay: AppMotion.staggerDelay(4),
+                child: widget.secondary!,
+              ),
+            ],
+
+            const SizedBox(height: 18),
+
+            // ── Ambient stat ──────────────────────────────────────────────
+            FadeSlideIn(
+              delay: AppMotion.staggerDelay(5),
               child: FutureBuilder<List<RawData>>(
                 future: IsarDataSource.getAllEntries(),
                 builder: (context, snapshot) {
@@ -339,26 +376,6 @@ class _HomeShellState extends State<_HomeShell> {
                 },
               ),
             ),
-
-            const SizedBox(height: 24),
-
-            Expanded(
-              child: Center(
-                child: FadeSlideIn(
-                  delay: AppMotion.staggerDelay(3),
-                  child: const NextBriefingTimer(),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            ...staggeredColumn(
-              widget.actions,
-              initialDelay: AppMotion.staggerDelay(4),
-            ),
-
-            const SizedBox(height: 48),
           ],
         ),
       ),
