@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:project_echo/core/presentation/animations/app_motion.dart';
 
 /// Drop-in replacement for [IndexedStack] that cross-fades (with a whisper of
 /// scale) between children when [index] changes, instead of hard-cutting.
@@ -16,7 +15,7 @@ class FadeIndexedStack extends StatefulWidget {
     super.key,
     required this.index,
     required this.children,
-    this.duration = AppMotion.medium,
+    this.duration = const Duration(milliseconds: 420),
   });
 
   @override
@@ -52,23 +51,25 @@ class _FadeIndexedStackState extends State<FadeIndexedStack>
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, _) {
-        final t = Curves.easeOut.transform(_controller.value);
+        final v = _controller.value;
+        // Opacity must stay in [0,1]; the scale rides an overshooting curve so
+        // the incoming tab pops in with a springy bounce (like the chat bubbles).
+        final fade = Curves.easeOut.transform(v);
+        final scaleT = Curves.easeOutBack.transform(v);
+        final scale = 0.90 + 0.10 * scaleT;
         return Stack(
           alignment: Alignment.center,
           fit: StackFit.expand,
           children: List<Widget>.generate(widget.children.length, (i) {
             final isActive = i == widget.index;
             // Keep inactive pages laid out (state preserved) but invisible and
-            // non-interactive. The active page fades + scales in.
+            // non-interactive. The active page bounces + fades in.
             return IgnorePointer(
               ignoring: !isActive,
               child: Opacity(
-                opacity: isActive ? t : 0,
+                opacity: isActive ? fade : 0,
                 child: isActive
-                    ? Transform.scale(
-                        scale: 0.99 + 0.01 * t,
-                        child: widget.children[i],
-                      )
+                    ? Transform.scale(scale: scale, child: widget.children[i])
                     : widget.children[i],
               ),
             );

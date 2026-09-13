@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
+import 'package:project_echo/core/presentation/animations/page_transitions.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/core/presentation/animations/pressable.dart';
 import 'package:project_echo/core/services/streak_service.dart';
@@ -46,7 +47,7 @@ class StreakCalendarState extends State<StreakCalendar> {
   void _celebrate() {
     final days = _streak.current > 0 ? _streak.current : 1;
     Navigator.of(context, rootNavigator: true).push(
-      MaterialPageRoute(builder: (_) => StreakCelebrationScreen(days: days)),
+      bouncyRoute(StreakCelebrationScreen(days: days)),
     );
   }
 
