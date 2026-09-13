@@ -22,11 +22,17 @@ class EchoMascot extends StatefulWidget {
   /// surface (e.g. the immersive voice mode's dark focus background).
   final bool? isDark;
 
+  /// Renders soft, symmetric *green glowing* sonar rings and a green halo
+  /// instead of the pearlescent white sheen — the polished look for the large,
+  /// hero mascot on the immersive voice mode's dark focus background.
+  final bool voiceGlow;
+
   const EchoMascot({
     super.key,
     this.state = EchoState.idle,
     this.size = 140,
     this.isDark,
+    this.voiceGlow = false,
   });
 
   @override
@@ -62,8 +68,9 @@ class _EchoMascotState extends State<EchoMascot>
       child: RepaintBoundary(
         child: AnimatedBuilder(
           animation: _c,
-          builder: (context, _) =>
-              CustomPaint(painter: _EchoPainter(_c.value, widget.state, isDark)),
+          builder: (context, _) => CustomPaint(
+            painter: _EchoPainter(_c.value, widget.state, isDark, widget.voiceGlow),
+          ),
         ),
       ),
     );
@@ -74,13 +81,16 @@ class _EchoMascotState extends State<EchoMascot>
 
 const _eye = Color(0xFF222F27);
 const _glow = Color(0xFFD6EBDA);
+const _glowGreen = Color(0xFF7FE0A0);
+const _ringGreen = Color(0xFF8FE0A6);
 const _botShade = Color(0xFF5E8568);
 
 class _EchoPainter extends CustomPainter {
   final double t; // repeating 0..1
   final EchoState state;
   final bool isDark;
-  _EchoPainter(this.t, this.state, this.isDark);
+  final bool voiceGlow;
+  _EchoPainter(this.t, this.state, this.isDark, this.voiceGlow);
 
   static const _tau = 2 * math.pi;
 
@@ -96,16 +106,20 @@ class _EchoPainter extends CustomPainter {
 
     // ── Ambient glow (softer on dark so Echo melts into the background) ──────
     final glowC = p(120, 122);
-    final glowR = s(98);
-    final glowAlpha = dim ? 0.5 : (isDark ? 0.5 : 0.9);
+    final glowR = s(voiceGlow ? 104 : 98);
+    final glowBase = voiceGlow ? _glowGreen : _glow;
+    final glowAlpha = voiceGlow ? 0.5 : (dim ? 0.5 : (isDark ? 0.5 : 0.9));
     canvas.drawCircle(
       glowC,
       glowR,
       Paint()
         ..shader = RadialGradient(
-          colors: [_glow.withValues(alpha: glowAlpha), _glow.withValues(alpha: 0)],
+          colors: [
+            glowBase.withValues(alpha: glowAlpha),
+            glowBase.withValues(alpha: 0),
+          ],
         ).createShader(Rect.fromCircle(center: glowC, radius: glowR))
-        ..maskFilter = MaskFilter.blur(BlurStyle.normal, s(6)),
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, s(voiceGlow ? 10 : 6)),
     );
 
     // ── Behind the orb: rings / orbital band back ─────────────────────────────
@@ -237,6 +251,20 @@ class _EchoPainter extends CustomPainter {
   // opacity right down and lean on the softer green so the ring melts into the
   // background instead of ringing out against it.
   void _ring(Canvas canvas, Offset c, double radius, double opacity, double k) {
+    // Voice mode: a soft, symmetric green glow ring — no white sheen, wider
+    // blur so it reads as a luminous sonar wave rather than a hard band.
+    if (voiceGlow) {
+      canvas.drawCircle(
+        c,
+        radius,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 6.5 * k
+          ..color = _ringGreen.withValues(alpha: (opacity * 0.85).clamp(0.0, 1.0))
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, 4.5 * k),
+      );
+      return;
+    }
     final rect = Rect.fromCircle(center: c, radius: radius);
     final f = opacity / 0.75;
     final topA = (isDark ? 0.06 : 0.92) * f;
@@ -286,23 +314,33 @@ class _EchoPainter extends CustomPainter {
     canvas.translate(c.dx, c.dy);
     canvas.rotate(-0.32 + math.sin(t * _tau) * 0.05);
     final rect = Rect.fromCenter(center: Offset.zero, width: 164 * k, height: 66 * k);
-    final topA = isDark ? (front ? 0.34 : 0.22) : (front ? 0.9 : 0.5);
-    final midA = isDark ? (front ? 0.5 : 0.34) : (front ? 0.7 : 0.4);
-    final botA = isDark ? (front ? 0.4 : 0.24) : (front ? 0.5 : 0.28);
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = (front ? 19 : 17) * k
-      ..strokeCap = StrokeCap.round
-      ..shader = LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [
-          Colors.white.withValues(alpha: topA),
-          const Color(0xFFD8EADC).withValues(alpha: midA),
-          const Color(0xFF98BEA2).withValues(alpha: botA),
-        ],
-      ).createShader(rect)
-      ..maskFilter = MaskFilter.blur(BlurStyle.normal, 1.8 * k);
+    final Paint paint;
+    if (voiceGlow) {
+      paint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = (front ? 12 : 10) * k
+        ..strokeCap = StrokeCap.round
+        ..color = _ringGreen.withValues(alpha: front ? 0.85 : 0.45)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, 4.5 * k);
+    } else {
+      final topA = isDark ? (front ? 0.34 : 0.22) : (front ? 0.9 : 0.5);
+      final midA = isDark ? (front ? 0.5 : 0.34) : (front ? 0.7 : 0.4);
+      final botA = isDark ? (front ? 0.4 : 0.24) : (front ? 0.5 : 0.28);
+      paint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = (front ? 19 : 17) * k
+        ..strokeCap = StrokeCap.round
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.white.withValues(alpha: topA),
+            const Color(0xFFD8EADC).withValues(alpha: midA),
+            const Color(0xFF98BEA2).withValues(alpha: botA),
+          ],
+        ).createShader(rect)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, 1.8 * k);
+    }
     // front = lower half (nearest viewer), back = upper half.
     final path = Path()..addArc(rect, front ? 0 : math.pi, math.pi);
     canvas.drawPath(path, paint);
@@ -338,5 +376,8 @@ class _EchoPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _EchoPainter old) =>
-      old.t != t || old.state != state || old.isDark != isDark;
+      old.t != t ||
+      old.state != state ||
+      old.isDark != isDark ||
+      old.voiceGlow != voiceGlow;
 }
