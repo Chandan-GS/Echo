@@ -17,7 +17,17 @@ class EchoMascot extends StatefulWidget {
   final EchoState state;
   final double size;
 
-  const EchoMascot({super.key, this.state = EchoState.idle, this.size = 140});
+  /// Forces the ring/glow treatment instead of auto-detecting the theme
+  /// brightness. Pass `false` to keep the bright, glowing rings even on a dark
+  /// surface (e.g. the immersive voice mode's dark focus background).
+  final bool? isDark;
+
+  const EchoMascot({
+    super.key,
+    this.state = EchoState.idle,
+    this.size = 140,
+    this.isDark,
+  });
 
   @override
   State<EchoMascot> createState() => _EchoMascotState();
@@ -44,7 +54,8 @@ class _EchoMascotState extends State<EchoMascot>
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDark =
+        widget.isDark ?? (Theme.of(context).brightness == Brightness.dark);
     return SizedBox(
       width: widget.size,
       height: widget.size,

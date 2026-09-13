@@ -300,6 +300,11 @@ class _AskAiViewState extends State<_AskAiView> {
                   child: _buildInputArea(context, isDisabled),
                 ),
               ),
+              // Immersive voice mode takes over the whole screen.
+              if (_isAudioMode)
+                Positioned.fill(
+                  child: _buildVoiceOverlay(context, messages),
+                ),
             ],
           );
         },
@@ -394,6 +399,236 @@ class _AskAiViewState extends State<_AskAiView> {
         _audioState = AudioState.idle;
       });
     }
+  }
+
+  // ── Immersive full-screen voice mode ───────────────────────────────────────
+  // Echo becomes the whole screen and reacts to the audio state: listening
+  // (rings pull inward), thinking (orbital swirl), speaking (rings ripple out).
+  Widget _buildVoiceOverlay(BuildContext context, List<ChatMessage> messages) {
+    final EchoState mascotState;
+    final String statusLabel;
+    switch (_audioState) {
+      case AudioState.listening:
+        mascotState = EchoState.listening;
+        statusLabel = 'LISTENING';
+        break;
+      case AudioState.processing:
+        mascotState = EchoState.thinking;
+        statusLabel = 'THINKING';
+        break;
+      case AudioState.speaking:
+        mascotState = EchoState.speaking;
+        statusLabel = 'SPEAKING';
+        break;
+      case AudioState.initializing:
+        mascotState = EchoState.idle;
+        statusLabel = 'CONNECTING';
+        break;
+      case AudioState.idle:
+        mascotState = EchoState.idle;
+        statusLabel = 'TAP TO SPEAK';
+        break;
+    }
+
+    Widget body;
+    if (_audioState == AudioState.listening) {
+      final t = _userTranscription.trim();
+      body = Text(
+        t.isEmpty ? 'I’m listening…' : t,
+        textAlign: TextAlign.center,
+        style: GoogleFonts.oldStandardTt(
+          fontSize: 24,
+          height: 1.35,
+          fontWeight: FontWeight.w600,
+          color: const Color(0xFFF2F6EE),
+        ),
+      );
+    } else if (_audioState == AudioState.speaking) {
+      final answers = messages.where(
+        (m) => m.sender != 'user' && m.text.trim().isNotEmpty,
+      );
+      body = answers.isEmpty
+          ? const SizedBox.shrink()
+          : _voiceAnswer(answers.last.text);
+    } else if (_audioState == AudioState.processing) {
+      body = Text(
+        'One moment…',
+        style: GoogleFonts.nunito(
+          fontSize: 15,
+          fontStyle: FontStyle.italic,
+          color: const Color(0xFF9FB0A0),
+        ),
+      );
+    } else {
+      body = Text(
+        'Ask Echo about your schedule, messages, or anything in your vault.',
+        textAlign: TextAlign.center,
+        style: GoogleFonts.nunito(fontSize: 15, color: const Color(0xFF9FB0A0)),
+      );
+    }
+
+    final bool live = _audioState == AudioState.listening;
+    final IconData micIcon;
+    final String hint;
+    if (_audioState == AudioState.idle ||
+        _audioState == AudioState.initializing) {
+      micIcon = Icons.mic_none_rounded;
+      hint = 'Tap to speak';
+    } else if (live) {
+      micIcon = Icons.mic_rounded;
+      hint = 'Tap to stop';
+    } else if (_audioState == AudioState.speaking) {
+      micIcon = Icons.stop_rounded;
+      hint = 'Tap to interrupt';
+    } else {
+      micIcon = Icons.stop_rounded;
+      hint = 'One moment…';
+    }
+
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: RadialGradient(
+          center: Alignment(0, -0.25),
+          radius: 1.1,
+          colors: [Color(0xFF1E2F22), Color(0xFF131A10), Color(0xFF0C110A)],
+          stops: [0.0, 0.55, 1.0],
+        ),
+      ),
+      child: SafeArea(
+        child: Stack(
+          children: [
+            Positioned(
+              top: 4,
+              right: 10,
+              child: GestureDetector(
+                onTap: _toggleAudioMode,
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white.withValues(alpha: 0.08),
+                  ),
+                  child: const Icon(
+                    Icons.close_rounded,
+                    color: Color(0xFFEAF1E6),
+                    size: 20,
+                  ),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(28, 72, 28, 0),
+              child: Column(
+                children: [
+                  GestureDetector(
+                    onTap: _onWaveTap,
+                    child: EchoMascot(
+                      state: mascotState,
+                      size: 236,
+                      isDark: false,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    statusLabel,
+                    style: GoogleFonts.nunito(
+                      fontSize: 12,
+                      letterSpacing: 3,
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF7FB98C),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  body,
+                ],
+              ),
+            ),
+            Positioned(
+              bottom: 44,
+              left: 0,
+              right: 0,
+              child: Column(
+                children: [
+                  GestureDetector(
+                    onTap: _onWaveTap,
+                    child: Container(
+                      width: 74,
+                      height: 74,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: live
+                            ? context.colors.primaryGreen
+                            : Colors.white.withValues(alpha: 0.10),
+                        border: live
+                            ? null
+                            : Border.all(
+                                color: Colors.white.withValues(alpha: 0.22),
+                                width: 1.5,
+                              ),
+                        boxShadow: live
+                            ? [
+                                BoxShadow(
+                                  color: context.colors.primaryGreen
+                                      .withValues(alpha: 0.5),
+                                  blurRadius: 30,
+                                  spreadRadius: 2,
+                                ),
+                              ]
+                            : null,
+                      ),
+                      child: Icon(
+                        micIcon,
+                        color: const Color(0xFFEAF1E6),
+                        size: 26,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    hint,
+                    style: GoogleFonts.nunito(
+                      fontSize: 13,
+                      color: const Color(0xFF9FB0A0),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _voiceAnswer(String text) {
+    final base = GoogleFonts.nunito(
+      color: const Color(0xFFEAF1E6),
+      fontSize: 18,
+      fontWeight: FontWeight.w600,
+      height: 1.45,
+    );
+    final bold = base.copyWith(
+      color: const Color(0xFF8FD69A),
+      fontWeight: FontWeight.w800,
+    );
+    final spans = <TextSpan>[];
+    final re = RegExp(r'\*\*(.*?)\*\*');
+    int last = 0;
+    for (final m in re.allMatches(text)) {
+      if (m.start > last) {
+        spans.add(TextSpan(text: text.substring(last, m.start), style: base));
+      }
+      spans.add(TextSpan(text: m.group(1), style: bold));
+      last = m.end;
+    }
+    if (last < text.length) {
+      spans.add(TextSpan(text: text.substring(last), style: base));
+    }
+    return RichText(
+      textAlign: TextAlign.center,
+      text: TextSpan(children: spans),
+    );
   }
 
   String _getTranscribedText() {
