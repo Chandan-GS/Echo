@@ -42,6 +42,7 @@ class _AskAiViewState extends State<_AskAiView> {
 
   // Audio State
   bool _isAudioMode = false;
+  bool _voiceSourcesExpanded = false;
   final stt.SpeechToText _speech = stt.SpeechToText();
   final FlutterTts _flutterTts = FlutterTts();
   AudioState _audioState = AudioState.idle;
@@ -126,6 +127,7 @@ class _AskAiViewState extends State<_AskAiView> {
     setState(() {
       _audioState = AudioState.listening;
       _userTranscription = '';
+      _voiceSourcesExpanded = false;
       _spokenLength = 0;
       _ttsQueue.clear();
       _isSpeaking = false;
@@ -249,7 +251,8 @@ class _AskAiViewState extends State<_AskAiView> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: context.colors.background,
-      appBar: const EchoAppBar(title: 'Ask Echo'),
+      // Voice mode is a full-screen immersive experience — hide the app bar.
+      appBar: _isAudioMode ? null : const EchoAppBar(title: 'Ask Echo'),
       body: BlocConsumer<AskAiCubit, AskAiState>(
         listener: (context, state) {
           if (state is AskAiMessageReceived) {
@@ -444,12 +447,16 @@ class _AskAiViewState extends State<_AskAiView> {
         ),
       );
     } else if (_audioState == AudioState.speaking) {
-      final answers = messages.where(
-        (m) => m.sender != 'user' && m.text.trim().isNotEmpty,
-      );
-      body = answers.isEmpty
+      // Echo speaks the answer aloud — no typed text; the notifications it drew
+      // on sit in a collapsible dropdown, like the chat's sources.
+      final ai = messages.where((m) => m.sender != 'user');
+      final sources = ai.isEmpty ? const <RawData>[] : ai.last.ragSources;
+      body = sources.isEmpty
           ? const SizedBox.shrink()
-          : _voiceAnswer(answers.last.text);
+          : Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: _voiceSources(sources),
+            );
     } else if (_audioState == AudioState.processing) {
       body = Text(
         'One moment…',
@@ -488,10 +495,10 @@ class _AskAiViewState extends State<_AskAiView> {
     return Container(
       decoration: const BoxDecoration(
         gradient: RadialGradient(
-          center: Alignment(0, -0.25),
-          radius: 1.1,
-          colors: [Color(0xFF1E2F22), Color(0xFF131A10), Color(0xFF0C110A)],
-          stops: [0.0, 0.55, 1.0],
+          center: Alignment(0, -0.32),
+          radius: 1.15,
+          colors: [Color(0xFF1A2B1E), Color(0xFF101810), Color(0xFF0A0F09)],
+          stops: [0.0, 0.46, 1.0],
         ),
       ),
       child: SafeArea(
@@ -507,7 +514,7 @@ class _AskAiViewState extends State<_AskAiView> {
                   height: 40,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: Colors.white.withValues(alpha: 0.08),
+                    color: Colors.white.withValues(alpha: 0.07),
                   ),
                   child: const Icon(
                     Icons.close_rounded,
@@ -517,31 +524,39 @@ class _AskAiViewState extends State<_AskAiView> {
                 ),
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(28, 72, 28, 0),
-              child: Column(
-                children: [
-                  GestureDetector(
-                    onTap: _onWaveTap,
-                    child: EchoMascot(
-                      state: mascotState,
-                      size: 236,
-                      isDark: false,
-                    ),
+            // Centered stage: mascot + status + content, floating above the mic.
+            Positioned.fill(
+              bottom: 168,
+              child: Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(vertical: 24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      GestureDetector(
+                        onTap: _onWaveTap,
+                        child: EchoMascot(
+                          state: mascotState,
+                          size: 230,
+                          isDark: false,
+                          voiceGlow: true,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      Text(
+                        statusLabel,
+                        style: GoogleFonts.nunito(
+                          fontSize: 12,
+                          letterSpacing: 3,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF83C193),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      body,
+                    ],
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    statusLabel,
-                    style: GoogleFonts.nunito(
-                      fontSize: 12,
-                      letterSpacing: 3,
-                      fontWeight: FontWeight.w800,
-                      color: const Color(0xFF7FB98C),
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  body,
-                ],
+                ),
               ),
             ),
             Positioned(
@@ -601,33 +616,132 @@ class _AskAiViewState extends State<_AskAiView> {
     );
   }
 
-  Widget _voiceAnswer(String text) {
-    final base = GoogleFonts.nunito(
-      color: const Color(0xFFEAF1E6),
-      fontSize: 18,
-      fontWeight: FontWeight.w600,
-      height: 1.45,
-    );
-    final bold = base.copyWith(
-      color: const Color(0xFF8FD69A),
-      fontWeight: FontWeight.w800,
-    );
-    final spans = <TextSpan>[];
-    final re = RegExp(r'\*\*(.*?)\*\*');
-    int last = 0;
-    for (final m in re.allMatches(text)) {
-      if (m.start > last) {
-        spans.add(TextSpan(text: text.substring(last, m.start), style: base));
-      }
-      spans.add(TextSpan(text: m.group(1), style: bold));
-      last = m.end;
-    }
-    if (last < text.length) {
-      spans.add(TextSpan(text: text.substring(last), style: base));
-    }
-    return RichText(
-      textAlign: TextAlign.center,
-      text: TextSpan(children: spans),
+  // Collapsible "N notifications used" dropdown for the voice answer — dark
+  // themed to sit on the immersive focus background.
+  Widget _voiceSources(List<RawData> sources) {
+    const green = Color(0xFF8FE0A6);
+    const chipText = Color(0xFFBFEECB);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        GestureDetector(
+          onTap: () => setState(
+            () => _voiceSourcesExpanded = !_voiceSourcesExpanded,
+          ),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.graphic_eq_rounded, size: 15, color: green),
+                const SizedBox(width: 8),
+                Text(
+                  '${sources.length} notification${sources.length == 1 ? '' : 's'} used',
+                  style: GoogleFonts.nunito(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: chipText,
+                  ),
+                ),
+                const SizedBox(width: 2),
+                AnimatedRotation(
+                  turns: _voiceSourcesExpanded ? 0.5 : 0.0,
+                  duration: const Duration(milliseconds: 250),
+                  child: const Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    size: 18,
+                    color: chipText,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+          alignment: Alignment.topCenter,
+          child: !_voiceSourcesExpanded
+              ? const SizedBox(width: double.infinity)
+              : Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(top: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Column(
+                    children: [
+                      for (int i = 0; i < sources.length; i++)
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            border: i == 0
+                                ? null
+                                : Border(
+                                    top: BorderSide(
+                                      color: Colors.white.withValues(alpha: 0.06),
+                                    ),
+                                  ),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                width: 26,
+                                height: 26,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF7FB98C).withValues(alpha: 0.18),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(
+                                  Icons.graphic_eq_rounded,
+                                  size: 13,
+                                  color: green,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      sources[i].sender.isNotEmpty
+                                          ? sources[i].sender
+                                          : sources[i].source,
+                                      style: GoogleFonts.nunito(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w800,
+                                        color: const Color(0xFFEAF1E6),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 1),
+                                    Text(
+                                      sources[i].content,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: GoogleFonts.nunito(
+                                        fontSize: 12,
+                                        color: const Color(0xFF9FB0A0),
+                                        height: 1.35,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+        ),
+      ],
     );
   }
 
