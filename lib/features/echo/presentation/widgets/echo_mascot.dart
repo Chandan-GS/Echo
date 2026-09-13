@@ -1,6 +1,5 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 /// The moods Echo — the "sound sprite" mascot — can express. Each maps to a
 /// real app moment: [idle] resting on the home screen, [listening] while
@@ -18,25 +17,15 @@ class EchoMascot extends StatefulWidget {
   final EchoState state;
   final double size;
 
-  /// Called when Echo is tapped (after her playful bounce). When null she still
-  /// reacts to touch — the reaction is always on.
-  final VoidCallback? onTap;
-
-  const EchoMascot({
-    super.key,
-    this.state = EchoState.idle,
-    this.size = 140,
-    this.onTap,
-  });
+  const EchoMascot({super.key, this.state = EchoState.idle, this.size = 140});
 
   @override
   State<EchoMascot> createState() => _EchoMascotState();
 }
 
 class _EchoMascotState extends State<EchoMascot>
-    with TickerProviderStateMixin {
+    with SingleTickerProviderStateMixin {
   late final AnimationController _c;
-  late final AnimationController _react;
 
   @override
   void initState() {
@@ -45,40 +34,25 @@ class _EchoMascotState extends State<EchoMascot>
       vsync: this,
       duration: const Duration(milliseconds: 2800),
     )..repeat();
-    _react = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 520),
-    );
   }
 
   @override
   void dispose() {
     _c.dispose();
-    _react.dispose();
     super.dispose();
-  }
-
-  void _onTap() {
-    HapticFeedback.lightImpact();
-    _react.forward(from: 0);
-    widget.onTap?.call();
   }
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: _onTap,
-      behavior: HitTestBehavior.opaque,
-      child: SizedBox(
-        width: widget.size,
-        height: widget.size,
-        child: RepaintBoundary(
-          child: AnimatedBuilder(
-            animation: Listenable.merge([_c, _react]),
-            builder: (context, _) => CustomPaint(
-              painter: _EchoPainter(_c.value, widget.state, _react.value),
-            ),
-          ),
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return SizedBox(
+      width: widget.size,
+      height: widget.size,
+      child: RepaintBoundary(
+        child: AnimatedBuilder(
+          animation: _c,
+          builder: (context, _) =>
+              CustomPaint(painter: _EchoPainter(_c.value, widget.state, isDark)),
         ),
       ),
     );
@@ -94,8 +68,8 @@ const _botShade = Color(0xFF5E8568);
 class _EchoPainter extends CustomPainter {
   final double t; // repeating 0..1
   final EchoState state;
-  final double reaction; // one-shot 0..1 tap bounce
-  _EchoPainter(this.t, this.state, this.reaction);
+  final bool isDark;
+  _EchoPainter(this.t, this.state, this.isDark);
 
   static const _tau = 2 * math.pi;
 
@@ -142,16 +116,9 @@ class _EchoPainter extends CustomPainter {
         break;
     }
 
-    // ── Tap reaction: a ripple burst emanating outward ──────────────────────
-    final rq = math.sin(reaction.clamp(0.0, 1.0) * math.pi); // 0→1→0
-    if (reaction > 0.0 && reaction < 1.0) {
-      _ring(canvas, orbC, orbR * (1.0 + reaction * 1.05),
-          ((1 - reaction) * 0.7).clamp(0.0, 0.75), k);
-    }
-
-    // ── Orb + face (gentle float + breathe + tap bounce) ────────────────────
-    final floatDy = s(dim ? 3 : 4) * math.sin(t * _tau) - s(9) * rq;
-    final breathe = (1 + 0.03 * math.sin(t * _tau)) * (1 + 0.14 * rq);
+    // ── Orb + face (gentle float + breathe) ─────────────────────────────────
+    final floatDy = s(dim ? 3 : 4) * math.sin(t * _tau);
+    final breathe = 1 + 0.03 * math.sin(t * _tau);
     canvas.save();
     canvas.translate(0, floatDy);
     canvas.translate(orbC.dx, orbC.dy);
@@ -253,9 +220,16 @@ class _EchoPainter extends CustomPainter {
     }
   }
 
-  // A single soft glossy ring.
+  // A single soft glossy ring. On a dark background the bright white top of
+  // the sheen reads as a harsh bold edge, so in dark mode we drop the top's
+  // opacity right down and lean on the softer green so the ring melts into the
+  // background instead of ringing out against it.
   void _ring(Canvas canvas, Offset c, double radius, double opacity, double k) {
     final rect = Rect.fromCircle(center: c, radius: radius);
+    final f = opacity / 0.75;
+    final topA = (isDark ? 0.18 : 0.92) * f;
+    final midA = (isDark ? 0.40 : 0.6) * f;
+    final botA = (isDark ? 0.26 : 0.3) * f;
     canvas.drawCircle(
       c,
       radius,
@@ -266,9 +240,9 @@ class _EchoPainter extends CustomPainter {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            Colors.white.withValues(alpha: 0.92 * opacity / 0.75),
-            const Color(0xFFD8EADC).withValues(alpha: 0.6 * opacity / 0.75),
-            const Color(0xFF98BEA2).withValues(alpha: 0.3 * opacity / 0.75),
+            Colors.white.withValues(alpha: topA),
+            const Color(0xFFD8EADC).withValues(alpha: midA),
+            const Color(0xFF98BEA2).withValues(alpha: botA),
           ],
           stops: const [0.0, 0.46, 1.0],
         ).createShader(rect)
@@ -300,6 +274,9 @@ class _EchoPainter extends CustomPainter {
     canvas.translate(c.dx, c.dy);
     canvas.rotate(-0.32 + math.sin(t * _tau) * 0.05);
     final rect = Rect.fromCenter(center: Offset.zero, width: 164 * k, height: 66 * k);
+    final topA = isDark ? (front ? 0.34 : 0.22) : (front ? 0.9 : 0.5);
+    final midA = isDark ? (front ? 0.5 : 0.34) : (front ? 0.7 : 0.4);
+    final botA = isDark ? (front ? 0.4 : 0.24) : (front ? 0.5 : 0.28);
     final paint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = (front ? 19 : 17) * k
@@ -308,9 +285,9 @@ class _EchoPainter extends CustomPainter {
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: [
-          Colors.white.withValues(alpha: front ? 0.9 : 0.5),
-          const Color(0xFFD8EADC).withValues(alpha: front ? 0.7 : 0.4),
-          const Color(0xFF98BEA2).withValues(alpha: front ? 0.5 : 0.28),
+          Colors.white.withValues(alpha: topA),
+          const Color(0xFFD8EADC).withValues(alpha: midA),
+          const Color(0xFF98BEA2).withValues(alpha: botA),
         ],
       ).createShader(rect)
       ..maskFilter = MaskFilter.blur(BlurStyle.normal, 1.8 * k);
@@ -349,5 +326,5 @@ class _EchoPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _EchoPainter old) =>
-      old.t != t || old.state != state || old.reaction != reaction;
+      old.t != t || old.state != state || old.isDark != isDark;
 }
