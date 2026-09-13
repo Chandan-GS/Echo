@@ -12,6 +12,7 @@ import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:project_echo/features/echo/presentation/widgets/timer/next_briefing_timer.dart';
 import 'package:project_echo/features/echo/presentation/widgets/generating_view.dart';
+import 'package:project_echo/features/echo/presentation/widgets/echo_mascot.dart';
 import 'package:project_echo/core/presentation/animations/app_motion.dart';
 import 'package:project_echo/core/presentation/animations/fade_slide_in.dart';
 
@@ -317,14 +318,24 @@ class _HomeShellState extends State<_HomeShell> {
             const SizedBox(height: 24),
 
             FadeSlideIn(
-              child: Text(
-                '$greeting,\n$name',
-                style: GoogleFonts.oldStandardTt(
-                  fontSize: 40,
-                  fontWeight: FontWeight.w700,
-                  color: context.colors.textPrimary,
-                  height: 1.15,
-                ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: Text(
+                      '$greeting,\n$name',
+                      style: GoogleFonts.oldStandardTt(
+                        fontSize: 40,
+                        fontWeight: FontWeight.w700,
+                        color: context.colors.textPrimary,
+                        height: 1.15,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  // Echo greets you — a calm presence by your name.
+                  const EchoMascot(state: EchoState.idle, size: 84),
+                ],
               ),
             ),
                 const SizedBox(height: 24),

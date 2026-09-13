@@ -8,7 +8,6 @@ import 'package:project_echo/features/settings/presentation/cubit/settings_cubit
 import 'package:project_echo/features/settings/presentation/cubit/settings_state.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/utils/time_utils.dart';
-import 'package:project_echo/features/echo/presentation/widgets/echo_mascot.dart';
 
 class NextBriefingTimer extends StatefulWidget {
   const NextBriefingTimer({super.key});
@@ -151,10 +150,6 @@ class _NextBriefingTimerState extends State<NextBriefingTimer>
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          // Echo rests at the heart of the dial, framed by the
-                          // sweeping ticks — its calm home-screen presence.
-                          const EchoMascot(state: EchoState.idle, size: 92),
-                          SizedBox(height: height * 0.03),
                           Text(
                             'Next Briefing in',
                             style: GoogleFonts.nunito(
