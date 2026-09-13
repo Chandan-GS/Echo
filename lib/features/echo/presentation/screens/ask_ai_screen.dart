@@ -249,10 +249,7 @@ class _AskAiViewState extends State<_AskAiView> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: context.colors.background,
-      appBar: const EchoAppBar(
-        title: 'Ask Echo',
-        titleAvatar: EchoMascot(state: EchoState.idle, size: 32),
-      ),
+      appBar: const EchoAppBar(title: 'Ask Echo'),
       body: BlocConsumer<AskAiCubit, AskAiState>(
         listener: (context, state) {
           if (state is AskAiMessageReceived) {
@@ -707,42 +704,41 @@ class _MessageContent extends StatelessWidget {
 
   Widget _buildAiMessage(BuildContext context) {
     final generating = message.text.isEmpty && message.isGenerating;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        // Echo speaks as itself — thinking while it works, calm otherwise.
-        EchoMascot(
-          state: generating ? EchoState.thinking : EchoState.idle,
-          size: 42,
-        ),
-        const SizedBox(width: 8),
-        if (generating)
-          _thinkingBubble(context)
-        else
-          Container(
-            constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width * 0.70,
-            ),
-            padding: const EdgeInsets.fromLTRB(16, 13, 16, 14),
-            decoration: BoxDecoration(
-              color: context.colors.surface,
-              borderRadius: BorderRadius.circular(
-                20,
-              ).copyWith(bottomLeft: const Radius.circular(6)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildEditorialText(message.text, context),
-                if (message.ragSources.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  RagSourcesWidget(sources: message.ragSources),
-                ],
-              ],
-            ),
-          ),
-      ],
+
+    // Only the thinking state carries the mascot.
+    if (generating) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          const EchoMascot(state: EchoState.thinking, size: 42),
+          const SizedBox(width: 8),
+          _thinkingBubble(context),
+        ],
+      );
+    }
+
+    return Container(
+      constraints: BoxConstraints(
+        maxWidth: MediaQuery.of(context).size.width * 0.82,
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 13, 16, 14),
+      decoration: BoxDecoration(
+        color: context.colors.surface,
+        borderRadius: BorderRadius.circular(
+          20,
+        ).copyWith(bottomLeft: const Radius.circular(6)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildEditorialText(message.text, context),
+          if (message.ragSources.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            RagSourcesWidget(sources: message.ragSources),
+          ],
+        ],
+      ),
     );
   }
 
