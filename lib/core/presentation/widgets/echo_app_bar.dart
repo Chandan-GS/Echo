@@ -8,25 +8,10 @@ class EchoAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String title;
   final VoidCallback? onBackPressed;
 
-  /// Optional small avatar shown just left of the title (e.g. the Echo mascot
-  /// on the Ask Echo screen, so it reads as "talking to Echo").
-  final Widget? titleAvatar;
-
-  const EchoAppBar({
-    super.key,
-    required this.title,
-    this.onBackPressed,
-    this.titleAvatar,
-  });
+  const EchoAppBar({super.key, required this.title, this.onBackPressed});
 
   @override
   Widget build(BuildContext context) {
-    final titleText = Text(
-      title,
-      style: Theme.of(
-        context,
-      ).textTheme.displayMedium?.copyWith(color: context.colors.textPrimary),
-    );
     return AppBar(
       scrolledUnderElevation: 0,
       systemOverlayStyle: Theme.of(context).brightness == Brightness.dark
@@ -50,12 +35,12 @@ class EchoAppBar extends StatelessWidget implements PreferredSizeWidget {
               }
             },
       ),
-      title: titleAvatar == null
-          ? titleText
-          : Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [titleAvatar!, const SizedBox(width: 8), titleText],
-            ),
+      title: Text(
+        title,
+        style: Theme.of(
+          context,
+        ).textTheme.displayMedium?.copyWith(color: context.colors.textPrimary),
+      ),
       centerTitle: true,
     );
   }
