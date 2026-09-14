@@ -6,6 +6,8 @@
 	<string>This app requires speech recognition to understand your queries.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>This app requires microphone access to record your voice.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Echo uses your camera to scan a QR code so this phone can connect to Echo running on your computer.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>

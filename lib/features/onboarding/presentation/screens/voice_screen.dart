@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_tts/flutter_tts.dart';
@@ -23,8 +24,11 @@ class _VoiceScreenState extends State<VoiceScreen> {
   final FlutterTts _tts = FlutterTts();
   VoicePreference _pref = VoicePreference.fallback;
   List<EchoAccent> _accents = EchoAccent.values;
+  List<Map<String, String>>? _installedVoices;
   bool _playing = false;
   bool _ready = false;
+
+  bool get _isDesktop => Platform.isMacOS || Platform.isWindows;
 
   @override
   void initState() {
@@ -36,6 +40,8 @@ class _VoiceScreenState extends State<VoiceScreen> {
     final prefs = await SharedPreferences.getInstance();
     final restored = VoicePreference.read(prefs);
     final accents = await VoiceCatalog.instance.availableAccents(_tts);
+    final installedVoices =
+        _isDesktop ? await VoiceCatalog.instance.listInstalledVoices(_tts) : null;
 
     _tts.setCompletionHandler(() {
       if (mounted) setState(() => _playing = false);
@@ -49,11 +55,30 @@ class _VoiceScreenState extends State<VoiceScreen> {
 
     if (!mounted) return;
     setState(() {
-      // Keep an accent that actually exists on the device selected.
-      _pref = accents.contains(restored.accent)
-          ? restored
-          : restored.copyWith(accent: accents.first);
+      if (installedVoices != null) {
+        // Desktop: pick a specific installed device voice directly. Keep the
+        // saved choice if it's still installed; otherwise default to the
+        // best-quality one available.
+        final stillInstalled = restored.hasDirectVoice &&
+            installedVoices.any((v) =>
+                v['name'] == restored.directVoiceName &&
+                v['locale'] == restored.directVoiceLocale);
+        _pref = stillInstalled
+            ? restored
+            : (installedVoices.isNotEmpty
+                ? restored.withDirectVoice(
+                    name: installedVoices.first['name']!,
+                    locale: installedVoices.first['locale']!,
+                  )
+                : restored);
+      } else {
+        // Keep an accent that actually exists on the device selected.
+        _pref = accents.contains(restored.accent)
+            ? restored
+            : restored.copyWith(accent: accents.first);
+      }
       _accents = accents;
+      _installedVoices = installedVoices;
       _ready = true;
     });
   }
@@ -115,6 +140,7 @@ class _VoiceScreenState extends State<VoiceScreen> {
         isPlaying: _playing,
         onTogglePlay: _togglePlay,
         onChanged: _update,
+        installedVoices: _installedVoices,
       ),
     );
   }

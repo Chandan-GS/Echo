@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
@@ -18,6 +19,13 @@ class VoiceStudio extends StatelessWidget {
   final VoidCallback onTogglePlay;
   final void Function(VoicePreference next, {bool audition}) onChanged;
 
+  /// Desktop only — the real installed system voices (name/locale/quality),
+  /// already loaded by the parent. When non-null, the Voice/Accent pickers
+  /// are replaced with a direct list of these, since desktop has actual named
+  /// system voices instead of the phone's curated four-slot abstraction. Null
+  /// on phone (and on desktop while still loading).
+  final List<Map<String, String>>? installedVoices;
+
   const VoiceStudio({
     super.key,
     required this.pref,
@@ -25,11 +33,14 @@ class VoiceStudio extends StatelessWidget {
     required this.isPlaying,
     required this.onTogglePlay,
     required this.onChanged,
+    this.installedVoices,
   });
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
+    final isDesktop = Platform.isMacOS || Platform.isWindows;
+    final voices = installedVoices;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -74,36 +85,35 @@ class VoiceStudio extends StatelessWidget {
         ),
         const SizedBox(height: 26),
 
-        // ── Voice ───────────────────────────────────────────────────────
-        const _Label('Voice'),
-        const SizedBox(height: 12),
-        ...EchoVoiceSlot.values.map(
-          (v) => Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: SelectableTile(
-              title: v.label,
-              isSelected: pref.voice == v,
-              onTap: () => onChanged(pref.copyWith(voice: v)),
-            ),
-          ),
-        ),
-        const SizedBox(height: 18),
+        if (isDesktop && voices != null) ...[
+          // ── Desktop: one real, named system voice ──────────────────────
+          const _Label('System voice'),
+          const SizedBox(height: 12),
+          _InstalledVoiceList(pref: pref, voices: voices, onChanged: onChanged),
+          const SizedBox(height: 26),
+        ] else ...[
+          // ── Voice ─────────────────────────────────────────────────────
+          const _Label('Voice'),
+          const SizedBox(height: 12),
+          _VoiceTiles(pref: pref, onChanged: onChanged),
+          const SizedBox(height: 18),
 
-        // ── Accent ──────────────────────────────────────────────────────
-        const _Label('Accent'),
-        const SizedBox(height: 12),
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: accents
-              .map((a) => _Choice(
-                    label: a.label,
-                    selected: pref.accent == a,
-                    onTap: () => onChanged(pref.copyWith(accent: a)),
-                  ))
-              .toList(),
-        ),
-        const SizedBox(height: 26),
+          // ── Accent ────────────────────────────────────────────────────
+          const _Label('Accent'),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: accents
+                .map((a) => _Choice(
+                      label: a.label,
+                      selected: pref.accent == a,
+                      onTap: () => onChanged(pref.copyWith(accent: a)),
+                    ))
+                .toList(),
+          ),
+          const SizedBox(height: 26),
+        ],
 
         // ── Speed ───────────────────────────────────────────────────────
         const _Label('Speed'),
@@ -120,7 +130,107 @@ class VoiceStudio extends StatelessWidget {
   }
 }
 
+/// Desktop's direct voice list — every usable system voice, by its real name,
+/// single-select. Replaces the phone's voice-slot + accent pickers entirely:
+/// desktop has actual named voices to choose from, so showing the abstraction
+/// on top of them was just confusing (and hid genuinely installed voices).
+class _InstalledVoiceList extends StatelessWidget {
+  final VoicePreference pref;
+  final List<Map<String, String>> voices;
+  final void Function(VoicePreference next, {bool audition}) onChanged;
+
+  const _InstalledVoiceList({
+    required this.pref,
+    required this.voices,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (voices.isEmpty) {
+      return Text(
+        'No system voices found.',
+        style: GoogleFonts.nunito(fontSize: 13, color: context.colors.textSecondary),
+      );
+    }
+    return Column(
+      children: voices.map((v) {
+        final name = v['name'] ?? '';
+        final locale = v['locale'] ?? '';
+        final quality = (v['quality'] ?? '').toLowerCase();
+        final isBetter = quality == 'enhanced' || quality == 'premium';
+        final selected = pref.directVoiceName == name && pref.directVoiceLocale == locale;
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: SelectableTile(
+            title: name,
+            subtitle: isBetter ? '$locale · ${_titleCase(quality)}' : locale,
+            isSelected: selected,
+            onTap: () => onChanged(
+              pref.withDirectVoice(name: name, locale: locale),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  String _titleCase(String s) => s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
+}
+
 // ── Local building blocks ──────────────────────────────────────────────────
+
+/// The four voice tiles. Stacked full-width on phone; a 2x2 wrap on desktop
+/// so it reads as a set of cards rather than a tall phone list.
+class _VoiceTiles extends StatelessWidget {
+  final VoicePreference pref;
+  final void Function(VoicePreference next, {bool audition}) onChanged;
+
+  const _VoiceTiles({required this.pref, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    if (!(Platform.isMacOS || Platform.isWindows)) {
+      return Column(
+        children: EchoVoiceSlot.values
+            .map(
+              (v) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: SelectableTile(
+                  title: v.label,
+                  isSelected: pref.voice == v,
+                  onTap: () => onChanged(pref.copyWith(voice: v)),
+                ),
+              ),
+            )
+            .toList(),
+      );
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const spacing = 10.0;
+        final itemWidth = (constraints.maxWidth - spacing) / 2;
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: EchoVoiceSlot.values
+              .map(
+                (v) => SizedBox(
+                  width: itemWidth,
+                  child: SelectableTile(
+                    title: v.label,
+                    isSelected: pref.voice == v,
+                    onTap: () => onChanged(pref.copyWith(voice: v)),
+                  ),
+                ),
+              )
+              .toList(),
+        );
+      },
+    );
+  }
+}
 
 class _Label extends StatelessWidget {
   final String text;

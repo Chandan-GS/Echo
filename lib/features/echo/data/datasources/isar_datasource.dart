@@ -53,6 +53,19 @@ class IsarDataSource {
     return isar.rawDatas.where().sortByTimestampDesc().findAll();
   }
 
+  /// Replaces the entire notification set with [entries] in one transaction —
+  /// used by the desktop mirror when it receives a fresh snapshot from the
+  /// phone (the phone is the source of truth; the desktop just reflects it).
+  /// The single writeTxn fires Isar's `watchLazy` once, so the Vault refreshes
+  /// automatically. NEVER call this on the phone — it would wipe captured data.
+  static Future<void> replaceAllFromSync(List<RawData> entries) async {
+    final isar = await instance;
+    await isar.writeTxn(() async {
+      await isar.rawDatas.clear();
+      await isar.rawDatas.putAll(entries);
+    });
+  }
+
   /// Deletes all stored notification entries matching the exact source (case-insensitive).
   static Future<void> deleteEntriesBySource(String source) async {
     final isar = await instance;

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -85,20 +86,25 @@ class StartScreen extends StatelessWidget {
   }
 
   int _stepFor(OnBoardingState state) => switch (state) {
-        PermissionsStep() => 1,
-        AiModeStep() => 2,
-        NameInputStep() => 3,
-        PersonalizeStep() => 4,
-        VoiceStep() => 5,
-        PreviewStep() => 6,
-        _ => 1,
-      };
+    PermissionsStep() => 1,
+    AiModeStep() => 2,
+    NameInputStep() => 3,
+    PersonalizeStep() => 4,
+    VoiceStep() => 5,
+    PreviewStep() => 6,
+    _ => 1,
+  };
 
   VoidCallback? _onBackFor(BuildContext context, OnBoardingState state) {
     final cubit = context.read<OnBoardingCubit>();
+    // On desktop, completeWelcome() skips PermissionsStep entirely (see
+    // OnBoardingCubit), so going back from AiModeStep must return to Welcome
+    // rather than re-entering a step that's never shown there.
+    final isDesktop = Platform.isMacOS || Platform.isWindows;
     return switch (state) {
       PermissionsStep() => cubit.startOnboarding,
-      AiModeStep() => cubit.checkPermissions,
+      AiModeStep() =>
+        isDesktop ? cubit.startOnboarding : cubit.checkPermissions,
       NameInputStep() => cubit.goBackToAiMode,
       PersonalizeStep() => cubit.goBackToName,
       VoiceStep() => cubit.goBackToPersonalize,

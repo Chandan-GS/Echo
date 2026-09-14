@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/core/presentation/widgets/echo_button.dart';
-import 'package:project_echo/features/echo/presentation/widgets/pulsing_flame.dart';
+import 'package:project_echo/features/echo/presentation/widgets/streak_flame.dart';
 
 /// A full-screen, immersive celebration shown the moment the user's streak
 /// advances — a pulsing flame with rising embers, a bouncing count-up number,
@@ -110,7 +110,7 @@ class _StreakCelebrationScreenState extends State<StreakCelebrationScreen>
                         child: child,
                       );
                     },
-                    child: const PulsingFlame(size: 96),
+                    child: const StreakFlame(size: 96),
                   ),
 
                   const SizedBox(height: 28),

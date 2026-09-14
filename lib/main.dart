@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
@@ -13,6 +14,7 @@ import 'package:project_echo/features/onboarding/data/repositories/model_downloa
 import 'package:project_echo/features/echo/data/services/notification_service.dart';
 import 'package:project_echo/core/services/schedule_service.dart';
 import 'package:project_echo/core/services/local_notification_service.dart';
+import 'package:project_echo/core/services/echo_server_service.dart';
 
 void main() async {
   GoogleFonts.config.allowRuntimeFetching = false;
@@ -72,6 +74,18 @@ void main() async {
   final briefingTimes = prefs.getStringList('briefing_times') ?? ['07:00'];
   await ScheduleService.updateSchedules(briefingTimes);
 
+  // Desktop-only, off by default: resume the Echo Engine service on launch if
+  // the user previously turned it on for this machine. Starts regardless of
+  // whether the model has finished downloading — the server is discoverable
+  // immediately either way, and resolves the model fresh on every request
+  // rather than needing it present at startup.
+  if (Platform.isMacOS || Platform.isWindows) {
+    final runHere = prefs.getBool('run_desktop_engine_here') ?? false;
+    if (runHere) {
+      await EchoServerService.instance.start();
+    }
+  }
+
   runApp(Echo(isOnboardingFinished: isOnboardingFinished));
 }
 
@@ -100,10 +114,24 @@ class Echo extends StatelessWidget {
             theme: AppTheme.lightTheme,
             darkTheme: AppTheme.darkTheme,
             themeMode: state.themeMode,
+            // Desktop platforms auto-decorate every scrollable with a visible
+            // drag-scrollbar by default — reads as a stray UI chrome element
+            // rather than an intentional part of the design. Suppress it app-
+            // wide; touch/trackpad scrolling still works exactly as before.
+            scrollBehavior: _NoScrollbarBehavior(),
             routerConfig: _router,
           );
         },
       ),
     );
   }
+}
+
+class _NoScrollbarBehavior extends MaterialScrollBehavior {
+  @override
+  Widget buildScrollbar(
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) => child;
 }
