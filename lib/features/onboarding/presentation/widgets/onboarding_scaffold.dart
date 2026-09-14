@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
@@ -32,39 +33,55 @@ class OnboardingShell extends StatelessWidget {
     return Scaffold(
       backgroundColor: colors.background,
       body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-              child: SizedBox(
-                height: 44,
-                child: Row(
-                  children: [
-                    // AnimatedSwitcher so the back button fades in/out when a
-                    // step gains/loses it, without the whole header re-mounting.
-                    AnimatedSwitcher(
-                      duration: AppMotion.fast,
-                      child: onBack != null
-                          ? _IosBackButton(
-                              key: const ValueKey('back'),
-                              onTap: onBack!,
-                            )
-                          : const SizedBox(
-                              key: ValueKey('noback'), width: 44),
-                    ),
-                    const SizedBox(width: 18),
-                    Expanded(
-                      child: Center(child: OnboardingProgress(step: step)),
-                    ),
-                    const SizedBox(width: 4),
-                  ],
-                ),
-              ),
+        // On a wide desktop window this keeps the whole flow a comfortable,
+        // centered column instead of stretching phone-oriented content edge
+        // to edge. A no-op on phone widths, since Column already fills its
+        // (bounded) available height regardless of the width cap. Desktop
+        // gets a noticeably wider column than phone — wide enough for steps
+        // like AiModeScreen to lay their choices out side by side rather
+        // than as a stacked phone list.
+        child: Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: (Platform.isMacOS || Platform.isWindows) ? 760 : 480,
             ),
-            const SizedBox(height: 8),
-            Expanded(child: body),
-          ],
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                  child: SizedBox(
+                    height: 44,
+                    child: Row(
+                      children: [
+                        // AnimatedSwitcher so the back button fades in/out when a
+                        // step gains/loses it, without the whole header re-mounting.
+                        AnimatedSwitcher(
+                          duration: AppMotion.fast,
+                          child: onBack != null
+                              ? _IosBackButton(
+                                  key: const ValueKey('back'),
+                                  onTap: onBack!,
+                                )
+                              : const SizedBox(
+                                  key: ValueKey('noback'),
+                                  width: 44,
+                                ),
+                        ),
+                        const SizedBox(width: 18),
+                        Expanded(
+                          child: Center(child: OnboardingProgress(step: step)),
+                        ),
+                        const SizedBox(width: 4),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Expanded(child: body),
+              ],
+            ),
+          ),
         ),
       ),
     );

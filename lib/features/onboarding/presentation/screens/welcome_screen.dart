@@ -111,58 +111,66 @@ class _WelcomeScreenState extends State<WelcomeScreen>
             child: AnimatedBuilder(
               animation: _entranceController,
               builder: (context, _) {
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 28),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Spacer(flex: 5),
+                return Center(
+                  child: ConstrainedBox(
+                    // Keeps the hero text/button a comfortable reading width
+                    // on a wide desktop window; a no-op on phone widths. The
+                    // waveform background above stays full-bleed regardless.
+                    constraints: const BoxConstraints(maxWidth: 480),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 28),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Spacer(flex: 5),
 
-                      // Title
-                      Transform.translate(
-                        offset: Offset(0, _titleSlide.value),
-                        child: Opacity(
-                          opacity: _titleFade.value,
-                          child: Text(
-                            'Echo',
-                            style: GoogleFonts.oldStandardTt(
-                              fontSize: 80,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
-                              height: 1.1,
+                          // Title
+                          Transform.translate(
+                            offset: Offset(0, _titleSlide.value),
+                            child: Opacity(
+                              opacity: _titleFade.value,
+                              child: Text(
+                                'Echo',
+                                style: GoogleFonts.oldStandardTt(
+                                  fontSize: 80,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white,
+                                  height: 1.1,
+                                ),
+                              ),
                             ),
                           ),
-                        ),
-                      ),
 
-                      const SizedBox(height: 16),
+                          const SizedBox(height: 16),
 
-                      // Value proposition — sets the promise before any ask.
-                      Opacity(
-                        opacity: _titleFade.value,
-                        child: Text(
-                          'Your day, briefed aloud each morning.\nPrivate, and entirely on your phone.',
-                          style: GoogleFonts.nunito(
-                            fontSize: 18,
-                            height: 1.4,
-                            color: Colors.white.withValues(alpha: 0.85),
+                          // Value proposition — sets the promise before any ask.
+                          Opacity(
+                            opacity: _titleFade.value,
+                            child: Text(
+                              'Your day, briefed aloud each morning.\nPrivate, and entirely on your phone.',
+                              style: GoogleFonts.nunito(
+                                fontSize: 18,
+                                height: 1.4,
+                                color: Colors.white.withValues(alpha: 0.85),
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
 
-                      const SizedBox(height: 32),
+                          const SizedBox(height: 32),
 
-                      EchoButton(
-                        text: "Get Started",
-                        backgroundColor: const Color(0xFFF4F2EE),
-                        textColor: const Color(0xFF1E1E1E),
-                        showArrow: true,
-                        onPressed: () {
-                          context.read<OnBoardingCubit>().completeWelcome();
-                        },
+                          EchoButton(
+                            text: "Get Started",
+                            backgroundColor: const Color(0xFFF4F2EE),
+                            textColor: const Color(0xFF1E1E1E),
+                            showArrow: true,
+                            onPressed: () {
+                              context.read<OnBoardingCubit>().completeWelcome();
+                            },
+                          ),
+                          const SizedBox(height: 32),
+                        ],
                       ),
-                      const SizedBox(height: 32),
-                    ],
+                    ),
                   ),
                 );
               },

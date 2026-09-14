@@ -94,15 +94,25 @@ EchoAccent echoAccentFromId(String? id) => switch (id) {
 /// A chosen voice: which speaker, which accent, and how fast. [speed] is a 0..1
 /// slider value (0.5 = a natural narration pace) mapped to a rate by the TTS
 /// layer.
+///
+/// Desktop bypasses the slot × accent abstraction entirely — it has a real,
+/// named system voice list (whatever's installed via System Settings), so
+/// [directVoiceName]/[directVoiceLocale], when set, name a specific device
+/// voice directly and take priority over [voice]/[accent]. Phone never sets
+/// these; desktop always does once a voice has been resolved.
 class VoicePreference {
   final EchoVoiceSlot voice;
   final EchoAccent accent;
   final double speed;
+  final String? directVoiceName;
+  final String? directVoiceLocale;
 
   const VoicePreference({
     required this.voice,
     required this.accent,
     required this.speed,
+    this.directVoiceName,
+    this.directVoiceLocale,
   });
 
   static const VoicePreference fallback = VoicePreference(
@@ -110,6 +120,8 @@ class VoicePreference {
     accent: EchoAccent.us,
     speed: 0.5,
   );
+
+  bool get hasDirectVoice => directVoiceName != null && directVoiceLocale != null;
 
   VoicePreference copyWith({
     EchoVoiceSlot? voice,
@@ -120,25 +132,53 @@ class VoicePreference {
       voice: voice ?? this.voice,
       accent: accent ?? this.accent,
       speed: speed ?? this.speed,
+      directVoiceName: directVoiceName,
+      directVoiceLocale: directVoiceLocale,
     );
   }
 
-  String get previewLine => voice.previewLine;
+  /// Desktop only — picks a specific installed device voice by name, bypassing
+  /// the slot/accent abstraction.
+  VoicePreference withDirectVoice({required String name, required String locale}) {
+    return VoicePreference(
+      voice: voice,
+      accent: accent,
+      speed: speed,
+      directVoiceName: name,
+      directVoiceLocale: locale,
+    );
+  }
+
+  static const _directPreviewLine =
+      "Hi, this is how Echo will sound in your morning briefing.";
+
+  String get previewLine => hasDirectVoice ? _directPreviewLine : voice.previewLine;
 
   static const _kSlot = 'briefing_voice_slot';
   static const _kAccent = 'briefing_voice_accent';
   static const _kSpeed = 'speech_rate';
+  static const _kDirectName = 'briefing_voice_direct_name';
+  static const _kDirectLocale = 'briefing_voice_direct_locale';
 
   Future<void> persist(SharedPreferences prefs) async {
     await prefs.setString(_kSlot, voice.id);
     await prefs.setString(_kAccent, accent.id);
     await prefs.setDouble(_kSpeed, speed);
+    if (hasDirectVoice) {
+      await prefs.setString(_kDirectName, directVoiceName!);
+      await prefs.setString(_kDirectLocale, directVoiceLocale!);
+    } else {
+      await prefs.remove(_kDirectName);
+      await prefs.remove(_kDirectLocale);
+    }
   }
 
   /// Reads the persisted preference, migrating older layouts (the interim
   /// gender model and the original single-persona key) so users keep their voice.
   static VoicePreference read(SharedPreferences prefs) {
     final speed = prefs.getDouble(_kSpeed) ?? 0.5;
+    final directName = prefs.getString(_kDirectName);
+    final directLocale = prefs.getString(_kDirectLocale);
 
     final slot = prefs.getString(_kSlot);
     if (slot != null) {
@@ -146,6 +186,8 @@ class VoicePreference {
         voice: echoVoiceSlotFromId(slot),
         accent: echoAccentFromId(prefs.getString(_kAccent)),
         speed: speed,
+        directVoiceName: directName,
+        directVoiceLocale: directLocale,
       );
     }
 
@@ -156,6 +198,8 @@ class VoicePreference {
         voice: echoVoiceSlotFromId(legacy),
         accent: echoAccentFromId(prefs.getString('briefing_voice_accent')),
         speed: speed,
+        directVoiceName: directName,
+        directVoiceLocale: directLocale,
       );
     }
 

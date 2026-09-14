@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter/services.dart';
@@ -19,6 +20,14 @@ class OnBoardingCubit extends Cubit<OnBoardingState> {
   }
 
   Future<void> completeWelcome() async {
+    if (Platform.isMacOS || Platform.isWindows) {
+      // Desktop builds don't have a notification/calendar/SMS capture layer
+      // yet (that's phone-only for now), so the permissions step doesn't
+      // apply — asking for permissions that don't exist here would be
+      // dishonest UI. Skip straight to choosing the AI engine.
+      emit(AiModeStep(selectedMode: null, isModelDownloaded: false));
+      return;
+    }
     await checkPermissions();
   }
 
@@ -42,6 +51,11 @@ class OnBoardingCubit extends Cubit<OnBoardingState> {
         'checkNotificationPermission',
       );
       return result;
+      // This custom channel only has a native handler on Android — desktop
+      // (macOS/Windows) builds have nothing registered for it, which throws
+      // MissingPluginException rather than PlatformException.
+    } on MissingPluginException catch (_) {
+      return false;
     } on PlatformException catch (_) {
       return false;
     }
@@ -50,6 +64,8 @@ class OnBoardingCubit extends Cubit<OnBoardingState> {
   Future<void> _requestNotificationPermission() async {
     try {
       await _platform.invokeMethod('requestNotificationPermission');
+    } on MissingPluginException catch (_) {
+      // ignore
     } on PlatformException catch (_) {
       // ignore
     }

@@ -21,12 +21,21 @@ class EchoTts {
     VoicePreference pref,
   ) async {
     try {
-      await tts.setLanguage(pref.accent.localePrefix);
+      if (pref.hasDirectVoice) {
+        // Desktop: a specific installed device voice was chosen directly.
+        await tts.setLanguage(pref.directVoiceLocale!);
+        await tts.setVoice({
+          'name': pref.directVoiceName!,
+          'locale': pref.directVoiceLocale!,
+        });
+      } else {
+        await tts.setLanguage(pref.accent.localePrefix);
 
-      // Resolve the voice slot × accent to a distinct device speaker.
-      final voice = await VoiceCatalog.instance.resolveVoice(tts, pref);
-      if (voice != null) {
-        await tts.setVoice(voice);
+        // Resolve the voice slot × accent to a distinct device speaker.
+        final voice = await VoiceCatalog.instance.resolveVoice(tts, pref);
+        if (voice != null) {
+          await tts.setVoice(voice);
+        }
       }
 
       // Natural pitch; set AFTER the voice so the engine can't reset it.

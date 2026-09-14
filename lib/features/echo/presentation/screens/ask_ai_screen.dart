@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -15,19 +16,27 @@ import 'package:project_echo/features/echo/presentation/widgets/echo_mascot.dart
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AskAiScreen extends StatelessWidget {
-  const AskAiScreen({super.key});
+  /// True when rendered as a persistent desktop sidebar tab (inside
+  /// [DesktopShell], sitting alongside the sidebar) rather than pushed as a
+  /// full-screen phone route. Embedded mode drops the [EchoAppBar] — there's
+  /// nothing to "back" out of, the sidebar itself is the navigation.
+  final bool embedded;
+
+  const AskAiScreen({super.key, this.embedded = false});
 
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
       create: (context) => AskAiCubit(),
-      child: const _AskAiView(),
+      child: _AskAiView(embedded: embedded),
     );
   }
 }
 
 class _AskAiView extends StatefulWidget {
-  const _AskAiView();
+  final bool embedded;
+
+  const _AskAiView({required this.embedded});
 
   @override
   State<_AskAiView> createState() => _AskAiViewState();
@@ -39,6 +48,8 @@ class _AskAiViewState extends State<_AskAiView> {
   final TextEditingController _inputController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final FocusNode _focusNode = FocusNode();
+
+  static bool get _desktop => Platform.isMacOS || Platform.isWindows;
 
   // Audio State
   bool _isAudioMode = false;
@@ -52,6 +63,11 @@ class _AskAiViewState extends State<_AskAiView> {
   int _spokenLength = 0;
   bool _isSpeaking = false;
   final List<String> _ttsQueue = [];
+  // True once the model has finished generating the full answer. The TTS queue
+  // legitimately empties *between* streamed sentences while more text is still
+  // coming, so we must NOT drop back to idle on an empty queue until the answer
+  // is actually complete — otherwise the state flickers speaking→idle→speaking.
+  bool _answerComplete = false;
 
   @override
   void initState() {
@@ -82,28 +98,30 @@ class _AskAiViewState extends State<_AskAiView> {
   Future<bool> _initSpeech() async {
     if (_speech.isAvailable) return true;
     return await _speech.initialize(
+      // Only act on the terminal 'done' status. 'notListening' fires
+      // transiently mid-session (e.g. between phrases) and reacting to it
+      // caused the state to bounce out of listening prematurely.
       onStatus: (status) {
-        if (status == 'done' || status == 'notListening') {
-          if (_audioState == AudioState.listening &&
-              _userTranscription.isNotEmpty) {
-            _submitTranscription();
-          } else if (_audioState == AudioState.listening &&
-              _userTranscription.isEmpty) {
-            setState(() {
-              _audioState = AudioState.idle;
-            });
-          }
+        if (status != 'done') return;
+        if (_audioState != AudioState.listening) return;
+        if (_userTranscription.trim().isNotEmpty) {
+          _submitTranscription();
+        } else if (mounted) {
+          setState(() => _audioState = AudioState.idle);
         }
       },
       onError: (errorNotification) {
-        setState(() {
-          _audioState = AudioState.idle;
-        });
+        // A no-speech timeout isn't a real error — just return to idle quietly
+        // instead of surfacing it as a state change mid-listen.
+        if (_audioState == AudioState.listening && mounted) {
+          setState(() => _audioState = AudioState.idle);
+        }
       },
     );
   }
 
   void _startListening() async {
+    if (_desktop) return;
     setState(() {
       _isAudioMode = true;
     });
@@ -131,17 +149,18 @@ class _AskAiViewState extends State<_AskAiView> {
       _spokenLength = 0;
       _ttsQueue.clear();
       _isSpeaking = false;
+      _answerComplete = false;
     });
     _flutterTts.stop();
 
     _speech.listen(
       onResult: (result) {
-        setState(() {
-          _userTranscription = result.recognizedWords;
-          if (result.finalResult) {
-            _submitTranscription();
-          }
-        });
+        if (mounted) {
+          setState(() => _userTranscription = result.recognizedWords);
+        }
+        // Submit outside setState — it stops the recognizer and kicks off
+        // inference, which shouldn't run inside a build-triggering callback.
+        if (result.finalResult) _submitTranscription();
       },
       listenOptions: stt.SpeechListenOptions(
         listenFor: const Duration(seconds: 60),
@@ -171,10 +190,11 @@ class _AskAiViewState extends State<_AskAiView> {
       await _flutterTts.speak(textToSpeak);
     } else if (_ttsQueue.isEmpty &&
         !_isSpeaking &&
+        _answerComplete &&
         _audioState == AudioState.speaking) {
-      setState(() {
-        _audioState = AudioState.idle;
-      });
+      // Only settle to idle once the whole answer has been generated AND fully
+      // spoken — not on the transient gaps between streamed sentences.
+      if (mounted) setState(() => _audioState = AudioState.idle);
     }
   }
 
@@ -186,7 +206,10 @@ class _AskAiViewState extends State<_AskAiView> {
 
     if (lastMsg.sender == 'echo') {
       if (state.isSearching) {
-        if (_audioState != AudioState.processing) {
+        // Show "thinking" only until the first tokens arrive — never revert
+        // here once we've begun speaking.
+        if (_audioState != AudioState.speaking &&
+            _audioState != AudioState.processing) {
           setState(() => _audioState = AudioState.processing);
         }
       } else {
@@ -217,9 +240,12 @@ class _AskAiViewState extends State<_AskAiView> {
             if (remainingText.isNotEmpty) {
               _ttsQueue.add(remainingText);
               _spokenLength = currentText.length;
-              _speakNextInQueue();
             }
           }
+          // The full answer is now in the queue (or already spoken); allow the
+          // return to idle once the queue drains.
+          _answerComplete = true;
+          _speakNextInQueue();
         }
       }
     }
@@ -252,7 +278,11 @@ class _AskAiViewState extends State<_AskAiView> {
     return Scaffold(
       backgroundColor: context.colors.background,
       // Voice mode is a full-screen immersive experience — hide the app bar.
-      appBar: _isAudioMode ? null : const EchoAppBar(title: 'Ask Echo'),
+      // Embedded (desktop tab) mode has no app bar either: the sidebar is
+      // already the navigation, so a back arrow here would have nothing to do.
+      appBar: (_isAudioMode || widget.embedded)
+          ? null
+          : const EchoAppBar(title: 'Ask Echo'),
       body: BlocConsumer<AskAiCubit, AskAiState>(
         listener: (context, state) {
           if (state is AskAiMessageReceived) {
@@ -271,7 +301,13 @@ class _AskAiViewState extends State<_AskAiView> {
 
           final isDisabled = messages.any((m) => m.isGenerating) || isSearching;
 
-          return Stack(
+          // Immersive voice mode takes over the whole screen, full-bleed —
+          // never width-capped, unlike the normal chat view below.
+          if (_isAudioMode) {
+            return _buildVoiceOverlay(context, messages);
+          }
+
+          final chatStack = Stack(
             children: [
               Positioned.fill(
                 child: messages.isEmpty
@@ -279,10 +315,10 @@ class _AskAiViewState extends State<_AskAiView> {
                     : ListView.builder(
                         controller: _scrollController,
                         physics: const BouncingScrollPhysics(),
-                        padding: const EdgeInsets.only(
-                          left: 20,
-                          right: 20,
-                          top: 20,
+                        padding: EdgeInsets.only(
+                          left: widget.embedded ? 4 : 20,
+                          right: widget.embedded ? 4 : 20,
+                          top: widget.embedded ? 4 : 20,
                           bottom: 120, // space for input field
                         ),
                         itemCount: messages.length,
@@ -296,30 +332,31 @@ class _AskAiViewState extends State<_AskAiView> {
               ),
               Positioned(
                 bottom: 20,
-                left: 16,
-                right: 16,
+                left: widget.embedded ? 4 : 16,
+                right: widget.embedded ? 4 : 16,
                 child: SafeArea(
                   top: false,
                   child: _buildInputArea(context, isDisabled),
                 ),
               ),
-              // Immersive voice mode takes over the whole screen.
-              if (_isAudioMode)
-                Positioned.fill(
-                  child: _buildVoiceOverlay(context, messages),
-                ),
             ],
+          );
+
+          if (!(Platform.isMacOS || Platform.isWindows)) return chatStack;
+
+          // Desktop: a comfortable, centered conversation column instead of
+          // message bubbles and the input bar stretching edge to edge across
+          // a much wider window.
+          return Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 640),
+              child: chatStack,
+            ),
           );
         },
       ),
     );
   }
-
-  static const _suggestions = [
-    "What's on my schedule today?",
-    'Any messages from work I missed?',
-    'Summarize my notifications',
-  ];
 
   Widget _buildEmptyState() {
     final name = (_userName?.trim().isNotEmpty ?? false) ? _userName!.trim() : null;
@@ -330,7 +367,12 @@ class _AskAiViewState extends State<_AskAiView> {
           child: ConstrainedBox(
             constraints: BoxConstraints(minHeight: constraints.maxHeight),
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 118),
+              padding: EdgeInsets.fromLTRB(
+                widget.embedded ? 8 : 24,
+                0,
+                widget.embedded ? 8 : 24,
+                118,
+              ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -356,16 +398,6 @@ class _AskAiViewState extends State<_AskAiView> {
                       height: 1.5,
                     ),
                   ),
-                  const SizedBox(height: 26),
-                  for (final s in _suggestions)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: _SuggestionChip(
-                        text: s,
-                        onTap: () =>
-                            context.read<AskAiCubit>().sendMessage(s),
-                      ),
-                    ),
                 ],
               ),
             ),
@@ -780,9 +812,9 @@ class _AskAiViewState extends State<_AskAiView> {
               ],
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8),
+        padding: EdgeInsets.symmetric(horizontal: 8.0, vertical: _desktop ? 6 : 8),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Expanded(
               child: AnimatedSwitcher(
@@ -794,41 +826,47 @@ class _AskAiViewState extends State<_AskAiView> {
                     : _buildTextContent(isDisabled),
               ),
             ),
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: isDisabled && !_isAudioMode ? null : _toggleAudioMode,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                width: _isAudioMode ? 100 : 48,
-                height: _isAudioMode ? 100 : 48,
-                decoration: BoxDecoration(
-                  color: context.colors.background,
-                  shape: BoxShape.circle,
-                ),
-                child: _isAudioMode
-                    ? Icon(Icons.close_rounded, size: 22)
-                    : Padding(
-                        padding: const EdgeInsets.all(10.0),
-                        child: SvgPicture.asset(
-                          colorFilter: ColorFilter.mode(
-                            context.colors.textPrimary,
-                            BlendMode.srcIn,
+            // Voice mode relies on speech_to_text's macOS/Windows backend,
+            // which crashes the app on entry (TCC speech-recognition
+            // violation with no reliable fix found) — hide the entry point
+            // entirely on desktop rather than ship a button that crashes.
+            if (!_desktop) ...[
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: isDisabled && !_isAudioMode ? null : _toggleAudioMode,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  width: _isAudioMode ? 100 : 48,
+                  height: _isAudioMode ? 100 : 48,
+                  decoration: BoxDecoration(
+                    color: context.colors.background,
+                    shape: BoxShape.circle,
+                  ),
+                  child: _isAudioMode
+                      ? Icon(Icons.close_rounded, size: 22)
+                      : Padding(
+                          padding: const EdgeInsets.all(10.0),
+                          child: SvgPicture.asset(
+                            colorFilter: ColorFilter.mode(
+                              context.colors.textPrimary,
+                              BlendMode.srcIn,
+                            ),
+                            "assets/icons/audio_wave.svg",
+                            height: 22,
+                            width: 22,
                           ),
-                          "assets/icons/audio_wave.svg",
-                          height: 22,
-                          width: 22,
                         ),
-                      ),
+                ),
               ),
-            ),
+            ],
             if (!_isAudioMode) ...[
               const SizedBox(width: 8),
               GestureDetector(
                 onTap: isDisabled ? null : () => _sendInput(context),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
-                  width: 48,
-                  height: 48,
+                  width: _desktop ? 46 : 52,
+                  height: _desktop ? 46 : 52,
                   decoration: BoxDecoration(
                     color: isDisabled
                         ? context.colors.dividerColor
@@ -840,7 +878,7 @@ class _AskAiViewState extends State<_AskAiView> {
                     color: isDisabled
                         ? context.colors.textInverse.withValues(alpha: 0.7)
                         : context.colors.textInverse,
-                    size: 22,
+                    size: _desktop ? 20 : 24,
                   ),
                 ),
               ),
@@ -937,54 +975,6 @@ class _AskAiViewState extends State<_AskAiView> {
   }
 }
 
-/// A tappable starter prompt on the empty Ask Echo screen.
-class _SuggestionChip extends StatelessWidget {
-  final String text;
-  final VoidCallback onTap;
-  const _SuggestionChip({required this.text, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: context.colors.surface,
-      borderRadius: BorderRadius.circular(16),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: context.colors.dividerColor.withValues(alpha: 0.6),
-            ),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                Icons.auto_awesome_rounded,
-                size: 16,
-                color: context.colors.primaryGreen,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  text,
-                  style: GoogleFonts.nunito(
-                    fontSize: 14.5,
-                    fontWeight: FontWeight.w700,
-                    color: context.colors.textPrimary,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 class _AnimatedMessage extends StatelessWidget {
   final ChatMessage message;
@@ -1015,11 +1005,16 @@ class _MessageContent extends StatelessWidget {
 
   const _MessageContent({required this.message});
 
+  // Ask Echo's bubble sizing was tuned for a full-width phone screen; inside
+  // the desktop embedded chat pane (already a narrower column) the same
+  // padding/gaps read as oversized, so desktop trims them down.
+  static bool get _desktop => Platform.isMacOS || Platform.isWindows;
+
   @override
   Widget build(BuildContext context) {
     final isUser = message.sender == 'user';
     return Padding(
-      padding: const EdgeInsets.only(bottom: 24.0),
+      padding: EdgeInsets.only(bottom: _desktop ? 14.0 : 24.0),
       child: Align(
         alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
         child: isUser ? _buildUserMessage(context) : _buildAiMessage(context),
@@ -1032,18 +1027,21 @@ class _MessageContent extends StatelessWidget {
       constraints: BoxConstraints(
         maxWidth: MediaQuery.of(context).size.width * 0.75,
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      padding: EdgeInsets.symmetric(
+        horizontal: _desktop ? 15 : 20,
+        vertical: _desktop ? 9 : 14,
+      ),
       decoration: BoxDecoration(
         color: context.colors.buttonDark,
         borderRadius: BorderRadius.circular(
-          24,
+          _desktop ? 18 : 24,
         ).copyWith(bottomRight: const Radius.circular(8)),
       ),
       child: Text(
         message.text,
         style: GoogleFonts.nunito(
           color: context.colors.surface,
-          fontSize: 16,
+          fontSize: _desktop ? 14 : 16,
           fontWeight: FontWeight.w500,
           height: 1.4,
         ),
@@ -1060,7 +1058,7 @@ class _MessageContent extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          const EchoMascot(state: EchoState.thinking, size: 42),
+          EchoMascot(state: EchoState.thinking, size: _desktop ? 32 : 42),
           const SizedBox(width: 8),
           _thinkingBubble(context),
         ],
@@ -1071,11 +1069,16 @@ class _MessageContent extends StatelessWidget {
       constraints: BoxConstraints(
         maxWidth: MediaQuery.of(context).size.width * 0.82,
       ),
-      padding: const EdgeInsets.fromLTRB(16, 13, 16, 14),
+      padding: EdgeInsets.fromLTRB(
+        _desktop ? 13 : 16,
+        _desktop ? 9 : 13,
+        _desktop ? 13 : 16,
+        _desktop ? 10 : 14,
+      ),
       decoration: BoxDecoration(
         color: context.colors.surface,
         borderRadius: BorderRadius.circular(
-          20,
+          _desktop ? 15 : 20,
         ).copyWith(bottomLeft: const Radius.circular(6)),
       ),
       child: Column(
@@ -1083,7 +1086,7 @@ class _MessageContent extends StatelessWidget {
         children: [
           _buildEditorialText(message.text, context),
           if (message.ragSources.isNotEmpty) ...[
-            const SizedBox(height: 12),
+            SizedBox(height: _desktop ? 8 : 12),
             RagSourcesWidget(sources: message.ragSources),
           ],
         ],
@@ -1093,7 +1096,10 @@ class _MessageContent extends StatelessWidget {
 
   Widget _thinkingBubble(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+      padding: EdgeInsets.symmetric(
+        horizontal: _desktop ? 12 : 15,
+        vertical: _desktop ? 7 : 10,
+      ),
       decoration: BoxDecoration(
         color: context.selectionFill,
         borderRadius: BorderRadius.circular(
@@ -1235,9 +1241,8 @@ class RagSourcesWidgetState extends State<RagSourcesWidget> {
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeOutCubic,
       decoration: BoxDecoration(
-        color: context.colors.surface,
+        color: context.colors.background,
         borderRadius: BorderRadius.circular(_expanded ? 16 : 24),
-        border: Border.all(color: context.colors.dividerColor, width: 1),
         boxShadow: _expanded
             ? [
                 BoxShadow(
@@ -1259,7 +1264,10 @@ class RagSourcesWidgetState extends State<RagSourcesWidget> {
             },
             borderRadius: BorderRadius.circular(_expanded ? 16 : 24),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              padding: EdgeInsets.symmetric(
+                horizontal: _MessageContent._desktop ? 11 : 14,
+                vertical: _MessageContent._desktop ? 6 : 10,
+              ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
