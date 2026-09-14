@@ -22,6 +22,8 @@ import 'package:project_echo/core/services/local_notification_service.dart';
 import 'package:project_echo/core/services/streak_service.dart';
 import 'package:project_echo/core/services/widget_refresh_service.dart';
 import 'package:project_echo/features/echo/presentation/screens/streak_celebration_screen.dart';
+import 'package:project_echo/features/echo/presentation/screens/echo_mascot_preview.dart';
+import 'package:project_echo/core/presentation/animations/page_transitions.dart';
 import 'package:project_echo/features/profile/presentation/widgets/streak_calendar.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
@@ -315,6 +317,18 @@ class _ProfileViewState extends State<_ProfileView>
                     ),
                   ),
                 ),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: () => Navigator.of(context, rootNavigator: true)
+                        .push(bouncyRoute(const EchoMascotPreview())),
+                    icon: const Icon(Icons.blur_on_rounded, size: 18),
+                    label: const Text('Preview Echo mascot (debug)'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: context.colors.textSecondary,
+                    ),
+                  ),
+                ),
               ],
 
               const SizedBox(height: 120), // Padding for the bottom nav bar
@@ -396,9 +410,7 @@ class _ProfileViewState extends State<_ProfileView>
     WidgetRefreshService.refresh();
     if (context.mounted) {
       Navigator.of(context, rootNavigator: true).push(
-        MaterialPageRoute(
-          builder: (_) => StreakCelebrationScreen(days: info.current),
-        ),
+        bouncyRoute(StreakCelebrationScreen(days: info.current)),
       );
     }
   }
@@ -411,9 +423,7 @@ class _ProfileViewState extends State<_ProfileView>
     final days = info.current > 0 ? info.current : 3;
     if (context.mounted) {
       Navigator.of(context, rootNavigator: true).push(
-        MaterialPageRoute(
-          builder: (_) => StreakCelebrationScreen(days: days),
-        ),
+        bouncyRoute(StreakCelebrationScreen(days: days)),
       );
     }
   }
