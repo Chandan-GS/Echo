@@ -41,7 +41,7 @@ dependencies:
   fllama:
     git:
       url: https://github.com/Chandan-GS/fllama_patch.git
-      ref: main
+      ref: aeba177debac3687fb76d440b9b64d2642371e86
   tflite_flutter: ^0.12.1
   shared_preferences: ^2.5.5
   isar: ^3.1.0+1

@@ -24,12 +24,20 @@ tasks.register<Delete>("clean") {
 }
 
 subprojects {
-    pluginManager.withPlugin("com.android.library") {
-        val android = extensions.getByName("android") as com.android.build.gradle.LibraryExtension
-        if (android.namespace == null) {
-            android.namespace = project.group.toString()
+    val configureLibrary: () -> Unit = {
+        if (plugins.hasPlugin("com.android.library")) {
+            val android = extensions.getByName("android") as com.android.build.gradle.LibraryExtension
+            if (android.namespace == null) {
+                android.namespace = project.group.toString()
+            }
+            android.compileSdk = 36
+            android.ndkVersion = "26.1.10909125"
         }
-        android.ndkVersion = "26.1.10909125"
+    }
+    if (state.executed) {
+        configureLibrary()
+    } else {
+        afterEvaluate { configureLibrary() }
     }
     pluginManager.withPlugin("com.android.application") {
         val android = extensions.getByName("android") as com.android.build.gradle.internal.dsl.BaseAppModuleExtension
