@@ -28,5 +28,11 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Echo uses your local Wi-Fi network to discover and connect to the optional Echo Engine running on your computer, so your phone can offload briefing generation to it.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Echo needs microphone access so you can talk to Ask Echo using your voice.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Echo uses speech recognition to turn what you say into text when you talk to Ask Echo.</string>
 </dict>
 </plist>

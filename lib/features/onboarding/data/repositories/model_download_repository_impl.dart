@@ -7,6 +7,10 @@ class ModelDownloadRepositoryImpl implements ModelDownloadRepository {
   final String modelUrl =
       "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q3_k_m.gguf";
 
+  static const String fileName = 'qwen2.5_1.5b_instruct_q3_k_m.gguf';
+  static const String displayName = 'Qwen2.5 1.5B';
+  static const String sizeLabel = '~0.9 GB';
+
   /// The q3_k_m model is ~0.8 GB. Anything much smaller than this on disk is a
   /// truncated/partial download and must be treated as "not downloaded" so we
   /// don't hand a corrupt GGUF to the inference engine.
@@ -39,7 +43,7 @@ class ModelDownloadRepositoryImpl implements ModelDownloadRepository {
       } catch (_) {}
     }
 
-    final filePath = "${dir.path}/qwen2.5_1.5b_instruct_q3_k_m.gguf";
+    final filePath = "${dir.path}/$fileName";
     final file = File(filePath);
 
     // 2. Check if a *complete* model already exists. A partial file left by a
@@ -97,10 +101,17 @@ class ModelDownloadRepositoryImpl implements ModelDownloadRepository {
   @override
   Future<bool> isModelDownloaded() async {
     final dir = await getApplicationDocumentsDirectory();
-    final filePath = "${dir.path}/qwen2.5_1.5b_instruct_q3_k_m.gguf";
+    final filePath = "${dir.path}/$fileName";
     final file = File(filePath);
     if (!await file.exists()) return false;
     // Reject truncated/partial files that would crash offline inference.
     return await file.length() >= _minValidModelBytes;
+  }
+
+  @override
+  Future<String?> downloadedPathOrNull() async {
+    return await isModelDownloaded()
+        ? '${(await getApplicationDocumentsDirectory()).path}/$fileName'
+        : null;
   }
 }

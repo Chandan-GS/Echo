@@ -48,6 +48,11 @@ class LocalNotificationService {
         InitializationSettings(
           android: initializationSettingsAndroid,
           iOS: initializationSettingsDarwin,
+          // Same Darwin settings type covers macOS too — the plugin throws
+          // "macOS settings must be set when targeting macOS platform"
+          // without this, which otherwise crashes the app on cold start on
+          // the desktop build before it ever reaches runApp().
+          macOS: initializationSettingsDarwin,
         );
 
     await flutterLocalNotificationsPlugin.initialize(

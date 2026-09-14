@@ -6,10 +6,13 @@ import 'package:project_echo/main.dart';
 void main() {
   testWidgets('Echo boots to the home screen without crashing',
       (WidgetTester tester) async {
-    // Use a realistic phone-portrait viewport. The default 800x600 test surface
-    // is wide-and-short, which clips the full-height home layout.
-    tester.view.physicalSize = const Size(1170, 2532);
-    tester.view.devicePixelRatio = 3.0;
+    // Use a desktop-sized viewport. On a macOS/Windows test host the app
+    // renders the desktop three-pane shell (Platform.isMacOS/isWindows is
+    // true), which needs real width; a wide surface is also fine for the
+    // phone layout on other hosts. The default 800x600 is too cramped for the
+    // sidebar + right rail and overflows.
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 

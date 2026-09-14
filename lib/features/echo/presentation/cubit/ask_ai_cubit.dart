@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:fllama/fllama.dart';
 import 'package:project_echo/features/echo/data/datasources/briefing_prompt.dart';
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
@@ -10,6 +9,8 @@ import 'package:project_echo/features/echo/data/datasources/tflite_embedding_ser
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:project_echo/core/services/gemini_service.dart';
+import 'package:project_echo/core/services/desktop_engine_client.dart';
+import 'package:project_echo/core/services/offline_model_repository.dart';
 
 part 'ask_ai_state.dart';
 
@@ -35,10 +36,9 @@ class AskAiCubit extends Cubit<AskAiState> {
     int? echoIndex;
 
     try {
-      final dir = await getApplicationDocumentsDirectory();
-      final modelPath = '${dir.path}/qwen2.5_1.5b_instruct_q3_k_m.gguf';
+      final modelPath = await createOfflineModelRepository().downloadedPathOrNull();
 
-      if (!(await File(modelPath).exists())) {
+      if (modelPath == null) {
         _messages.add(
           ChatMessage(
             sender: 'echo',
@@ -56,10 +56,20 @@ class AskAiCubit extends Cubit<AskAiState> {
       }
 
       print('=== ASK AI: STARTING QUERY SEARCH ===\nQuery: $text');
-      // Run on-device RAG using all-MiniLM model
-      final queryEmbedding = await TfliteEmbeddingService.instance.getEmbedding(
-        text,
-      );
+      // Run on-device RAG using all-MiniLM model. The TensorFlow Lite native
+      // library isn't bundled on desktop (macOS/Windows), and notifications
+      // synced from the phone carry no embeddings anyway, so on desktop we skip
+      // embeddings entirely and fall back to keyword-only retrieval (the +0.4
+      // sender/source keyword boost below still surfaces relevant items).
+      List<double>? queryEmbedding;
+      if (!(Platform.isMacOS || Platform.isWindows)) {
+        try {
+          queryEmbedding =
+              await TfliteEmbeddingService.instance.getEmbedding(text);
+        } catch (e) {
+          print('Embedding unavailable — keyword-only retrieval: $e');
+        }
+      }
       final allNotifications = await IsarDataSource.getAllEntries();
       print('Total notifications in Isar: ${allNotifications.length}');
 
@@ -113,6 +123,30 @@ class AskAiCubit extends Cubit<AskAiState> {
               0.4; // Significant boost for matching the sender or source name precisely
         }
 
+        // Keyword boost for the notification's own text — metadata alone
+        // misses a plain-language query whose words simply appear in what
+        // the notification actually says. This matters most on desktop,
+        // which has no embeddings to fall back on (see the queryEmbedding
+        // guard above), so this is the only way content itself counts there.
+        final contentLower = e.content.toLowerCase();
+        final contentWords = contentLower
+            .split(RegExp(r'\W+'))
+            .where((w) => w.isNotEmpty && !stopWords.contains(w))
+            .toSet();
+        if (queryWords.any((qw) => contentWords.contains(qw))) {
+          similarity += 0.35;
+        }
+
+        // A query clearly asking about the weather should still find a
+        // weather notification even when neither the query nor the
+        // notification's sender ever uses the word "weather" itself — e.g. a
+        // system weather alert's sender is just "Google" and its content
+        // reads "29° in Bengaluru · Mostly cloudy", with zero literal
+        // keyword overlap against "what's the weather like today".
+        if (_isWeatherQuery(queryWords) && _looksLikeWeather(contentLower)) {
+          similarity += 0.5;
+        }
+
         return _ScoredNotification(e, similarity);
       }).toList();
 
@@ -146,18 +180,46 @@ class AskAiCubit extends Cubit<AskAiState> {
       }
       print('=====================================');
 
-      String contextString = 'No relevant notifications found in local vault.';
-      if (ragSources.isNotEmpty) {
-        contextString = ragSources
-            .map(
-              (e) => formatNotification(
-                source: e.source,
-                sender: e.sender,
-                content: e.content,
-              ),
-            )
-            .join('\n');
+      // No real match on an actual lookup question: don't hand a small local
+      // model an empty context and hope it improvises sensibly — on thin
+      // context, the 1.5B model reliably degenerates into paraphrasing its own
+      // system instruction back at the user instead of answering. Answer
+      // directly instead of invoking generation at all — the same defensive
+      // short-circuit the briefing cubit uses for a low RAG confidence score.
+      // Casual small talk ("hi", "thanks") never needed notification context
+      // in the first place, so it still goes to the model normally — the
+      // model generating a warm, natural reply here isn't the failure mode we
+      // were guarding against.
+      if (ragSources.isEmpty && !_isSmallTalk(text)) {
+        final name = (await SharedPreferences.getInstance())
+                .getString('user_name') ??
+            'sir';
+        _messages.add(
+          ChatMessage(
+            sender: 'echo',
+            text: _noMatchFallback(name, allNotifications),
+          ),
+        );
+        emit(
+          AskAiMessageReceived(
+            messages: List.from(_messages),
+            isSearching: false,
+          ),
+        );
+        return;
       }
+
+      final contextString = ragSources.isEmpty
+          ? 'No notifications needed — this is just a casual message.'
+          : ragSources
+              .map(
+                (e) => formatNotification(
+                  source: e.source,
+                  sender: e.sender,
+                  content: e.content,
+                ),
+              )
+              .join('\n');
 
       final echoMsgPlaceholder = ChatMessage(
         sender: 'echo',
@@ -180,13 +242,58 @@ class AskAiCubit extends Cubit<AskAiState> {
       final geminiApiKey = prefs.getString('gemini_api_key') ?? '';
       final userName = prefs.getString('user_name') ?? 'Sir';
 
+      // Phone-first, computer-optional — same bounded reachability check as
+      // the briefing cubit; falls straight through to on-device/Gemini if no
+      // desktop engine answers in time. Desktop builds never offload to
+      // ANOTHER desktop engine — this computer already generates locally, so
+      // "prefer a computer" only means anything on a phone. Without this
+      // guard, a desktop build that ever had prefer_desktop_engine=true
+      // (e.g. leftover from earlier testing) could discover and call itself
+      // over HTTP, which now correctly gets rejected once pairing has ever
+      // happened — better to just never attempt it on desktop.
+      final preferDesktopEngine = !(Platform.isMacOS || Platform.isWindows) &&
+          (prefs.getBool('prefer_desktop_engine') ?? false);
+      String? desktopHost;
+      if (preferDesktopEngine) {
+        desktopHost = await DesktopEngineClient.discoverHost(
+          cachedHost: prefs.getString('desktop_engine_host'),
+        );
+        if (desktopHost != null) {
+          await prefs.setString('desktop_engine_host', desktopHost);
+        }
+      }
+      final useDesktopEngine = desktopHost != null;
+
       final prompt = buildAskAiQwenPrompt(text, contextString, userName);
 
       print('=== ASK AI: LLM INPUT PROMPT ===');
       _debugPrintLongString(prompt);
       print('================================');
 
-      if (!isOfflineEngine && geminiApiKey.isNotEmpty) {
+      if (useDesktopEngine) {
+        final stream = DesktopEngineClient.generateStream(
+          host: desktopHost,
+          endpoint: 'ask',
+          prompt: prompt,
+        );
+        String cumulativeBuffer = '';
+
+        await for (final chunk in stream) {
+          if (isClosed) break;
+          if (chunk.isNotEmpty) {
+            cumulativeBuffer += chunk;
+            final lastIdx = echoIndex;
+            _messages[lastIdx] = _messages[lastIdx].copyWith(
+              text: cumulativeBuffer,
+            );
+            emit(AskAiMessageReceived(messages: List.from(_messages)));
+          }
+        }
+
+        final lastIdx = echoIndex;
+        _messages[lastIdx] = _messages[lastIdx].copyWith(isGenerating: false);
+        emit(AskAiMessageReceived(messages: List.from(_messages)));
+      } else if (!isOfflineEngine && geminiApiKey.isNotEmpty) {
         final stream = GeminiService.instance.generateStream(
           geminiApiKey,
           prompt,
@@ -306,6 +413,70 @@ class AskAiCubit extends Cubit<AskAiState> {
         ),
       );
     }
+  }
+
+  // Casual openers/closers that never need notification context to answer —
+  // matched as the whole (trimmed) message so a real question that happens to
+  // contain one of these words ("thanks for the update on my WhatsApp?")
+  // still falls through to normal RAG handling.
+  static final RegExp _smallTalkPattern = RegExp(
+    r"^(hi+|hey+|hello+|yo|sup|what'?s up|"
+    r"good\s*(morning|afternoon|evening|night)|"
+    r"how('?s| is| are) it going|how are you( doing)?|"
+    r"thanks?( you)?|thx|ty|"
+    r"ok(ay)?|cool|nice|great|got it|sounds good|"
+    r"bye|goodbye|see (you|ya)|good ?night)[\s!.?]*$",
+    caseSensitive: false,
+  );
+
+  bool _isSmallTalk(String text) => _smallTalkPattern.hasMatch(text.trim());
+
+  static const _weatherQueryWords = {
+    'weather', 'forecast', 'temperature', 'rain', 'raining', 'rainy',
+    'sunny', 'cloudy', 'climate', 'hot', 'cold', 'humid', 'humidity',
+    'storm', 'wind', 'windy', 'snow', 'snowing',
+  };
+
+  bool _isWeatherQuery(Set<String> queryWords) =>
+      queryWords.any(_weatherQueryWords.contains);
+
+  static final RegExp _degreePattern = RegExp(r'\d+\s*°');
+  static const _weatherContentMarkers = [
+    'cloudy', 'forecast', 'rain', 'sunny', 'humidity', 'storm',
+    'clear sky', 'overcast',
+  ];
+
+  bool _looksLikeWeather(String contentLower) {
+    if (_degreePattern.hasMatch(contentLower)) return true;
+    return _weatherContentMarkers.any(contentLower.contains);
+  }
+
+  /// A dead-end "I don't know" helps no one — point $name at what's actually
+  /// in the vault instead, so a miss still leaves them with something useful
+  /// to ask next.
+  String _noMatchFallback(String name, List<RawData> allNotifications) {
+    if (allNotifications.isEmpty) {
+      return "I haven't captured any notifications yet, $name — once some "
+          "come in, ask me anything about them.";
+    }
+
+    final counts = <String, int>{};
+    for (final n in allNotifications) {
+      final source = n.source.trim();
+      final label = source.isEmpty
+          ? 'Unknown'
+          : '${source[0].toUpperCase()}${source.substring(1).toLowerCase()}';
+      counts[label] = (counts[label] ?? 0) + 1;
+    }
+    final topSources = counts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final mentioned = topSources
+        .take(2)
+        .map((e) => '${e.value} from ${e.key}')
+        .join(' and ');
+
+    return "I don't see anything about that in your notifications, $name — "
+        "but I do have $mentioned if that's useful instead.";
   }
 
   double _cosineSimilarity(List<double>? a, List<double>? b) {

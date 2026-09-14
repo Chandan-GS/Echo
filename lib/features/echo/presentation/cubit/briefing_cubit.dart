@@ -6,7 +6,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:fllama/fllama.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:project_echo/features/echo/data/datasources/briefing_prompt.dart';
 import 'package:project_echo/features/onboarding/data/onboarding_personalization.dart';
 import 'package:project_echo/features/echo/data/datasources/priority_query_embedding.dart';
@@ -14,6 +13,9 @@ import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:project_echo/core/services/gemini_service.dart';
 import 'package:project_echo/core/services/widget_refresh_service.dart';
+import 'package:project_echo/core/services/phone_sync_service.dart';
+import 'package:project_echo/core/services/desktop_engine_client.dart';
+import 'package:project_echo/core/services/offline_model_repository.dart';
 
 part 'briefing_state.dart';
 
@@ -66,10 +68,9 @@ class BriefingCubit extends Cubit<BriefingState> {
     emit(BriefingGenerating());
 
     try {
-      final dir = await getApplicationDocumentsDirectory();
-      final modelPath = '${dir.path}/qwen2.5_1.5b_instruct_q3_k_m.gguf';
+      final modelPath = await createOfflineModelRepository().downloadedPathOrNull();
 
-      if (!(await File(modelPath).exists())) {
+      if (modelPath == null) {
         emit(
           BriefingError(
             'Model not found. Please complete the onboarding first.',
@@ -105,6 +106,28 @@ class BriefingCubit extends Cubit<BriefingState> {
       final userName = prefs.getString('user_name') ?? 'Sir';
       final tone = onboardingToneFromId(prefs.getString('briefing_tone'));
 
+      // Phone-first, computer-optional: if the user has opted in and a
+      // desktop Echo Engine is actually reachable right now, prefer it over
+      // both the on-device and Gemini paths. This check is bounded to well
+      // under a second so a missing/off desktop never noticeably delays
+      // generation — it just falls through to the existing behavior. Desktop
+      // builds never do this at all — this computer already generates
+      // locally, so "prefer a computer" only ever makes sense on a phone. A
+      // desktop build with a stale prefer_desktop_engine=true (e.g. leftover
+      // from testing) would otherwise discover and call itself over HTTP.
+      final preferDesktopEngine = !(Platform.isMacOS || Platform.isWindows) &&
+          (prefs.getBool('prefer_desktop_engine') ?? false);
+      String? desktopHost;
+      if (preferDesktopEngine) {
+        desktopHost = await DesktopEngineClient.discoverHost(
+          cachedHost: prefs.getString('desktop_engine_host'),
+        );
+        if (desktopHost != null) {
+          await prefs.setString('desktop_engine_host', desktopHost);
+        }
+      }
+      final useDesktopEngine = desktopHost != null;
+
       final StringBuffer buffer = StringBuffer();
       final Completer<void> done = Completer<void>();
       final controller = StreamController<String>();
@@ -131,6 +154,7 @@ class BriefingCubit extends Cubit<BriefingState> {
           rawText = stripFillerCommentary(rawText);
           rawText = separateListItems(rawText);
           rawText = autoBold(rawText);
+          rawText = sanitizeBoldMarkup(rawText);
 
           print(
             '=== ECHO GENERATED OUTPUT ===\n$rawText\n=============================',
@@ -156,6 +180,8 @@ class BriefingCubit extends Cubit<BriefingState> {
               // isolate (no Activity to receive it) — the widget's own
               // periodic tick covers that case instead.
               WidgetRefreshService.refresh();
+              // Push the fresh briefing to a connected computer, if any.
+              PhoneSyncService.instance.syncNow();
             } catch (_) {}
             emit(BriefingReady(rawText: rawText, ttsText: ttsText));
           }
@@ -167,16 +193,30 @@ class BriefingCubit extends Cubit<BriefingState> {
         contextObj['context'] as String,
         userName,
         toneInstruction: tone.promptInstruction,
-        // The on-device model copies the few-shot example verbatim; only give
-        // the concrete example to the stronger cloud model.
-        includeExample: !isOfflineEngine,
+        // Only the small on-device phone model copies the few-shot example
+        // verbatim; the stronger cloud and desktop-engine models handle it
+        // fine (and generate a better-shaped briefing with it).
+        includeExample: useDesktopEngine || !isOfflineEngine,
       );
 
       _debugPrintLongString(
         '=== LLM INPUT PROMPT ===\n$prompt\n========================',
       );
 
-      if (!isOfflineEngine && geminiApiKey.isNotEmpty) {
+      if (useDesktopEngine) {
+        final stream = DesktopEngineClient.generateStream(
+          host: desktopHost,
+          endpoint: 'briefing',
+          prompt: prompt,
+        );
+        stream.listen(
+          (chunk) {
+            if (chunk.isNotEmpty) controller.add(chunk);
+          },
+          onDone: () => controller.close(),
+          onError: (e) => controller.addError(e),
+        );
+      } else if (!isOfflineEngine && geminiApiKey.isNotEmpty) {
         final stream = GeminiService.instance.generateStream(geminiApiKey, prompt);
         stream.listen((response) {
           final chunk = response.text ?? '';
@@ -325,6 +365,24 @@ class BriefingCubit extends Cubit<BriefingState> {
           'context': 'No notifications available yet.',
           'highestScore': 0.0,
         };
+      }
+
+      // Desktop mirrors notifications from the phone WITHOUT embeddings (the
+      // sync payload omits the 384-float vectors, and TensorFlow Lite isn't
+      // available here to recompute them). So semantic scoring would be all
+      // zeros and wrongly trip the "no urgent tasks" fallback. Rank by recency
+      // instead and hand the model the latest signals to summarize.
+      if (Platform.isMacOS || Platform.isWindows) {
+        final recent = uniqueCandidates.values.toList()
+          ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+        final lines = recent.take(15).map(
+              (e) => formatNotification(
+                source: e.source,
+                sender: e.sender,
+                content: e.content,
+              ),
+            );
+        return {'context': lines.join('\n'), 'highestScore': 1.0};
       }
 
       // Semantic Scoring (RAG)

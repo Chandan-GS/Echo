@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
@@ -9,6 +10,7 @@ import 'package:project_echo/features/vault/presentation/widgets/category_detail
 import 'package:project_echo/core/presentation/animations/app_motion.dart';
 import 'package:project_echo/core/presentation/animations/fade_slide_in.dart';
 import 'package:project_echo/features/echo/presentation/widgets/echo_mascot.dart';
+import 'package:project_echo/features/vault/presentation/screens/desktop_vault_screen.dart';
 
 class VaultScreen extends StatelessWidget {
   const VaultScreen({super.key});
@@ -17,7 +19,9 @@ class VaultScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocProvider(
       create: (context) => VaultCubit()..loadEntries(),
-      child: const _VaultView(),
+      child: (Platform.isMacOS || Platform.isWindows)
+          ? const DesktopVaultScreen()
+          : const _VaultView(),
     );
   }
 }

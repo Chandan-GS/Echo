@@ -95,10 +95,13 @@ class ScheduleService {
   static Future<void> initialize() async {
     if (Platform.isAndroid) {
       await AndroidAlarmManager.initialize();
-    } else {
+    } else if (Platform.isIOS) {
       // iOS Fallback
       Workmanager().initialize(callbackDispatcher);
     }
+    // Workmanager has no macOS/Windows implementation — desktop briefing
+    // scheduling isn't wired up yet (this milestone is phone-first; the
+    // desktop build is the optional Echo Engine, not its own alarm clock).
   }
 
   static Future<void> updateSchedules(List<String> times) async {
@@ -161,7 +164,7 @@ class ScheduleService {
         );
         await WidgetRefreshService.refresh();
       }
-    } else {
+    } else if (Platform.isIOS) {
       // iOS uses generic periodic task, exact scheduling is not possible
       Workmanager().cancelAll();
       Workmanager().registerPeriodicTask(
@@ -175,5 +178,6 @@ class ScheduleService {
         ),
       );
     }
+    // macOS/Windows: no-op — see initialize() above.
   }
 }
