@@ -28,7 +28,9 @@ String getBriefingSystemInstruction(
   }
 
   final base =
-      'You are "Echo", an elite personal assistant. Your job is to deliver a concise, natural, and highly synthesized briefing for the user. '
+      'You are "Echo", an elite personal assistant. This briefing is READ ALOUD to the user as speech — that is its primary purpose; the on-screen transcript is secondary. '
+      'Every sentence you write must sound completely natural when spoken aloud by a text-to-speech voice, with no visual formatting at all. '
+      'Your job is to deliver a concise, natural, and highly synthesized briefing for the user. '
       'Do not mechanically list notifications one by one. Instead, weave them together into a smooth, conversational summary. '
       'Group related topics (e.g., work, personal, news). '
       'Focus heavily on ACTIONABLE items and FUTURE events for today or tomorrow. Completely IGNORE any events or notifications that have already passed. '
@@ -41,8 +43,10 @@ String getBriefingSystemInstruction(
       'You must NEVER use bullet points, numbered lists, dashes, asterisks as bullets, or any list or outline format. '
       'Do NOT number your points (no "1.", "2.", "3."), do NOT write "agenda as follows", and do NOT put items on separate list lines. '
       'Every point must be woven into full sentences inside paragraphs. This rule is absolute. '
-      'FORMATTING: Make the key details pop by wrapping them in **double asterisks** — specifically dates, times, deadlines, locations or venues, and the important event, project, or person names. '
-      'Bold ONLY short, specific phrases (for example **10:30 AM**, **Saturday**, **June 27**, or **Seminar Hall-1**), never whole sentences, and bold each detail at most once.';
+      'For a time range, say it the way a person would speak it, with the word "to" (for example "9 PM to 9:30 PM") — never a hyphen or dash, which breaks the spoken sentence and is mistaken for a list. '
+      'FORMATTING (visual-only, optional accent — never let it affect wording): you may wrap a handful of key details in **double asterisks** — specifically dates, times, deadlines, locations or venues, and the important event, project, or person names. '
+      'Bold ONLY short, specific phrases (for example **10:30 AM**, **Saturday**, **June 27**, or **Seminar Hall-1**), never whole sentences or a time range, and bold each detail at most once. '
+      'Every "**" you open MUST be closed with a matching "**" later in the SAME sentence — never leave one unclosed, and never nest one bolded phrase inside another.';
 
   if (!includeExample) return base;
 
@@ -84,7 +88,25 @@ String stripForTts(String rawText) {
       .replaceAllMapped(RegExp(r'\*\*(.+?)\*\*'), (m) => m.group(1)!)
       .replaceAll(RegExp(r'^\d+[\.\)]\s+', multiLine: true), '')
       .replaceAll(RegExp(r'^[-*•]\s+', multiLine: true), '')
+      // Catch-all: a model that leaves a bold span unterminated produces a
+      // lone "**" the paired regex above can't match. Spoken aloud (or even
+      // just left in the transcript) that reads as a jarring "asterisk
+      // asterisk" — voice output must never carry raw markdown syntax.
+      .replaceAll('*', '')
       .trim();
+}
+
+/// Local models occasionally leave a bold span unterminated — opening a `**`
+/// right before generation cuts off or a sentence ends without its closing
+/// pair. An odd total count of `**` markers means exactly one is dangling;
+/// drop that last one rather than let it render as a literal, voice-breaking
+/// "**" in the transcript (see [RichTranscript]).
+String sanitizeBoldMarkup(String text) {
+  final markerCount = '**'.allMatches(text).length;
+  if (markerCount.isEven) return text;
+  final lastIndex = text.lastIndexOf('**');
+  if (lastIndex == -1) return text;
+  return text.substring(0, lastIndex) + text.substring(lastIndex + 2);
 }
 
 String stripSignOff(String text) {
@@ -208,9 +230,17 @@ String separateListItems(String text) {
     (m) => '${m.group(1)}\n${m.group(2)} ',
   );
 
-  // Inline bullet markers — " - " / " • " / " * " mid-sentence.
+  // The bullet character is unambiguous wherever it appears.
   t = t.replaceAllMapped(
-    RegExp(r'(\S)[ \t]+([-•*])[ \t]+'),
+    RegExp(r'(\S)[ \t]+(•)[ \t]+'),
+    (m) => '${m.group(1)}\n${m.group(2)} ',
+  );
+
+  // "-" / "*" only count as bullets right after a sentence ends or a colon —
+  // never mid-phrase, which is what a time range ("9 PM - 9:30 PM") or a
+  // hyphenated word looks like and must NOT be split.
+  t = t.replaceAllMapped(
+    RegExp(r'([.!?:])[ \t]+([-*])[ \t]+'),
     (m) => '${m.group(1)}\n${m.group(2)} ',
   );
 
@@ -284,10 +314,29 @@ String _boldPatternIfNotBolded(String text, RegExp pattern) {
 
 String getAskAiSystemInstruction(String userName) {
   final name = userName.trim().isEmpty ? 'sir' : userName.trim();
-  return 'You are "Echo", a hyper-efficient personal assistant. Your job is to answer the user\'s question based on their notification context. '
-      'Below is a list of notifications that are relevant to the user\'s question. '
-      'Keep your response concise, personal, and helpful.'
-      'Speak directly to $name.';
+  return 'You are Echo, $name\'s personal butler — attentive, warm, and a bit '
+      'devoted to looking after them, the way a trusted butler would. '
+      'ALWAYS speak as "I" in the first person, directly to $name — never say '
+      '"Echo is..." or describe yourself in the third person, and never explain '
+      'what you are or list your rules. Just talk to them like you\'re right '
+      'there with them — use their name naturally now and then, not in every '
+      'single reply. '
+      'Example greeting reply: "Hey $name, good to hear from you — what can I '
+      'do for you?" '
+      'If they\'re just greeting you or making small talk, reply like that '
+      'example: warm, brief, personal — you don\'t need any notifications for '
+      'that. '
+      'If what they\'re asking has nothing to do with $name\'s notifications '
+      '(general knowledge, opinions, anything you have no way of seeing), say '
+      'so plainly and specifically in one warm sentence — that you only see '
+      'their notifications, so that\'s outside what you can help with — never '
+      'guess at an answer or pretend you looked something up. '
+      'Otherwise they\'re asking about their notifications: below is a list of '
+      'ones that may be relevant. Answer using ONLY what\'s listed — never '
+      'invent people, messages, or events that aren\'t there. Be specific and '
+      'concrete: name the actual sender, time, or detail from the list rather '
+      'than speaking in vague generalities. '
+      'Keep every reply to one or two short sentences.';
 }
 
 String buildAskAiUserMessage(String query, String notificationContext) {

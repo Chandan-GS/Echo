@@ -1,19 +1,21 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
-import 'package:project_echo/core/utils/download_utils.dart';
-import 'package:project_echo/features/onboarding/data/repositories/model_download_repository_impl.dart';
+import 'package:project_echo/core/services/offline_model_repository.dart';
+import 'package:project_echo/core/services/model_download_service.dart';
 import 'package:project_echo/features/onboarding/domain/repositories/model_download_repository.dart';
 
 /// Local AI model download & management for the Settings screen.
 ///
-/// Owns its own download state and reuses [ModelDownloadRepository] (the exact
-/// same flow used during onboarding's "AI mode" step). Renders three states:
+/// The download itself is tracked by the shared [ModelDownloadService], not
+/// local State — a plain Future keeps running when this widget is disposed
+/// (e.g. the user switches Settings tabs mid-download), but local State
+/// doesn't survive that, so the progress bar used to reset on return even
+/// though the download was still going. Renders three states:
 ///   * ready          — model is on disk, shows size + "Ready" and a Remove action
 ///   * not-downloaded — a Download button
-///   * downloading    — a live progress bar + percentage
+///   * downloading    — a live progress bar + percentage, from the shared service
 class ModelManagementSection extends StatefulWidget {
   const ModelManagementSection({super.key});
 
@@ -22,71 +24,72 @@ class ModelManagementSection extends StatefulWidget {
 }
 
 class _ModelManagementSectionState extends State<ModelManagementSection> {
-  bool _isDownloading = false;
   bool _isDownloaded = false;
   bool _isChecking = true;
-  double _downloadProgress = 0.0;
   String? _sizeStr;
 
   final ModelDownloadRepository _downloadRepository =
-      ModelDownloadRepositoryImpl();
+      createOfflineModelRepository();
 
   @override
   void initState() {
     super.initState();
+    ModelDownloadService.instance.state.addListener(_onDownloadStateChanged);
     _checkInitialDownloadState();
   }
 
-  Future<void> _checkInitialDownloadState() async {
+  @override
+  void dispose() {
+    ModelDownloadService.instance.state.removeListener(_onDownloadStateChanged);
+    super.dispose();
+  }
+
+  void _onDownloadStateChanged() {
+    final phase = ModelDownloadService.instance.state.value.phase;
+    if (phase == ModelDownloadPhase.done) {
+      _refreshDownloadedState();
+    } else if (phase == ModelDownloadPhase.error) {
+      _showSnack('Download failed. Please try again.');
+      ModelDownloadService.instance.acknowledge();
+    }
+  }
+
+  Future<void> _refreshDownloadedState() async {
     final downloaded = await _downloadRepository.isModelDownloaded();
     final size = downloaded ? await _getModelSize() : null;
     if (!mounted) return;
     setState(() {
       _isDownloaded = downloaded;
       _sizeStr = size;
-      _isChecking = false;
     });
   }
 
-  Future<void> _startDownload() async {
-    setState(() {
-      _isDownloading = true;
-      _downloadProgress = 0.0;
-    });
-
-    try {
-      await _downloadRepository.downloadModel(
-        onProgress: (received, total) {
-          if (!mounted) return;
-          setState(() {
-            _downloadProgress = computeDownloadProgress(received, total);
-          });
-        },
-      );
-
-      final size = await _getModelSize();
+  Future<void> _checkInitialDownloadState() async {
+    // A download already running (started from another screen before this one
+    // mounted) takes priority over a disk check — the ValueListenableBuilder
+    // below will immediately show its live progress.
+    if (ModelDownloadService.instance.isDownloading) {
       if (!mounted) return;
-      setState(() {
-        _isDownloading = false;
-        _isDownloaded = true;
-        _sizeStr = size;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _isDownloading = false);
-      debugPrint('Model download failed: $e');
-      _showSnack('Download failed. Please try again.');
+      setState(() => _isChecking = false);
+      return;
     }
+    await _refreshDownloadedState();
+    if (!mounted) return;
+    setState(() => _isChecking = false);
+  }
+
+  void _startDownload() {
+    ModelDownloadService.instance.startIfNeeded();
   }
 
   Future<void> _deleteModel() async {
     final confirmed = await _confirmDelete();
     if (confirmed != true) return;
     try {
-      final dir = await getApplicationDocumentsDirectory();
-      final file = File('${dir.path}/qwen2.5_1.5b_instruct_q3_k_m.gguf');
-      if (await file.exists()) {
-        await file.delete();
+      final path = await _downloadRepository.downloadedPathOrNull();
+      if (path != null) {
+        final file = File(path);
+        if (await file.exists()) await file.delete();
       }
     } catch (e) {
       debugPrint('Model delete failed: $e');
@@ -95,7 +98,6 @@ class _ModelManagementSectionState extends State<ModelManagementSection> {
     setState(() {
       _isDownloaded = false;
       _sizeStr = null;
-      _downloadProgress = 0.0;
     });
   }
 
@@ -150,10 +152,9 @@ class _ModelManagementSectionState extends State<ModelManagementSection> {
 
   Future<String?> _getModelSize() async {
     try {
-      final dir = await getApplicationDocumentsDirectory();
-      final file = File('${dir.path}/qwen2.5_1.5b_instruct_q3_k_m.gguf');
-      if (await file.exists()) {
-        final bytes = await file.length();
+      final path = await _downloadRepository.downloadedPathOrNull();
+      if (path != null) {
+        final bytes = await File(path).length();
         final gb = bytes / (1024 * 1024 * 1024);
         return '${gb.toStringAsFixed(1)} GB';
       }
@@ -195,23 +196,26 @@ class _ModelManagementSectionState extends State<ModelManagementSection> {
           ),
           const SizedBox(height: 4),
           Text(
-            'Qwen2.5 1.5B — runs offline, no API cost.',
+            '${offlineModelDisplayName()} — runs offline, no API cost.',
             style: GoogleFonts.nunito(
               fontSize: 13,
               color: colors.textSecondary,
             ),
           ),
           const SizedBox(height: 16),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 300),
-            child: _buildStateBody(colors),
+          ValueListenableBuilder<ModelDownloadState>(
+            valueListenable: ModelDownloadService.instance.state,
+            builder: (context, dlState, _) => AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              child: _buildStateBody(colors, dlState),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildStateBody(AppColors colors) {
+  Widget _buildStateBody(AppColors colors, ModelDownloadState dlState) {
     if (_isChecking) {
       return SizedBox(
         key: const ValueKey('checking'),
@@ -240,7 +244,7 @@ class _ModelManagementSectionState extends State<ModelManagementSection> {
       );
     }
 
-    if (_isDownloading) {
+    if (dlState.phase == ModelDownloadPhase.downloading) {
       return Column(
         key: const ValueKey('downloading'),
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -257,7 +261,7 @@ class _ModelManagementSectionState extends State<ModelManagementSection> {
                 ),
               ),
               Text(
-                '${(_downloadProgress * 100).toInt()}%',
+                '${(dlState.progress * 100).toInt()}%',
                 style: GoogleFonts.nunito(
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
@@ -270,7 +274,7 @@ class _ModelManagementSectionState extends State<ModelManagementSection> {
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
             child: LinearProgressIndicator(
-              value: _downloadProgress,
+              value: dlState.progress,
               minHeight: 10,
               backgroundColor: colors.dividerColor,
               valueColor:
@@ -293,7 +297,7 @@ class _ModelManagementSectionState extends State<ModelManagementSection> {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              '${_sizeStr ?? '0.9 GB'} · Ready',
+              '${_sizeStr ?? offlineModelSizeLabel()} · Ready',
               style: GoogleFonts.nunito(
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
@@ -301,17 +305,35 @@ class _ModelManagementSectionState extends State<ModelManagementSection> {
               ),
             ),
           ),
-          TextButton.icon(
-            onPressed: _deleteModel,
-            icon: const Icon(Icons.delete_outline_rounded, size: 18),
-            label: Text(
-              'Remove',
-              style: GoogleFonts.nunito(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
+          Material(
+            color: Colors.redAccent.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(10),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: _deleteModel,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.delete_outline_rounded,
+                      size: 16,
+                      color: Colors.redAccent,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Remove',
+                      style: GoogleFonts.nunito(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.redAccent,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-            style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
           ),
         ],
       );
@@ -325,7 +347,7 @@ class _ModelManagementSectionState extends State<ModelManagementSection> {
         onPressed: _startDownload,
         icon: const Icon(Icons.download_rounded, size: 20),
         label: Text(
-          'Download model (~0.9 GB)',
+          'Download model (${offlineModelSizeLabel()})',
           style: GoogleFonts.nunito(
             fontSize: 15,
             fontWeight: FontWeight.w700,

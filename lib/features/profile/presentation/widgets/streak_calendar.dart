@@ -6,6 +6,7 @@ import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/core/presentation/animations/pressable.dart';
 import 'package:project_echo/core/services/streak_service.dart';
 import 'package:project_echo/features/echo/presentation/screens/streak_celebration_screen.dart';
+import 'package:project_echo/features/echo/presentation/widgets/streak_flame.dart';
 
 /// The default in-app streak view: a bold green hero header with the streak
 /// count, and a month calendar where consecutive listened days join into a
@@ -189,7 +190,7 @@ class _Hero extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            const Text('🔥', style: TextStyle(fontSize: 40)),
+            const StreakFlame(size: 34),
             const SizedBox(width: 14),
             Expanded(
               child: Column(

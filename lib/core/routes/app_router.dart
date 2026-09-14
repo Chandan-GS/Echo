@@ -6,6 +6,7 @@ import 'package:project_echo/core/presentation/screens/main_scaffold.dart';
 import 'package:project_echo/core/presentation/animations/page_transitions.dart';
 import 'package:project_echo/features/vault/presentation/screens/vault_screen.dart';
 import 'package:project_echo/features/settings/presentation/screens/settings_screen.dart';
+import 'package:project_echo/features/settings/presentation/screens/scan_desktop_screen.dart';
 
 GoRouter createRouter(bool isOnboardingFinished) => GoRouter(
   initialLocation: isOnboardingFinished ? '/echo' : '/',
@@ -19,6 +20,11 @@ GoRouter createRouter(bool isOnboardingFinished) => GoRouter(
       path: '/echo/chat',
       pageBuilder: (context, state) =>
           slideUpPage(key: state.pageKey, child: const AskAiScreen()),
+    ),
+    GoRoute(
+      path: '/scan-desktop',
+      pageBuilder: (context, state) =>
+          slideUpPage(key: state.pageKey, child: const ScanDesktopScreen()),
     ),
     ShellRoute(
       builder: (context, state, child) {

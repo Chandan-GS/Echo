@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -109,16 +110,9 @@ class _PersonalizeScreenState extends State<PersonalizeScreen> {
         children: [
           _SectionTitle('How should Echo speak to you?'),
           const SizedBox(height: 12),
-          ...OnboardingTone.values.map(
-            (t) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: SelectableTile(
-                title: t.label,
-                subtitle: t.description,
-                isSelected: _tone == t,
-                onTap: () => setState(() => _tone = t),
-              ),
-            ),
+          _ToneTiles(
+            tone: _tone,
+            onSelect: (t) => setState(() => _tone = t),
           ),
           const SizedBox(height: 16),
           _SectionTitle('What matters most to you?'),
@@ -259,6 +253,62 @@ class _ThemePill extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// The tone choices. A stacked full-width list on phone (unchanged); on
+/// desktop, a two-up wrap so it reads as a set of cards rather than a phone
+/// list stretched across a much wider column. Uses a computed width (not a
+/// rigid GridView) since each tile's height varies with its subtitle length.
+class _ToneTiles extends StatelessWidget {
+  final OnboardingTone tone;
+  final ValueChanged<OnboardingTone> onSelect;
+
+  const _ToneTiles({required this.tone, required this.onSelect});
+
+  @override
+  Widget build(BuildContext context) {
+    if (!(Platform.isMacOS || Platform.isWindows)) {
+      return Column(
+        children: OnboardingTone.values
+            .map(
+              (t) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: SelectableTile(
+                  title: t.label,
+                  subtitle: t.description,
+                  isSelected: tone == t,
+                  onTap: () => onSelect(t),
+                ),
+              ),
+            )
+            .toList(),
+      );
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const spacing = 12.0;
+        final itemWidth = (constraints.maxWidth - spacing) / 2;
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: OnboardingTone.values
+              .map(
+                (t) => SizedBox(
+                  width: itemWidth,
+                  child: SelectableTile(
+                    title: t.label,
+                    subtitle: t.description,
+                    isSelected: tone == t,
+                    onTap: () => onSelect(t),
+                  ),
+                ),
+              )
+              .toList(),
+        );
+      },
     );
   }
 }

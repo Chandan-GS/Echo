@@ -15,6 +15,7 @@ import 'package:project_echo/features/settings/presentation/widgets/scheduled_br
 import 'package:project_echo/features/settings/presentation/widgets/voice_settings_section.dart';
 import 'package:project_echo/features/settings/presentation/widgets/tone_settings_section.dart';
 import 'package:project_echo/features/settings/presentation/widgets/model_management_section.dart';
+import 'package:project_echo/features/settings/presentation/widgets/desktop_engine_section.dart';
 import 'package:project_echo/core/presentation/animations/app_motion.dart';
 import 'package:project_echo/core/presentation/animations/fade_slide_in.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -26,7 +27,9 @@ import 'package:project_echo/features/echo/presentation/screens/echo_mascot_prev
 import 'package:project_echo/core/presentation/animations/page_transitions.dart';
 import 'package:project_echo/features/profile/presentation/widgets/streak_calendar.dart';
 import 'dart:io';
-import 'package:path_provider/path_provider.dart';
+import 'package:project_echo/core/services/offline_model_repository.dart';
+
+bool get _isDesktop => Platform.isMacOS || Platform.isWindows;
 
 /// The Profile tab: your streak calendar up top, then all app settings merged
 /// into the same screen (appearance, voice, tone, AI engine, schedule, debug).
@@ -78,11 +81,19 @@ class _ProfileViewState extends State<_ProfileView>
       body: SafeArea(
         child: SingleChildScrollView(
           physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsets.symmetric(horizontal: 24.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 20),
+          padding: EdgeInsets.symmetric(horizontal: _isDesktop ? 40.0 : 24.0),
+          // Desktop fills the window, so centre the content and cap it — a
+          // full-bleed settings form across a wide window reads as unfinished;
+          // ~1040 keeps the two columns comfortable.
+          child: Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: _isDesktop ? 1040 : double.infinity,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 20),
               FadeSlideIn(
                 child: Text(
                   'Profile',
@@ -104,154 +115,49 @@ class _ProfileViewState extends State<_ProfileView>
 
               const SizedBox(height: 32),
 
-              // Appearance Section
-              FadeSlideIn(
-                delay: AppMotion.staggerDelay(1),
-                child: Column(
+              // Desktop: a genuine two-column layout — not a narrow phone
+              // list centered in empty space. Phone: unchanged single column.
+              if (_isDesktop)
+                Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Appearance',
-                      style: GoogleFonts.nunito(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: context.colors.textPrimary,
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _appearanceSection(context),
+                          const SizedBox(height: 32),
+                          _voiceSection(context),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    const AppearanceSegmentedControl(),
+                    const SizedBox(width: 28),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _toneSection(context),
+                          const SizedBox(height: 32),
+                          _aiEngineSection(context),
+                          const SizedBox(height: 32),
+                          _scheduledSection(context),
+                        ],
+                      ),
+                    ),
                   ],
-                ),
-              ),
-              const SizedBox(height: 32),
+                )
+              else ...[
+                _appearanceSection(context),
+                const SizedBox(height: 32),
+                _voiceSection(context),
+                const SizedBox(height: 32),
+                _toneSection(context),
+                const SizedBox(height: 32),
+                _aiEngineSection(context),
+                const SizedBox(height: 32),
+                _scheduledSection(context),
+              ],
 
-              // Voice Section
-              FadeSlideIn(
-                delay: AppMotion.staggerDelay(2),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Voice',
-                      style: GoogleFonts.nunito(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: context.colors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'How Echo sounds when it reads your briefing.',
-                      style: GoogleFonts.nunito(
-                        fontSize: 14,
-                        color: context.colors.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    const VoiceSettingsSection(),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 32),
-
-              // Tone Section
-              FadeSlideIn(
-                delay: AppMotion.staggerDelay(3),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Tone',
-                      style: GoogleFonts.nunito(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: context.colors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'How Echo talks to you in every briefing.',
-                      style: GoogleFonts.nunito(
-                        fontSize: 14,
-                        color: context.colors.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    const ToneSettingsSection(),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 32),
-
-              // AI Engine Section
-              FadeSlideIn(
-                delay: AppMotion.staggerDelay(3),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'AI Engine',
-                      style: GoogleFonts.nunito(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: context.colors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    BlocBuilder<SettingsCubit, SettingsState>(
-                      builder: (context, state) {
-                        return FutureBuilder<String?>(
-                          future: _getModelSize(),
-                          builder: (context, snapshot) {
-                            final sizeStr = snapshot.data;
-                            return AiModeCard(
-                              isSelected: state.isOfflineEngine,
-                              icon: Icons.laptop_mac,
-                              title: 'Offline (Private)',
-                              tags: [
-                                'Qwen2.5 1.5B',
-                                sizeStr ?? '0.9 GB',
-                                'No API cost',
-                              ],
-                              speedLabel: 'Fast',
-                              isFast: true,
-                              onTap: () {
-                                context.read<SettingsCubit>().setAiEngine(
-                                  isOffline: true,
-                                );
-                              },
-                            );
-                          },
-                        );
-                      },
-                    ),
-                    const CloudEngineCard(),
-                    const SizedBox(height: 16),
-                    const ModelManagementSection(),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 32),
-
-              // Scheduled Briefings Section
-              FadeSlideIn(
-                delay: AppMotion.staggerDelay(4),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Scheduled Briefings',
-                      style: GoogleFonts.nunito(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: context.colors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    const ScheduledBriefingsSection(),
-                  ],
-                ),
-              ),
               // Debug-only tools: exercise flows that normally require waiting
               // for a real scheduled time or several real days to pass.
               if (kDebugMode) ...[
@@ -331,21 +237,151 @@ class _ProfileViewState extends State<_ProfileView>
                 ),
               ],
 
-              const SizedBox(height: 120), // Padding for the bottom nav bar
-            ],
+                  const SizedBox(height: 120), // Padding for the bottom nav bar
+                ],
+              ),
+            ),
           ),
         ),
       ),
     );
   }
 
+  Widget _sectionHeading(BuildContext context, String title, {String? subtitle}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: GoogleFonts.nunito(
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+            color: context.colors.textPrimary,
+          ),
+        ),
+        if (subtitle != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: GoogleFonts.nunito(fontSize: 14, color: context.colors.textSecondary),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _appearanceSection(BuildContext context) {
+    return FadeSlideIn(
+      delay: AppMotion.staggerDelay(1),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionHeading(context, 'Appearance'),
+          const SizedBox(height: 16),
+          const AppearanceSegmentedControl(),
+        ],
+      ),
+    );
+  }
+
+  Widget _voiceSection(BuildContext context) {
+    return FadeSlideIn(
+      delay: AppMotion.staggerDelay(2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionHeading(
+            context,
+            'Voice',
+            subtitle: 'How Echo sounds when it reads your briefing.',
+          ),
+          const SizedBox(height: 16),
+          const VoiceSettingsSection(),
+        ],
+      ),
+    );
+  }
+
+  Widget _toneSection(BuildContext context) {
+    return FadeSlideIn(
+      delay: AppMotion.staggerDelay(3),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionHeading(
+            context,
+            'Tone',
+            subtitle: 'How Echo talks to you in every briefing.',
+          ),
+          const SizedBox(height: 16),
+          const ToneSettingsSection(),
+        ],
+      ),
+    );
+  }
+
+  Widget _aiEngineSection(BuildContext context) {
+    return FadeSlideIn(
+      delay: AppMotion.staggerDelay(3),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionHeading(context, 'AI Engine'),
+          const SizedBox(height: 16),
+          BlocBuilder<SettingsCubit, SettingsState>(
+            builder: (context, state) {
+              return FutureBuilder<String?>(
+                future: _getModelSize(),
+                builder: (context, snapshot) {
+                  final sizeStr = snapshot.data;
+                  return AiModeCard(
+                    isSelected: state.isOfflineEngine,
+                    icon: Icons.laptop_mac,
+                    title: 'Offline (Private)',
+                    tags: [
+                      offlineModelDisplayName(),
+                      sizeStr ?? offlineModelSizeLabel(),
+                      'No API cost',
+                    ],
+                    speedLabel: 'Fast',
+                    isFast: true,
+                    onTap: () {
+                      context.read<SettingsCubit>().setAiEngine(isOffline: true);
+                    },
+                  );
+                },
+              );
+            },
+          ),
+          const CloudEngineCard(),
+          const SizedBox(height: 16),
+          const ModelManagementSection(),
+          const SizedBox(height: 16),
+          const DesktopEngineSection(),
+        ],
+      ),
+    );
+  }
+
+  Widget _scheduledSection(BuildContext context) {
+    return FadeSlideIn(
+      delay: AppMotion.staggerDelay(4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionHeading(context, 'Scheduled Briefings'),
+          const SizedBox(height: 16),
+          const ScheduledBriefingsSection(),
+        ],
+      ),
+    );
+  }
+
   Future<String?> _getModelSize() async {
     try {
-      final dir = await getApplicationDocumentsDirectory();
-      final modelPath = '${dir.path}/qwen2.5_1.5b_instruct_q3_k_m.gguf';
-      final file = File(modelPath);
-      if (await file.exists()) {
-        final bytes = await file.length();
+      final path = await createOfflineModelRepository().downloadedPathOrNull();
+      if (path != null) {
+        final bytes = await File(path).length();
         final gb = bytes / (1024 * 1024 * 1024);
         return '${gb.toStringAsFixed(1)} GB';
       }

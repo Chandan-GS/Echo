@@ -140,6 +140,34 @@ class StreakService {
     await prefs.remove(_kHeardCsv);
   }
 
+  /// Exports the raw streak state for phone→desktop sync.
+  Future<Map<String, dynamic>> exportSnapshot() async {
+    final prefs = await SharedPreferences.getInstance();
+    return {
+      'current': prefs.getInt(_kCurrent) ?? 0,
+      'longest': prefs.getInt(_kLongest) ?? 0,
+      'lastHeardDate': prefs.getString(_kLastHeardDate),
+      'heardCsv': prefs.getString(_kHeardCsv) ?? '',
+      'total': prefs.getInt(_kBriefingsHeard) ?? 0,
+    };
+  }
+
+  /// Overwrites the local streak state from a synced snapshot (desktop mirror).
+  /// The phone is authoritative, so this replaces rather than merges.
+  Future<void> importSnapshot(Map<String, dynamic> snap) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kCurrent, (snap['current'] as num?)?.toInt() ?? 0);
+    await prefs.setInt(_kLongest, (snap['longest'] as num?)?.toInt() ?? 0);
+    await prefs.setInt(_kBriefingsHeard, (snap['total'] as num?)?.toInt() ?? 0);
+    final last = snap['lastHeardDate'] as String?;
+    if (last != null) {
+      await prefs.setString(_kLastHeardDate, last);
+    } else {
+      await prefs.remove(_kLastHeardDate);
+    }
+    await prefs.setString(_kHeardCsv, (snap['heardCsv'] as String?) ?? '');
+  }
+
   String _dateKey(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 }

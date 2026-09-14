@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
@@ -26,6 +27,13 @@ class NotificationService with WidgetsBindingObserver {
     // causing every notification to be written twice.
     if (_initialized) return;
     _initialized = true;
+
+    // This whole class bridges Android's NotificationListenerService (see
+    // EchoNotificationListenerService.kt) — there's no native handler on
+    // macOS/Windows yet, so every call here would just throw
+    // MissingPluginException. Desktop-native capture is a separate,
+    // not-yet-built feature; skip entirely rather than spam errors.
+    if (Platform.isMacOS || Platform.isWindows) return;
 
     try {
       WidgetsBinding.instance.addObserver(this);

@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:project_echo/features/echo/presentation/cubit/briefing_cubit.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/services/widget_refresh_service.dart';
+import 'package:project_echo/core/services/phone_sync_service.dart';
 import 'package:project_echo/features/echo/presentation/screens/daily_briefing_screen.dart';
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
@@ -18,18 +19,24 @@ import 'package:project_echo/core/presentation/animations/app_motion.dart';
 import 'package:project_echo/core/presentation/animations/fade_slide_in.dart';
 
 class EchoHomeScreen extends StatelessWidget {
-  const EchoHomeScreen({super.key});
+  /// Desktop only — switches the shell to the persistent Ask Echo sidebar tab
+  /// instead of pushing the phone's full-screen `/echo/chat` route. Null on
+  /// phone, where the "Ask Echo" cards push the route as before.
+  final VoidCallback? onAskEcho;
+
+  const EchoHomeScreen({super.key, this.onAskEcho});
 
   @override
   Widget build(BuildContext context) {
     // BriefingCubit is provided by MainScaffold (app-scoped) so a briefing
     // keeps generating across tab switches; this screen just renders the view.
-    return const _EchoView();
+    return _EchoView(onAskEcho: onAskEcho);
   }
 }
 
 class _EchoView extends StatefulWidget {
-  const _EchoView();
+  final VoidCallback? onAskEcho;
+  const _EchoView({this.onAskEcho});
 
   @override
   State<_EchoView> createState() => _EchoViewState();
@@ -40,11 +47,15 @@ class _EchoViewState extends State<_EchoView> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Mirror this phone to a computer on the same Wi-Fi while the app is open.
+    PhoneSyncService.instance.startPeriodic();
+    PhoneSyncService.instance.syncNow();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    PhoneSyncService.instance.stopPeriodic();
     super.dispose();
   }
 
@@ -53,6 +64,7 @@ class _EchoViewState extends State<_EchoView> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       context.read<BriefingCubit>().loadCachedBriefing();
       WidgetRefreshService.refresh();
+      PhoneSyncService.instance.syncNow();
     }
   }
 
@@ -91,6 +103,7 @@ class _EchoViewState extends State<_EchoView> with WidgetsBindingObserver {
             return _InitialView(
               onGenerate: () =>
                   context.read<BriefingCubit>().generateBriefing(),
+              onAskEcho: widget.onAskEcho,
             );
           }
 
@@ -103,6 +116,7 @@ class _EchoViewState extends State<_EchoView> with WidgetsBindingObserver {
                   context.read<BriefingCubit>().playCachedBriefing(rawText),
               onRegenerate: () =>
                   context.read<BriefingCubit>().generateBriefing(),
+              onAskEcho: widget.onAskEcho,
             );
           }
 
@@ -129,7 +143,8 @@ class _EchoViewState extends State<_EchoView> with WidgetsBindingObserver {
 // ---------------------------------------------------------------------------
 class _InitialView extends StatelessWidget {
   final VoidCallback onGenerate;
-  const _InitialView({required this.onGenerate});
+  final VoidCallback? onAskEcho;
+  const _InitialView({required this.onGenerate, this.onAskEcho});
 
   @override
   Widget build(BuildContext context) {
@@ -146,7 +161,7 @@ class _InitialView extends StatelessWidget {
         title: 'Ask Echo',
         subtitle: 'Chat with your secure assistant',
         icon: Icons.chat_bubble_outline_rounded,
-        onTap: () => context.push('/echo/chat'),
+        onTap: onAskEcho ?? () => context.push('/echo/chat'),
         isPrimary: false,
       ),
     );
@@ -159,7 +174,12 @@ class _InitialView extends StatelessWidget {
 class _CachedView extends StatelessWidget {
   final VoidCallback onPlay;
   final VoidCallback onRegenerate;
-  const _CachedView({required this.onPlay, required this.onRegenerate});
+  final VoidCallback? onAskEcho;
+  const _CachedView({
+    required this.onPlay,
+    required this.onRegenerate,
+    this.onAskEcho,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -179,7 +199,7 @@ class _CachedView extends StatelessWidget {
               title: 'Ask Echo',
               subtitle: 'Chat',
               icon: Icons.chat_bubble_outline_rounded,
-              onTap: () => context.push('/echo/chat'),
+              onTap: onAskEcho ?? () => context.push('/echo/chat'),
               isPrimary: false,
               isSmall: true,
             ),
