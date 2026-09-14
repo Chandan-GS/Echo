@@ -8,7 +8,7 @@
 PRODUCT_NAME = project_echo
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.example.projectEcho
+PRODUCT_BUNDLE_IDENTIFIER = com.chandangs.echo
 
 // The copyright displayed in application information
 PRODUCT_COPYRIGHT = Copyright © 2026 com.example. All rights reserved.
