@@ -1,4 +1,4 @@
-package com.example.project_echo
+package com.chandangs.echo
 
 import android.content.Context
 import android.content.SharedPreferences

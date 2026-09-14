@@ -8,7 +8,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.project_echo"
+    namespace = "com.chandangs.echo"
     compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
@@ -39,7 +39,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.project_echo"
+        applicationId = "com.chandangs.echo"
         minSdk = 26
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

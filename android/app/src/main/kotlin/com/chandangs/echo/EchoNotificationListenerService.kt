@@ -1,4 +1,4 @@
-package com.example.project_echo
+package com.chandangs.echo
 
 import android.content.Context
 import android.content.Intent
@@ -12,7 +12,7 @@ class EchoNotificationListenerService : NotificationListenerService() {
     companion object {
         const val PREFS_NAME = "echo_notification_prefs"
         const val BUFFER_KEY = "notification_buffer"
-        const val ACTION_NEW_NOTIFICATION = "com.example.project_echo.NEW_NOTIFICATION"
+        const val ACTION_NEW_NOTIFICATION = "com.chandangs.echo.NEW_NOTIFICATION"
         const val EXTRA_NOTIFICATION_DATA = "notification_data"
 
         private var lastProcessedText: String = ""

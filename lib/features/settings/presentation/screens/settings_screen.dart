@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/features/onboarding/presentation/cubit/on_boarding_cubit.dart';
@@ -237,6 +238,9 @@ class _ProfileViewState extends State<_ProfileView>
                 ),
               ],
 
+                  const SizedBox(height: 32),
+                  _aboutSection(context),
+
                   const SizedBox(height: 120), // Padding for the bottom nav bar
                 ],
               ),
@@ -375,6 +379,116 @@ class _ProfileViewState extends State<_ProfileView>
         ],
       ),
     );
+  }
+
+  Widget _aboutSection(BuildContext context) {
+    return FadeSlideIn(
+      delay: AppMotion.staggerDelay(5),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionHeading(context, 'About'),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+            decoration: BoxDecoration(
+              color: context.colors.surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: context.colors.dividerColor),
+            ),
+            child: Column(
+              children: [
+                _aboutTile(
+                  context,
+                  icon: Icons.privacy_tip_outlined,
+                  title: 'Privacy Policy',
+                  subtitle: 'How your data is handled',
+                  onTap: () => _openUrl(
+                    context,
+                    'https://echo-mobileapp.vercel.app/privacy',
+                  ),
+                ),
+                Divider(height: 1, color: context.colors.dividerColor),
+                _aboutTile(
+                  context,
+                  icon: Icons.mail_outline_rounded,
+                  title: 'Contact the founder',
+                  subtitle: 'chandan1204@gmail.com — questions or bug reports',
+                  onTap: () => _openUrl(
+                    context,
+                    'mailto:chandan1204@gmail.com?subject=Echo%20feedback',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _aboutTile(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+          child: Row(
+            children: [
+              Icon(icon, size: 20, color: context.colors.primaryGreen),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: GoogleFonts.nunito(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: context.colors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: GoogleFonts.nunito(
+                        fontSize: 12.5,
+                        color: context.colors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 20,
+                color: context.colors.textSecondary,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openUrl(BuildContext context, String url) async {
+    try {
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Couldn't open that link: $e")),
+      );
+    }
   }
 
   Future<String?> _getModelSize() async {
