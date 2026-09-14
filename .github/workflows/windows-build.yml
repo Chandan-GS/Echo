@@ -1,0 +1,38 @@
+name: Build Windows App
+
+on:
+  push:
+    branches: [ main ] # Runs every time you push to the main branch
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'zulu'
+        java-version: '17'
+
+    - name: Set up Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        channel: 'stable'
+
+    - name: Install Dependencies
+      run: flutter pub get
+
+    - name: Enable Windows Desktop Support
+      run: flutter config --enable-windows-desktop
+
+    - name: Build Windows Executable
+      run: flutter build windows
+
+    - name: Upload Build Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: windows-build
+        path: build/windows/runner/Release/
