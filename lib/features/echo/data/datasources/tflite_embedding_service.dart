@@ -6,6 +6,10 @@ class TfliteEmbeddingService {
   static TfliteEmbeddingService? _instance;
   final BertTokenizer _tokenizer = BertTokenizer();
   Interpreter? _interpreter;
+  // Runs inference in a background isolate so it never blocks the UI thread.
+  // The synchronous `_interpreter.run*` calls were freezing the app for ~0.5s
+  // per notification while draining the capture backlog.
+  IsolateInterpreter? _isolateInterpreter;
   bool _initialized = false;
 
   TfliteEmbeddingService._();
@@ -24,6 +28,9 @@ class TfliteEmbeddingService {
       'assets/ai refs/all-MiniLM-L6-v2-quant.tflite',
       options: options,
     );
+    // Wrap the interpreter so inference executes off the main isolate.
+    _isolateInterpreter =
+        await IsolateInterpreter.create(address: _interpreter!.address);
     _initialized = true;
   }
 
@@ -78,7 +85,7 @@ class TfliteEmbeddingService {
         ),
       );
 
-      _interpreter!.runForMultipleInputs(inputs, {0: outputBuffer});
+      await _isolateInterpreter!.runForMultipleInputs(inputs, {0: outputBuffer});
 
       final tokenEmbeddings = outputBuffer.first;
       rawVector = List<double>.filled(embDim, 0.0);
@@ -105,7 +112,7 @@ class TfliteEmbeddingService {
         (_) => List<double>.filled(outputShape[1], 0.0),
       );
 
-      _interpreter!.runForMultipleInputs(inputs, {0: outputBuffer});
+      await _isolateInterpreter!.runForMultipleInputs(inputs, {0: outputBuffer});
       rawVector = outputBuffer.first;
     }
 
@@ -123,7 +130,9 @@ class TfliteEmbeddingService {
     return vector.map((val) => val / norm).toList();
   }
 
-  void dispose() {
+  Future<void> dispose() async {
+    await _isolateInterpreter?.close();
+    _isolateInterpreter = null;
     _interpreter?.close();
     _interpreter = null;
     _initialized = false;
