@@ -10,7 +10,6 @@ import 'package:project_echo/core/routes/app_router.dart';
 import 'package:project_echo/features/settings/presentation/cubit/settings_cubit.dart';
 import 'package:project_echo/features/settings/presentation/cubit/settings_state.dart';
 import 'package:go_router/go_router.dart';
-import 'package:project_echo/features/onboarding/data/repositories/model_download_repository_impl.dart';
 import 'package:project_echo/features/echo/data/services/notification_service.dart';
 import 'package:project_echo/core/services/schedule_service.dart';
 import 'package:project_echo/core/services/local_notification_service.dart';
@@ -66,20 +65,14 @@ void main() async {
   // Note: notification permission is requested in-context during onboarding
   // (the Permissions step), not abruptly at cold start.
 
-  // Only the offline engine needs the local model on disk. Cloud (Gemini)
-  // users legitimately finish onboarding without ever downloading it, and
-  // offline users may still be downloading it in the background — so guard on
-  // the selected engine and use the same size-validated check as the download
-  // repository. Otherwise these users get forced back through onboarding on
-  // every launch.
-  if (isOnboardingFinished) {
-    final isOfflineEngine = prefs.getBool('is_offline_engine') ?? true;
-    if (isOfflineEngine &&
-        !(await ModelDownloadRepositoryImpl().isModelDownloaded())) {
-      isOnboardingFinished = false;
-      await prefs.setBool('onboarding_finished', false);
-    }
-  }
+  // Once onboarding is complete, we never send the user back through it.
+  // This previously force-reset onboarding whenever the offline engine was
+  // selected without the model on disk — but that kicked users all the way
+  // back to onboarding (losing their home state) on any launch where they
+  // simply hadn't downloaded the model or the check transiently failed. The
+  // app now handles "offline engine, no model" gracefully in-feature (the
+  // briefing and Ask Echo prompt the user to download the model or switch to
+  // the cloud engine), so no reset is warranted.
 
   await NotificationService.instance.initialize();
 
