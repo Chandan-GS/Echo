@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:project_echo/core/services/analytics_service.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:project_echo/core/services/echo_tts.dart';
 import 'package:project_echo/core/presentation/animations/page_transitions.dart';
@@ -71,6 +72,7 @@ class _DailyBriefingScreenState extends State<DailyBriefingScreen> {
   /// (i.e. this is the first play today — recordHeard() is a no-op on
   /// subsequent toggles the same day), shows the full-screen celebration.
   Future<void> _celebrateStreakIfAdvanced() async {
+    Analytics.track('briefing_played');
     final service = StreakService();
     final before = await service.current();
     final after = await service.recordHeard();

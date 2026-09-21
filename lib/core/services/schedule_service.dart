@@ -79,6 +79,11 @@ Future<void> alarmCallback() async {
     await ScheduleService.updateSchedules(briefingTimes);
   } catch (e) {
     debugPrint('Background alarm task failed: $e');
+  } finally {
+    // This runs in a short-lived background isolate. Release Isar before the
+    // isolate is torn down — an abandoned open handle leaves the MDBX lock in a
+    // state the main app's next open can't acquire (MdbxError 11: Try again).
+    await IsarDataSource.close();
   }
 }
 
@@ -143,7 +148,12 @@ class ScheduleService {
             alarmTime,
             alarmId,
             alarmCallback,
-            exact: true,
+            // Inexact by design: Echo no longer declares the policy-restricted
+            // exact-alarm permissions, so this schedules a windowed alarm. A
+            // morning briefing arriving a few minutes after the set time is
+            // acceptable; allowWhileIdle keeps it from being deferred for hours
+            // in Doze.
+            exact: false,
             wakeup: true,
             allowWhileIdle: true,
             rescheduleOnReboot: true,

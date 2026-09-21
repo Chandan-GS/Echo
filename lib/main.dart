@@ -15,10 +15,23 @@ import 'package:project_echo/features/echo/data/services/notification_service.da
 import 'package:project_echo/core/services/schedule_service.dart';
 import 'package:project_echo/core/services/local_notification_service.dart';
 import 'package:project_echo/core/services/echo_server_service.dart';
+import 'package:project_echo/core/services/analytics_service.dart';
+import 'package:project_echo/core/services/remote_config_service.dart';
+import 'package:aptabase_flutter/aptabase_flutter.dart';
+import 'dart:async';
 
 void main() async {
   GoogleFonts.config.allowRuntimeFetching = false;
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Anonymous, opt-out usage analytics — no account, no PII, no user content.
+  // Only counts how often features are used (see Analytics / analytics_service).
+  await Aptabase.init('A-US-1016715353');
+  await Analytics.load();
+
+  // Fetch the remote Gemini model name in the background — never blocks launch;
+  // the cloud model isn't used until the user acts, by which time this resolves.
+  unawaited(RemoteConfigService.instance.load());
   // Echo is a portrait-only experience — lock it so layouts never have to
   // reflow into landscape.
   await SystemChrome.setPreferredOrientations([

@@ -9,10 +9,37 @@ class IsarDataSource {
   static Isar? _isar;
 
   static Future<Isar> get instance async {
-    if (_isar != null) return _isar!;
+    if (_isar != null && _isar!.isOpen) return _isar!;
+    // Reuse an instance already open in THIS isolate rather than re-opening —
+    // the static [_isar] field isn't shared across isolates (e.g. the alarm
+    // background isolate), so guard against a redundant open on the same env.
+    final existing = Isar.getInstance();
+    if (existing != null) {
+      _isar = existing;
+      return existing;
+    }
     final dir = await getApplicationDocumentsDirectory();
-    _isar = await Isar.open([RawDataSchema], directory: dir.path);
-    return _isar!;
+    // MdbxError (11) / EAGAIN on open is transient lock contention on the MDBX
+    // environment (e.g. a background isolate that hasn't released it yet).
+    // The error literally means "try again" — retry a few times before failing.
+    for (var attempt = 0; ; attempt++) {
+      try {
+        _isar = await Isar.open([RawDataSchema], directory: dir.path);
+        return _isar!;
+      } on IsarError {
+        if (attempt >= 3) rethrow;
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+      }
+    }
+  }
+
+  /// Closes the Isar instance for the current isolate and clears the cached
+  /// handle. Short-lived background isolates (e.g. the daily-briefing alarm)
+  /// MUST call this before they exit — otherwise the abandoned handle leaves
+  /// the MDBX lock in a state the next open can't acquire (MdbxError 11).
+  static Future<void> close() async {
+    await _isar?.close();
+    _isar = null;
   }
 
   static Future<void> seedMockData() async {

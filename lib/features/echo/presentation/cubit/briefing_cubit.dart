@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
+import 'package:project_echo/core/services/analytics_service.dart';
 import 'dart:math' as math;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -60,6 +61,9 @@ class BriefingCubit extends Cubit<BriefingState> {
   /// (re)loaded can occasionally come back blank, and a single retry against
   /// the now-warm model reliably produces a briefing.
   Future<void> generateBriefing({int attempt = 0}) async {
+    // Count feature usage only on the initial trigger, not internal retries.
+    if (attempt == 0) Analytics.track('briefing_generated');
+
     // Cancel any in-flight generation stream so a stale "Regenerate" run can't
     // fire its onDone and overwrite the new run's state.
     await _streamSub?.cancel();
@@ -68,16 +72,10 @@ class BriefingCubit extends Cubit<BriefingState> {
     emit(BriefingGenerating());
 
     try {
+      // The on-device model is only needed for the offline (Fllama) path below.
+      // Cloud (Gemini) and desktop-engine paths don't require it, so we no
+      // longer hard-gate here — the offline branch guards on modelPath itself.
       final modelPath = await createOfflineModelRepository().downloadedPathOrNull();
-
-      if (modelPath == null) {
-        emit(
-          BriefingError(
-            'Model not found. Please complete the onboarding first.',
-          ),
-        );
-        return;
-      }
 
       // ── 2. Get filtered context (Top 15 semantic RAG matches) ──────────────
       final contextObj = await _getFilteredContext();
@@ -229,6 +227,20 @@ class BriefingCubit extends Cubit<BriefingState> {
           controller.addError(e);
         });
       } else {
+        // Offline path — this is the only branch that actually needs the model.
+        if (modelPath == null) {
+          await _streamSub?.cancel();
+          _streamSub = null;
+          if (!done.isCompleted) done.complete();
+          await controller.close();
+          emit(
+            BriefingError(
+              "The on-device model isn't installed. Download it in Settings, "
+              'or switch to the cloud engine to generate without it.',
+            ),
+          );
+          return;
+        }
         final request = FllamaInferenceRequest(
           // fllama runs a llama.cpp server that splits the context across
           // parallel slots, so the usable per-request window is only
