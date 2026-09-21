@@ -1,6 +1,7 @@
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
+import 'package:project_echo/core/services/remote_config_service.dart';
 
 class GeminiService {
   static final GeminiService instance = GeminiService._internal();
@@ -42,7 +43,9 @@ class GeminiService {
     final cleanKey = apiKey.trim();
 
     final model = GenerativeModel(
-      model: 'gemini-2.5-flash',
+      // Model name is remote-controlled (see RemoteConfigService) so it can be
+      // swapped from config.json without shipping a new build.
+      model: RemoteConfigService.instance.geminiModel,
       apiKey: cleanKey,
       generationConfig: GenerationConfig(temperature: 0.3, topP: 0.9),
     );

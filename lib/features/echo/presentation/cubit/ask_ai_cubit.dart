@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
+import 'package:project_echo/core/services/analytics_service.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:fllama/fllama.dart';
 import 'package:project_echo/features/echo/data/datasources/briefing_prompt.dart';
@@ -23,6 +24,8 @@ class AskAiCubit extends Cubit<AskAiState> {
   Future<void> sendMessage(String text) async {
     if (text.trim().isEmpty) return;
 
+    Analytics.track('ask_echo_used');
+
     cancelInference();
 
     _messages.add(ChatMessage(sender: 'user', text: text));
@@ -36,24 +39,10 @@ class AskAiCubit extends Cubit<AskAiState> {
     int? echoIndex;
 
     try {
+      // The on-device model is only needed for the offline (Fllama) path below.
+      // Cloud (Gemini) and desktop-engine paths don't require it, so we no
+      // longer hard-gate here — the offline branch guards on modelPath itself.
       final modelPath = await createOfflineModelRepository().downloadedPathOrNull();
-
-      if (modelPath == null) {
-        _messages.add(
-          ChatMessage(
-            sender: 'echo',
-            text:
-                'Model not found. Please complete onboarding first to download the model.',
-          ),
-        );
-        emit(
-          AskAiMessageReceived(
-            messages: List.from(_messages),
-            isSearching: false,
-          ),
-        );
-        return;
-      }
 
       print('=== ASK AI: STARTING QUERY SEARCH ===\nQuery: $text');
       // Run on-device RAG using all-MiniLM model. The TensorFlow Lite native
@@ -326,6 +315,18 @@ class AskAiCubit extends Cubit<AskAiState> {
 
         emit(AskAiMessageReceived(messages: List.from(_messages)));
       } else {
+        // Offline path — this is the only branch that actually needs the model.
+        if (modelPath == null) {
+          final lastIdx = echoIndex;
+          _messages[lastIdx] = _messages[lastIdx].copyWith(
+            text:
+                "The on-device model isn't installed. Download it in Settings, "
+                'or switch to the cloud engine to use Ask Echo without it.',
+            isGenerating: false,
+          );
+          emit(AskAiMessageReceived(messages: List.from(_messages)));
+          return;
+        }
         final request = FllamaInferenceRequest(
           // fllama splits the context across parallel slots, so the usable
           // window is only contextSize / n_parallel. 16384 keeps the usable

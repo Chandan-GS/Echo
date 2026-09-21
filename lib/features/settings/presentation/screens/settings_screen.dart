@@ -17,6 +17,7 @@ import 'package:project_echo/features/settings/presentation/widgets/voice_settin
 import 'package:project_echo/features/settings/presentation/widgets/tone_settings_section.dart';
 import 'package:project_echo/features/settings/presentation/widgets/model_management_section.dart';
 import 'package:project_echo/features/settings/presentation/widgets/desktop_engine_section.dart';
+import 'package:project_echo/features/settings/presentation/widgets/analytics_toggle_section.dart';
 import 'package:project_echo/core/presentation/animations/app_motion.dart';
 import 'package:project_echo/core/presentation/animations/fade_slide_in.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -239,6 +240,9 @@ class _ProfileViewState extends State<_ProfileView>
               ],
 
                   const SizedBox(height: 32),
+                  _privacySection(context),
+
+                  const SizedBox(height: 32),
                   _aboutSection(context),
 
                   const SizedBox(height: 120), // Padding for the bottom nav bar
@@ -381,9 +385,27 @@ class _ProfileViewState extends State<_ProfileView>
     );
   }
 
-  Widget _aboutSection(BuildContext context) {
+  Widget _privacySection(BuildContext context) {
     return FadeSlideIn(
       delay: AppMotion.staggerDelay(5),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionHeading(
+            context,
+            'Privacy',
+            subtitle: 'Echo runs on your device. This stays optional.',
+          ),
+          const SizedBox(height: 16),
+          const AnalyticsToggleSection(),
+        ],
+      ),
+    );
+  }
+
+  Widget _aboutSection(BuildContext context) {
+    return FadeSlideIn(
+      delay: AppMotion.staggerDelay(6),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

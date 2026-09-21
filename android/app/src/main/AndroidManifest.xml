@@ -9,11 +9,17 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
-    
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <!-- Echo schedules the daily briefing with INEXACT alarms (a few minutes'
+         drift is fine for a morning briefing), so it deliberately does NOT use
+         the policy-restricted exact-alarm permissions. -->
+
+    <!-- WorkManager (pulled in transitively, used only on iOS) declares
+         FOREGROUND_SERVICE, but Echo never runs a foreground service on
+         Android. Strip it so Play doesn't require a foreground-service
+         declaration. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"
+        tools:node="remove" />
 
     <application
         android:label="Echo"
@@ -50,8 +56,7 @@
         <service android:name=".EchoNotificationListenerService"
             android:label="Echo Notification Listener"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
-            android:exported="true"
-            android:foregroundServiceType="dataSync">
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
