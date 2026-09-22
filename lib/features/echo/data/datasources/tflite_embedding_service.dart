@@ -12,6 +12,13 @@ class TfliteEmbeddingService {
   IsolateInterpreter? _isolateInterpreter;
   bool _initialized = false;
 
+  // Serializes embedding calls. The native interpreter isn't safe for
+  // concurrent use, and now that inference runs off the main isolate, a live
+  // notification arriving mid-drain (or an Ask Echo query) could otherwise
+  // start a second embedding while one is already in flight. Chain calls so
+  // exactly one runs at a time.
+  Future<void> _queue = Future<void>.value();
+
   TfliteEmbeddingService._();
 
   static TfliteEmbeddingService get instance {
@@ -34,7 +41,15 @@ class TfliteEmbeddingService {
     _initialized = true;
   }
 
-  Future<List<double>> getEmbedding(String text) async {
+  Future<List<double>> getEmbedding(String text) {
+    // Chain onto the queue so only one embedding runs at a time; swallow errors
+    // on the chain so a single failure can't wedge every later call.
+    final result = _queue.then((_) => _computeEmbedding(text));
+    _queue = result.then((_) {}, onError: (_) {});
+    return result;
+  }
+
+  Future<List<double>> _computeEmbedding(String text) async {
     await initialize();
 
     const int sequenceLength = 256;
