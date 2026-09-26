@@ -4,10 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:project_echo/core/presentation/widgets/echo_button.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
+import 'package:project_echo/features/echo/presentation/widgets/echo_mascot.dart';
 
 /// Shown when the last of today's to-dos is ticked off. Same dark canvas as
-/// the streak celebration: Echo's pearl orb springs in, a check draws itself,
-/// and a burst of green particles goes off behind it.
+/// the streak celebration: a happy Echo springs in, a tick badge draws itself
+/// on its corner, and a burst of green particles goes off behind it.
 class TodoCelebrationScreen extends StatefulWidget {
   final int done;
   final int tomorrow;
@@ -163,35 +164,33 @@ class _Orb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 150,
-      height: 150,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: const RadialGradient(
-          center: Alignment(-0.28, -0.4),
-          radius: 0.85,
-          colors: [
-            Color(0xFFFFFFFF),
-            Color(0xFFF4F9F0),
-            Color(0xFFD9E8DB),
-            Color(0xFFB4D1BA),
-            Color(0xFF9EC0A6),
-          ],
-          stops: [0.0, 0.16, 0.4, 0.7, 1.0],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF8FE0A6).withValues(alpha: 0.6),
-            spreadRadius: 2,
+    return SizedBox(
+      width: 190,
+      height: 190,
+      child: Stack(
+        children: [
+          const EchoMascot(
+            state: EchoState.happy,
+            size: 190,
+            showRings: false,
+            isDark: true,
           ),
-          BoxShadow(
-            color: const Color(0xFF7FE0A0).withValues(alpha: 0.55),
-            blurRadius: 70,
+          Positioned(
+            right: 24,
+            bottom: 26,
+            child: Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: const Color(0xFF49884F),
+                shape: BoxShape.circle,
+                border: Border.all(color: const Color(0xFF0D0D0D), width: 4),
+              ),
+              child: CustomPaint(painter: _BigCheck(check)),
+            ),
           ),
         ],
       ),
-      child: CustomPaint(painter: _BigCheck(check)),
     );
   }
 }
@@ -205,16 +204,16 @@ class _BigCheck extends CustomPainter {
     if (t <= 0) return;
     final w = size.width, h = size.height;
     final path = Path()
-      ..moveTo(w * 0.32, h * 0.52)
-      ..lineTo(w * 0.45, h * 0.65)
-      ..lineTo(w * 0.68, h * 0.38);
+      ..moveTo(w * 0.3, h * 0.52)
+      ..lineTo(w * 0.45, h * 0.66)
+      ..lineTo(w * 0.72, h * 0.37);
     final metric = path.computeMetrics().first;
     canvas.drawPath(
       metric.extractPath(0, metric.length * t),
       Paint()
-        ..color = const Color(0xFF2F5F35)
+        ..color = Colors.white
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 7
+        ..strokeWidth = 4.5
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round,
     );

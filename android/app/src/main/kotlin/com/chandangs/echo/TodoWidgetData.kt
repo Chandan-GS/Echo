@@ -72,9 +72,13 @@ object TodoWidgetData {
         }
     }
 
-    /** Ticks an item on or off. The app picks the change up when it resumes. */
+    /**
+     * Marks an item done or not. [done] is the CheckBox's new state on Android
+     * 12+; null (older versions) flips it. The app picks the change up when it
+     * resumes.
+     */
     @Synchronized
-    fun toggle(context: Context, id: Int) {
+    fun setDone(context: Context, id: Int, done: Boolean?) {
         val prefs = WidgetData.prefs(context)
         val raw = prefs.getString(ITEMS_KEY, null) ?: return
         try {
@@ -82,7 +86,7 @@ object TodoWidgetData {
             for (i in 0 until array.length()) {
                 val o = array.getJSONObject(i)
                 if (o.getInt("id") == id) {
-                    o.put("done", !o.optBoolean("done", false))
+                    o.put("done", done ?: !o.optBoolean("done", false))
                     break
                 }
             }
@@ -90,18 +94,5 @@ object TodoWidgetData {
         } catch (e: Exception) {
             Log.e("EchoTodoWidget", "Couldn't update to-do $id", e)
         }
-    }
-
-    /** "5 PM · in 2h 53m", or "Whenever you can today" for untimed items. */
-    fun whenLabel(todo: Todo): String {
-        val time = todo.time ?: return "Whenever you can today"
-        if (todo.sort >= 24 * 60) return time
-        val now = Calendar.getInstance()
-        val minutesNow = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
-        val until = todo.sort - minutesNow
-        if (until <= 0) return time
-        val h = until / 60
-        val m = until % 60
-        return if (h > 0) "$time · in ${h}h ${m}m" else "$time · in ${m}m"
     }
 }

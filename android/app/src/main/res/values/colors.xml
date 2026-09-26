@@ -8,7 +8,7 @@
     <color name="todo_widget_text">#1E1E1E</color>
     <color name="todo_widget_text2">#5A5A5A</color>
     <color name="todo_widget_green">#49884F</color>
-    <!-- The soft green tint used for the next-item row, pre-blended on the card -->
-    <color name="todo_widget_next_bg">#E0E6DC</color>
     <color name="todo_widget_track">#DCDAD3</color>
+    <color name="todo_widget_check_ring">#8C49884F</color>
+    <color name="todo_widget_divider">#1F5A5A5A</color>
 </resources>

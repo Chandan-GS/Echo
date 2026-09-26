@@ -58,7 +58,7 @@ class TodoGenerator {
       todos = parseMakeReply(reply);
     } else {
       todos = [
-        for (var i = 0; i < picked.length; i++)
+        for (final i in localPicks(picked))
           (title: localTitle(picked[i].entry, now), source: i + 1),
       ];
     }
@@ -105,7 +105,7 @@ class TodoGenerator {
       change = parsed.change;
     } else {
       add = [
-        for (var i = 0; i < fresh.length; i++)
+        for (final i in localPicks(fresh))
           (title: localTitle(fresh[i].entry, now), source: i + 1),
       ];
       change = const [];
@@ -134,15 +134,33 @@ class TodoGenerator {
     final offline = prefs.getBool('is_offline_engine') ?? true;
     final key = prefs.getString('gemini_api_key') ?? '';
     if (offline || key.isEmpty) return null;
+    debugPrint('=== TODO PROMPT ===\n$prompt\n==================');
     try {
-      debugPrint('=== TODO PROMPT ===\n$prompt\n==================');
       final reply = await GeminiService.instance.generateJson(
         key,
         prompt,
         systemInstruction: instruction,
       );
-      debugPrint('=== TODO REPLY ===\n$reply\n==================');
-      return reply;
+      debugPrint('=== TODO REPLY (json) ===\n$reply\n==================');
+      if (reply.trim().isNotEmpty) return reply;
+    } catch (e) {
+      debugPrint(
+        'To-do JSON call failed, retrying with the streaming call: $e',
+      );
+    }
+    // The streaming call is the one briefings and Ask Echo already rely on.
+    try {
+      final buffer = StringBuffer();
+      await for (final chunk in GeminiService.instance.generateStream(
+        key,
+        '$prompt\n\nReply with the JSON only.',
+        systemInstruction: instruction,
+      )) {
+        buffer.write(chunk.text ?? '');
+      }
+      final reply = buffer.toString();
+      debugPrint('=== TODO REPLY (stream) ===\n$reply\n==================');
+      return reply.trim().isEmpty ? null : reply;
     } catch (e) {
       debugPrint('To-do generation fell back to local titles: $e');
       return null;
