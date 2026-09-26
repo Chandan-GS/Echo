@@ -10,15 +10,27 @@ import 'package:project_echo/core/routes/app_router.dart';
 import 'package:project_echo/features/settings/presentation/cubit/settings_cubit.dart';
 import 'package:project_echo/features/settings/presentation/cubit/settings_state.dart';
 import 'package:go_router/go_router.dart';
-import 'package:project_echo/features/onboarding/data/repositories/model_download_repository_impl.dart';
 import 'package:project_echo/features/echo/data/services/notification_service.dart';
 import 'package:project_echo/core/services/schedule_service.dart';
 import 'package:project_echo/core/services/local_notification_service.dart';
 import 'package:project_echo/core/services/echo_server_service.dart';
+import 'package:project_echo/core/services/analytics_service.dart';
+import 'package:project_echo/core/services/remote_config_service.dart';
+import 'package:aptabase_flutter/aptabase_flutter.dart';
+import 'dart:async';
 
 void main() async {
   GoogleFonts.config.allowRuntimeFetching = false;
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Anonymous, opt-out usage analytics — no account, no PII, no user content.
+  // Only counts how often features are used (see Analytics / analytics_service).
+  await Aptabase.init('A-US-1016715353');
+  await Analytics.load();
+
+  // Fetch the remote Gemini model name in the background — never blocks launch;
+  // the cloud model isn't used until the user acts, by which time this resolves.
+  unawaited(RemoteConfigService.instance.load());
   // Echo is a portrait-only experience — lock it so layouts never have to
   // reflow into landscape.
   await SystemChrome.setPreferredOrientations([
@@ -26,7 +38,7 @@ void main() async {
     DeviceOrientation.portraitDown,
   ]);
   final prefs = await SharedPreferences.getInstance();
-  bool isOnboardingFinished = prefs.getBool('onboarding_finished') ?? false;
+  final isOnboardingFinished = prefs.getBool('onboarding_finished') ?? false;
 
   // Stamp the first-ever launch so the Profile screen can show "Member for N
   // days". Set once, never overwritten.
@@ -53,20 +65,9 @@ void main() async {
   // Note: notification permission is requested in-context during onboarding
   // (the Permissions step), not abruptly at cold start.
 
-  // Only the offline engine needs the local model on disk. Cloud (Gemini)
-  // users legitimately finish onboarding without ever downloading it, and
-  // offline users may still be downloading it in the background — so guard on
-  // the selected engine and use the same size-validated check as the download
-  // repository. Otherwise these users get forced back through onboarding on
-  // every launch.
-  if (isOnboardingFinished) {
-    final isOfflineEngine = prefs.getBool('is_offline_engine') ?? true;
-    if (isOfflineEngine &&
-        !(await ModelDownloadRepositoryImpl().isModelDownloaded())) {
-      isOnboardingFinished = false;
-      await prefs.setBool('onboarding_finished', false);
-    }
-  }
+  // Onboarding is never re-entered once finished. A missing on-device model is
+  // handled in-feature: the briefing and Ask Echo prompt the user to download
+  // it or switch to the cloud engine.
 
   await NotificationService.instance.initialize();
 

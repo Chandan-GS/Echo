@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:project_echo/core/services/analytics_service.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -202,6 +203,7 @@ class OnBoardingCubit extends Cubit<OnBoardingState> {
   }
 
   Future<void> finishOnboarding() async {
+    Analytics.track('onboarding_completed');
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('onboarding_finished', true);
     emit(OnBoardingFinished());

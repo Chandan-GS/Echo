@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:project_echo/core/services/analytics_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'settings_state.dart';
 import 'package:project_echo/core/services/schedule_service.dart';
@@ -73,6 +74,7 @@ class SettingsCubit extends Cubit<SettingsState> {
   }
 
   Future<void> setAiEngine({required bool isOffline}) async {
+    Analytics.track('engine_switched', {'offline': isOffline});
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('is_offline_engine', isOffline);
     emit(state.copyWith(isOfflineEngine: isOffline));
