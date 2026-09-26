@@ -38,11 +38,7 @@ final class VoiceStep extends OnBoardingState {
   final OnboardingTone tone;
   final Set<OnboardingInterest> interests;
 
-  VoiceStep({
-    required this.name,
-    required this.tone,
-    required this.interests,
-  });
+  VoiceStep({required this.name, required this.tone, required this.interests});
 }
 
 /// Plays a scripted, personalized sample briefing (on-device TTS) so the user

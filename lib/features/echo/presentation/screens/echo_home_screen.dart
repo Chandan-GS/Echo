@@ -286,7 +286,6 @@ class _HomeShell extends StatefulWidget {
   State<_HomeShell> createState() => _HomeShellState();
 }
 
-
 class _HomeShellState extends State<_HomeShell> {
   String? _userName;
 
@@ -336,9 +335,7 @@ class _HomeShellState extends State<_HomeShell> {
             const SizedBox(height: 8),
 
             // ── Hero: Echo, a calm luminous presence ──────────────────────
-            const FadeSlideIn(
-              child: Center(child: _HeroEcho()),
-            ),
+            const FadeSlideIn(child: Center(child: _HeroEcho())),
             const SizedBox(height: 16),
             FadeSlideIn(
               delay: AppMotion.staggerDelay(1),
@@ -427,14 +424,27 @@ class _HeroEcho extends StatefulWidget {
   State<_HeroEcho> createState() => _HeroEchoState();
 }
 
-class _HeroEchoState extends State<_HeroEcho> with SingleTickerProviderStateMixin {
+class _HeroEchoState extends State<_HeroEcho>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _hop = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 700),
   );
   late final Animation<double> _lift = TweenSequence<double>([
-    TweenSequenceItem(tween: Tween(begin: 0.0, end: -14.0).chain(CurveTween(curve: Curves.easeOut)), weight: 30),
-    TweenSequenceItem(tween: Tween(begin: -14.0, end: 0.0).chain(CurveTween(curve: Curves.easeIn)), weight: 30),
+    TweenSequenceItem(
+      tween: Tween(
+        begin: 0.0,
+        end: -14.0,
+      ).chain(CurveTween(curve: Curves.easeOut)),
+      weight: 30,
+    ),
+    TweenSequenceItem(
+      tween: Tween(
+        begin: -14.0,
+        end: 0.0,
+      ).chain(CurveTween(curve: Curves.easeIn)),
+      weight: 30,
+    ),
     TweenSequenceItem(tween: ConstantTween(0.0), weight: 40),
   ]).animate(_hop);
   bool _celebrating = false;
@@ -465,8 +475,8 @@ class _HeroEchoState extends State<_HeroEcho> with SingleTickerProviderStateMixi
         final mood = todo.phase != TodoPhase.idle
             ? EchoState.focused
             : _celebrating
-                ? EchoState.happy
-                : EchoState.idle;
+            ? EchoState.happy
+            : EchoState.idle;
         return AnimatedBuilder(
           animation: _lift,
           builder: (context, child) =>

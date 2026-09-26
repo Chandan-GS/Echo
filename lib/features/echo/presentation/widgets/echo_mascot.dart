@@ -94,7 +94,9 @@ class _EchoMascotState extends State<EchoMascot>
   }
 
   void _onPointer(PointerEvent e) {
-    if (e is PointerMoveEvent || e is PointerDownEvent || e is PointerHoverEvent) {
+    if (e is PointerMoveEvent ||
+        e is PointerDownEvent ||
+        e is PointerHoverEvent) {
       _pointer = e.position;
       _pointerMs = _clock.elapsedMilliseconds.toDouble();
     }
@@ -137,7 +139,9 @@ class _EchoMascotState extends State<EchoMascot>
     _gy += (target.dy - _gy) * eye;
     _hx += (_gx - _hx) * head;
     _hy += (_gy - _hy) * head;
-    final speed = dt > 0 ? math.sqrt(math.pow(_gx - pgx, 2) + math.pow(_gy - pgy, 2)) / dt : 0.0;
+    final speed = dt > 0
+        ? math.sqrt(math.pow(_gx - pgx, 2) + math.pow(_gy - pgy, 2)) / dt
+        : 0.0;
     _stretch = math.min(0.14, speed * 0.02);
   }
 
@@ -197,10 +201,7 @@ class _EchoMascotState extends State<EchoMascot>
         _triggerWink();
         widget.onTap?.call();
       },
-      child: MouseRegion(
-        onEnter: (_) => _triggerWink(),
-        child: mascot,
-      ),
+      child: MouseRegion(onEnter: (_) => _triggerWink(), child: mascot),
     );
 
     return SizedBox(width: widget.size, height: widget.size, child: mascot);
@@ -245,7 +246,8 @@ class _EchoPainter extends CustomPainter {
 
   /// Deterministic "random" in [0, 1), so behaviour needs no stored schedule.
   static double _seeded(int i, int salt) =>
-      (((i * 1103515245 + 12345 + salt * 2654435761) & 0x7fffffff) % 1000) / 1000.0;
+      (((i * 1103515245 + 12345 + salt * 2654435761) & 0x7fffffff) % 1000) /
+      1000.0;
 
   /// Where Echo looks when left alone: it darts to a new spot every ~2.6s
   /// (a quick move, then a hold), and every third glance comes back to look
@@ -269,7 +271,8 @@ class _EchoPainter extends CustomPainter {
     var open = 1.0;
     for (final i in [idx - 1, idx]) {
       final at = i * seg + _seeded(i, 11) * 2000;
-      for (final off in _seeded(i, 13) > 0.72 ? const [0.0, 260.0] : const [0.0]) {
+      for (final off
+          in _seeded(i, 13) > 0.72 ? const [0.0, 260.0] : const [0.0]) {
         final d = (ms - (at + off)) / 170;
         if (d >= 0 && d < 1) {
           open = math.min(open, 1 - (d < 0.5 ? d / 0.5 : (1 - d) / 0.5) * 0.9);
@@ -290,11 +293,13 @@ class _EchoPainter extends CustomPainter {
     final kind = pick < 0.28
         ? 'nod'
         : pick < 0.5
-            ? 'curious'
-            : pick < 0.66
-                ? 'bob'
-                : 'none';
-    final strength = (f < 0.55 || f > 0.82) ? 0.0 : math.sin(math.pi * (f - 0.55) / 0.27);
+        ? 'curious'
+        : pick < 0.66
+        ? 'bob'
+        : 'none';
+    final strength = (f < 0.55 || f > 0.82)
+        ? 0.0
+        : math.sin(math.pi * (f - 0.55) / 0.27);
     return (kind, strength);
   }
 
@@ -361,7 +366,10 @@ class _EchoPainter extends CustomPainter {
     // ── Orb + face: float, breathe, and a head that follows the eyes ─────────
     final (moment, strength) = _moment();
     final bob = moment == 'bob' ? s(6) * strength : 0.0;
-    final floatDy = s(dim ? 3 : (state == EchoState.focused ? 2.5 : 4)) * math.sin(t * _tau) - bob;
+    final floatDy =
+        s(dim ? 3 : (state == EchoState.focused ? 2.5 : 4)) *
+            math.sin(t * _tau) -
+        bob;
     final breathe = 1 + 0.03 * math.sin(t * _tau);
     double tiltDx = 0, tiltDy = 0, tiltRot = 0, tiltScale = 1.0;
     switch (state) {
@@ -417,11 +425,7 @@ class _EchoPainter extends CustomPainter {
   void _orb(Canvas canvas, Offset c, double r, bool dim) {
     final rect = Rect.fromCircle(center: c, radius: r);
     final body = dim
-        ? const [
-            Color(0xFFF1F2EC),
-            Color(0xFFD6E0D4),
-            Color(0xFFAAC0AE),
-          ]
+        ? const [Color(0xFFF1F2EC), Color(0xFFD6E0D4), Color(0xFFAAC0AE)]
         : const [
             Color(0xFFFFFFFF),
             Color(0xFFF4F9F0),
@@ -429,7 +433,9 @@ class _EchoPainter extends CustomPainter {
             Color(0xFFB4D1BA),
             Color(0xFF9EC0A6),
           ];
-    final stops = dim ? const [0.0, 0.55, 1.0] : const [0.0, 0.30, 0.60, 0.84, 1.0];
+    final stops = dim
+        ? const [0.0, 0.55, 1.0]
+        : const [0.0, 0.30, 0.60, 0.84, 1.0];
     canvas.drawCircle(
       c,
       r,
@@ -449,7 +455,11 @@ class _EchoPainter extends CustomPainter {
         ..shader = RadialGradient(
           center: const Alignment(0, 0.6),
           radius: 0.62,
-          colors: [_botShade.withValues(alpha: 0), _botShade.withValues(alpha: 0), _botShade.withValues(alpha: 0.30)],
+          colors: [
+            _botShade.withValues(alpha: 0),
+            _botShade.withValues(alpha: 0),
+            _botShade.withValues(alpha: 0.30),
+          ],
           stops: const [0.0, 0.72, 1.0],
         ).createShader(rect),
     );
@@ -458,12 +468,19 @@ class _EchoPainter extends CustomPainter {
     canvas.save();
     canvas.translate(specC.dx, specC.dy);
     canvas.rotate(-0.42);
-    final specRect = Rect.fromCenter(center: Offset.zero, width: r * 0.86, height: r * 0.54);
+    final specRect = Rect.fromCenter(
+      center: Offset.zero,
+      width: r * 0.86,
+      height: r * 0.54,
+    );
     canvas.drawOval(
       specRect,
       Paint()
         ..shader = RadialGradient(
-          colors: [Colors.white.withValues(alpha: 0.95), Colors.white.withValues(alpha: 0)],
+          colors: [
+            Colors.white.withValues(alpha: 0.95),
+            Colors.white.withValues(alpha: 0),
+          ],
         ).createShader(specRect)
         ..maskFilter = MaskFilter.blur(BlurStyle.normal, r * 0.06),
     );
@@ -498,7 +515,12 @@ class _EchoPainter extends CustomPainter {
         canvas.drawPath(
           Path()
             ..moveTo(p(cx - 7, 123).dx, p(cx - 7, 123).dy)
-            ..quadraticBezierTo(p(cx, 112).dx, p(cx, 112).dy, p(cx + 7, 123).dx, p(cx + 7, 123).dy),
+            ..quadraticBezierTo(
+              p(cx, 112).dx,
+              p(cx, 112).dy,
+              p(cx + 7, 123).dx,
+              p(cx + 7, 123).dy,
+            ),
           arc,
         );
       }
@@ -506,7 +528,8 @@ class _EchoPainter extends CustomPainter {
       return;
     }
 
-    final open = state == EchoState.idle ||
+    final open =
+        state == EchoState.idle ||
         state == EchoState.listening ||
         state == EchoState.focused;
     if (open) {
@@ -524,12 +547,18 @@ class _EchoPainter extends CustomPainter {
         canvas.save();
         canvas.translate(c.dx, c.dy);
         canvas.scale(sx, sy * extraY);
-        canvas.drawOval(Rect.fromCenter(center: Offset.zero, width: w, height: h), ink);
+        canvas.drawOval(
+          Rect.fromCenter(center: Offset.zero, width: w, height: h),
+          ink,
+        );
         canvas.restore();
         // A sparkle that stays put as the eye moves, so the eye reads round.
         if (sy * extraY > 0.5) {
           canvas.drawCircle(
-            Offset(c.dx + s(2) - s(1.6) * gaze.dx, c.dy - s(3.6) - s(1.3) * gaze.dy),
+            Offset(
+              c.dx + s(2) - s(1.6) * gaze.dx,
+              c.dy - s(3.6) - s(1.3) * gaze.dy,
+            ),
             s(2),
             glint,
           );
@@ -549,10 +578,20 @@ class _EchoPainter extends CustomPainter {
         ..strokeCap = StrokeCap.round;
       final l = Path()
         ..moveTo(p(101, 119).dx, p(101, 119).dy)
-        ..quadraticBezierTo(p(108, 127).dx, p(108, 127).dy, p(115, 119).dx, p(115, 119).dy);
+        ..quadraticBezierTo(
+          p(108, 127).dx,
+          p(108, 127).dy,
+          p(115, 119).dx,
+          p(115, 119).dy,
+        );
       final r = Path()
         ..moveTo(p(125, 119).dx, p(125, 119).dy)
-        ..quadraticBezierTo(p(132, 127).dx, p(132, 127).dy, p(139, 119).dx, p(139, 119).dy);
+        ..quadraticBezierTo(
+          p(132, 127).dx,
+          p(132, 127).dy,
+          p(139, 119).dx,
+          p(139, 119).dy,
+        );
       canvas.drawPath(l, paint);
       canvas.drawPath(r, paint);
     }
@@ -572,7 +611,9 @@ class _EchoPainter extends CustomPainter {
         Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = 6.5 * k
-          ..color = _ringGreen.withValues(alpha: (opacity * 0.85).clamp(0.0, 1.0))
+          ..color = _ringGreen.withValues(
+            alpha: (opacity * 0.85).clamp(0.0, 1.0),
+          )
           ..maskFilter = MaskFilter.blur(BlurStyle.normal, 4.5 * k),
       );
       return;
@@ -603,14 +644,22 @@ class _EchoPainter extends CustomPainter {
   }
 
   // Three staggered rings rippling inward (listening) or outward (speaking).
-  void _rippleRings(Canvas canvas, Offset c, double base, double k, {required bool inward}) {
+  void _rippleRings(
+    Canvas canvas,
+    Offset c,
+    double base,
+    double k, {
+    required bool inward,
+  }) {
     for (int i = 0; i < 3; i++) {
       final ph = (t + i / 3) % 1.0;
       final double scale;
       final double op;
       if (inward) {
         scale = _lerp(1.35, 0.55, ph);
-        op = ph < 0.42 ? _lerp(0, 0.9, ph / 0.42) : _lerp(0.9, 0, (ph - 0.42) / 0.58);
+        op = ph < 0.42
+            ? _lerp(0, 0.9, ph / 0.42)
+            : _lerp(0.9, 0, (ph - 0.42) / 0.58);
       } else {
         scale = _lerp(0.62, 1.35, ph);
         op = _lerp(0.9, 0, ph);
@@ -625,7 +674,11 @@ class _EchoPainter extends CustomPainter {
     canvas.save();
     canvas.translate(c.dx, c.dy);
     canvas.rotate(-0.32 + math.sin(t * _tau) * 0.05);
-    final rect = Rect.fromCenter(center: Offset.zero, width: 164 * k, height: 66 * k);
+    final rect = Rect.fromCenter(
+      center: Offset.zero,
+      width: 164 * k,
+      height: 66 * k,
+    );
     final Paint paint;
     if (voiceGlow) {
       paint = Paint()
@@ -659,7 +712,11 @@ class _EchoPainter extends CustomPainter {
     canvas.restore();
   }
 
-  void _zzz(Canvas canvas, Offset Function(double, double) p, double Function(double) s) {
+  void _zzz(
+    Canvas canvas,
+    Offset Function(double, double) p,
+    double Function(double) s,
+  ) {
     final paint = Paint()
       ..color = const Color(0xFF5A6B5C)
       ..style = PaintingStyle.stroke
@@ -671,12 +728,17 @@ class _EchoPainter extends CustomPainter {
       final op = ph < 0.3 ? ph / 0.3 : (1 - (ph - 0.3) / 0.7);
       final rise = -ph * s(16);
       final dx = ph * s(8);
-      paint.color = const Color(0xFF5A6B5C).withValues(alpha: op.clamp(0.0, 1.0));
+      paint.color = const Color(
+        0xFF5A6B5C,
+      ).withValues(alpha: op.clamp(0.0, 1.0));
       final path = Path()
         ..moveTo(p(x, y).dx + dx, p(x, y).dy + rise)
         ..lineTo(p(x + w, y).dx + dx, p(x + w, y).dy + rise)
         ..lineTo(p(x, y + w * 1.1).dx + dx, p(x, y + w * 1.1).dy + rise)
-        ..lineTo(p(x + w, y + w * 1.1).dx + dx, p(x + w, y + w * 1.1).dy + rise);
+        ..lineTo(
+          p(x + w, y + w * 1.1).dx + dx,
+          p(x + w, y + w * 1.1).dy + rise,
+        );
       canvas.drawPath(path, paint);
     }
 

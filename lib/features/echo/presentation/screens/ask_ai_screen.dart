@@ -360,7 +360,9 @@ class _AskAiViewState extends State<_AskAiView> {
   }
 
   Widget _buildEmptyState() {
-    final name = (_userName?.trim().isNotEmpty ?? false) ? _userName!.trim() : null;
+    final name = (_userName?.trim().isNotEmpty ?? false)
+        ? _userName!.trim()
+        : null;
     return LayoutBuilder(
       builder: (context, constraints) {
         return SingleChildScrollView(
@@ -617,8 +619,9 @@ class _AskAiViewState extends State<_AskAiView> {
                         boxShadow: live
                             ? [
                                 BoxShadow(
-                                  color: context.colors.primaryGreen
-                                      .withValues(alpha: 0.5),
+                                  color: context.colors.primaryGreen.withValues(
+                                    alpha: 0.5,
+                                  ),
                                   blurRadius: 30,
                                   spreadRadius: 2,
                                 ),
@@ -658,9 +661,8 @@ class _AskAiViewState extends State<_AskAiView> {
       mainAxisSize: MainAxisSize.min,
       children: [
         GestureDetector(
-          onTap: () => setState(
-            () => _voiceSourcesExpanded = !_voiceSourcesExpanded,
-          ),
+          onTap: () =>
+              setState(() => _voiceSourcesExpanded = !_voiceSourcesExpanded),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
@@ -718,7 +720,9 @@ class _AskAiViewState extends State<_AskAiView> {
                                 ? null
                                 : Border(
                                     top: BorderSide(
-                                      color: Colors.white.withValues(alpha: 0.06),
+                                      color: Colors.white.withValues(
+                                        alpha: 0.06,
+                                      ),
                                     ),
                                   ),
                           ),
@@ -729,7 +733,9 @@ class _AskAiViewState extends State<_AskAiView> {
                                 width: 26,
                                 height: 26,
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF7FB98C).withValues(alpha: 0.18),
+                                  color: const Color(
+                                    0xFF7FB98C,
+                                  ).withValues(alpha: 0.18),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: const Icon(
@@ -813,7 +819,10 @@ class _AskAiViewState extends State<_AskAiView> {
               ],
       ),
       child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: 8.0, vertical: _desktop ? 6 : 8),
+        padding: EdgeInsets.symmetric(
+          horizontal: 8.0,
+          vertical: _desktop ? 6 : 8,
+        ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
@@ -975,7 +984,6 @@ class _AskAiViewState extends State<_AskAiView> {
     context.read<AskAiCubit>().sendMessage(text);
   }
 }
-
 
 class _AnimatedMessage extends StatelessWidget {
   final ChatMessage message;

@@ -76,7 +76,8 @@ class BriefingCubit extends Cubit<BriefingState> {
       // The on-device model is only needed for the offline (Fllama) path below.
       // Cloud (Gemini) and desktop-engine paths don't require it, so we no
       // longer hard-gate here — the offline branch guards on modelPath itself.
-      final modelPath = await createOfflineModelRepository().downloadedPathOrNull();
+      final modelPath = await createOfflineModelRepository()
+          .downloadedPathOrNull();
 
       // ── 2. Pick what's relevant from now until the end of tomorrow ────────
       final now = DateTime.now();
@@ -112,7 +113,8 @@ class BriefingCubit extends Cubit<BriefingState> {
       // locally, so "prefer a computer" only ever makes sense on a phone. A
       // desktop build with a stale prefer_desktop_engine=true (e.g. leftover
       // from testing) would otherwise discover and call itself over HTTP.
-      final preferDesktopEngine = !(Platform.isMacOS || Platform.isWindows) &&
+      final preferDesktopEngine =
+          !(Platform.isMacOS || Platform.isWindows) &&
           (prefs.getBool('prefer_desktop_engine') ?? false);
       String? desktopHost;
       if (preferDesktopEngine) {
@@ -215,17 +217,24 @@ class BriefingCubit extends Cubit<BriefingState> {
           onError: (e) => controller.addError(e),
         );
       } else if (!isOfflineEngine && geminiApiKey.isNotEmpty) {
-        final stream = GeminiService.instance.generateStream(geminiApiKey, prompt);
-        stream.listen((response) {
-          final chunk = response.text ?? '';
-          if (chunk.isNotEmpty) {
-            controller.add(chunk);
-          }
-        }, onDone: () {
-          controller.close();
-        }, onError: (e) {
-          controller.addError(e);
-        });
+        final stream = GeminiService.instance.generateStream(
+          geminiApiKey,
+          prompt,
+        );
+        stream.listen(
+          (response) {
+            final chunk = response.text ?? '';
+            if (chunk.isNotEmpty) {
+              controller.add(chunk);
+            }
+          },
+          onDone: () {
+            controller.close();
+          },
+          onError: (e) {
+            controller.addError(e);
+          },
+        );
       } else {
         // Offline path — this is the only branch that actually needs the model.
         if (modelPath == null) {
@@ -320,7 +329,11 @@ class BriefingCubit extends Cubit<BriefingState> {
           (i) => formatNotification(
             source: i.entry.source,
             sender: i.entry.sender,
-            content: rewriteRelativeDays(i.entry.content, i.entry.timestamp, now),
+            content: rewriteRelativeDays(
+              i.entry.content,
+              i.entry.timestamp,
+              now,
+            ),
             when: describeEntry(i.entry, i.window, now),
           ),
         )

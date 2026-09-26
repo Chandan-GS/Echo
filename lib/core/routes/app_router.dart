@@ -33,8 +33,10 @@ GoRouter createRouter(bool isOnboardingFinished) => GoRouter(
       routes: [
         GoRoute(
           path: '/echo',
-          pageBuilder: (context, state) =>
-              fadeThroughPage(key: state.pageKey, child: const EchoHomeScreen()),
+          pageBuilder: (context, state) => fadeThroughPage(
+            key: state.pageKey,
+            child: const EchoHomeScreen(),
+          ),
         ),
         GoRoute(
           path: '/vault',
@@ -45,8 +47,10 @@ GoRouter createRouter(bool isOnboardingFinished) => GoRouter(
         // merged into one screen.
         GoRoute(
           path: '/profile',
-          pageBuilder: (context, state) =>
-              fadeThroughPage(key: state.pageKey, child: const SettingsScreen()),
+          pageBuilder: (context, state) => fadeThroughPage(
+            key: state.pageKey,
+            child: const SettingsScreen(),
+          ),
         ),
       ],
     ),

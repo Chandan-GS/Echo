@@ -235,7 +235,9 @@ class _VaultViewState extends State<_VaultView> {
               // Cascade the first screenful on load; items scrolled into view
               // later just fade up immediately (no stale long delay).
               return FadeSlideIn(
-                delay: index < 8 ? AppMotion.staggerDelay(index) : Duration.zero,
+                delay: index < 8
+                    ? AppMotion.staggerDelay(index)
+                    : Duration.zero,
                 offsetY: 12,
                 child: NotificationCardWidget(
                   notification: state.displayedItems[index],
