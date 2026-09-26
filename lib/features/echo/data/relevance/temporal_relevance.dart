@@ -19,11 +19,15 @@ class RelevanceWindow {
   /// True when a clock time was named, not just a day.
   final bool hasTime;
 
+  /// True when an end time was named too ("5 to 6 PM"), not just a start.
+  final bool hasEndTime;
+
   const RelevanceWindow({
     required this.start,
     required this.end,
     required this.explicit,
     required this.hasTime,
+    this.hasEndTime = false,
   });
 
   bool overlaps(DateTime from, DateTime to) =>
@@ -147,6 +151,56 @@ List<RelevanceWindow> extractExplicitWindows(
   return windows;
 }
 
+/// Rewrites relative day words in [text], written at [receivedAt], so they're
+/// true as of [now]: "tomorrow" in yesterday's message becomes "today",
+/// "today" becomes "yesterday". Models tend to trust a notification's own
+/// wording over any label, so the wording itself is corrected.
+String rewriteRelativeDays(String text, DateTime receivedAt, DateTime now) {
+  if (_dayOffset(receivedAt, now) == 0) return text;
+  return text.replaceAllMapped(_relativeDayPattern, (m) {
+    final word = m[0]!.toLowerCase();
+    final night = word == 'tonight' || word == 'tonite';
+    final offset = word.startsWith('day after')
+        ? 2
+        : word == 'yesterday'
+            ? -1
+            : (word == 'today' || night)
+                ? 0
+                : 1;
+    final day = _addDays(startOfDay(receivedAt), offset);
+    final phrase = switch (_dayOffset(now, day)) {
+      0 => night ? 'tonight' : 'today',
+      1 => night ? 'tomorrow night' : 'tomorrow',
+      -1 => night ? 'last night' : 'yesterday',
+      _ => 'on ${shortDate(day)}',
+    };
+    final first = m[0]![0];
+    return first == first.toUpperCase()
+        ? '${phrase[0].toUpperCase()}${phrase.substring(1)}'
+        : phrase;
+  });
+}
+
+final _relativeDayPattern = RegExp(
+  r'\b(?:day after (?:tomorrow|tmrw|tmr)|tomorrow|tmrw|tmr|tomorow|tommorow|'
+  r'tommorrow|tonight|tonite|today|yesterday)\b',
+  caseSensitive: false,
+);
+
+/// Whole days from [from] to [to] (DST-safe).
+int _dayOffset(DateTime from, DateTime to) =>
+    (startOfDay(to).difference(startOfDay(from)).inHours / 24).round();
+
+const _weekdayShort = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const _monthShort = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+
+/// "Sat 26 Sep"
+String shortDate(DateTime d) =>
+    '${_weekdayShort[d.weekday - 1]} ${d.day} ${_monthShort[d.month - 1]}';
+
 // ── Internals ───────────────────────────────────────────────────────────────
 
 class _Span {
@@ -189,6 +243,7 @@ class _TimeMention {
       end: end,
       explicit: true,
       hasTime: true,
+      hasEndTime: endMinutes != null,
     );
   }
 }

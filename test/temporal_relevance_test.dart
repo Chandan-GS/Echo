@@ -114,6 +114,38 @@ void main() {
     });
   });
 
+  group('rewriteRelativeDays', () {
+    test('rewrites relative days so they are true as of now', () {
+      expect(
+        rewriteRelativeDays('Client demo is tomorrow at 6:30 PM', at(25, 18), at(26, 13)),
+        'Client demo is today at 6:30 PM',
+      );
+      expect(
+        rewriteRelativeDays('Tomorrow 11 AM. Dinner tonight?', at(25, 18), at(26, 13)),
+        'Today 11 AM. Dinner last night?',
+      );
+      expect(
+        rewriteRelativeDays('Trip day after tomorrow', at(25, 18), at(26, 13)),
+        'Trip tomorrow',
+      );
+      expect(
+        rewriteRelativeDays('see you tomorrow', at(23, 18), at(26, 13)),
+        'see you on Thu 24 Sep',
+      );
+    });
+
+    test('leaves same-day text alone', () {
+      const text = 'Dinner tomorrow at 8 PM';
+      expect(rewriteRelativeDays(text, at(26, 9), at(26, 13)), text);
+    });
+  });
+
+  test('a named one-hour range keeps its end time', () {
+    final w = only('Online test today between 7:00-8:00 PM', at(25, 12));
+    expect(w.hasEndTime, isTrue);
+    expect(only('Call at 5 PM', at(26, 14)).hasEndTime, isFalse);
+  });
+
   test('horizon ends at the end of tomorrow', () {
     expect(briefingHorizonEnd(at(26, 21)), endOfDay(at(27, 0)));
   });

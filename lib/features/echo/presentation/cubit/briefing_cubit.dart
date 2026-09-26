@@ -10,6 +10,7 @@ import 'package:project_echo/features/echo/data/datasources/briefing_prompt.dart
 import 'package:project_echo/features/onboarding/data/onboarding_personalization.dart';
 import 'package:project_echo/features/echo/data/datasources/priority_query_embedding.dart';
 import 'package:project_echo/features/echo/data/relevance/briefing_selection.dart';
+import 'package:project_echo/features/echo/data/relevance/temporal_relevance.dart';
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:project_echo/core/services/gemini_service.dart';
@@ -291,6 +292,9 @@ class BriefingCubit extends Cubit<BriefingState> {
   /// applies. Null when nothing qualifies.
   Future<String?> _buildContext(List<RawData> entries, DateTime now) async {
     final prefs = await SharedPreferences.getInstance();
+    // The on-device model's context window is small; cloud and desktop
+    // engines can take a fuller day.
+    final onDevice = prefs.getBool('is_offline_engine') ?? true;
     final aliases = Map<String, String>.from(
       jsonDecode(prefs.getString('vault_category_aliases') ?? '{}'),
     );
@@ -307,6 +311,7 @@ class BriefingCubit extends Cubit<BriefingState> {
       aliases: aliases,
       blockedCategories: blocked,
       priorityVector: isDesktop ? null : priorityQueryEmbedding,
+      limit: onDevice ? 15 : 25,
     );
     if (items.isEmpty) return null;
 
@@ -315,8 +320,8 @@ class BriefingCubit extends Cubit<BriefingState> {
           (i) => formatNotification(
             source: i.entry.source,
             sender: i.entry.sender,
-            content: i.entry.content,
-            when: describeWhen(i.window, i.entry.timestamp, now),
+            content: rewriteRelativeDays(i.entry.content, i.entry.timestamp, now),
+            when: describeEntry(i.entry, i.window, now),
           ),
         )
         .join('\n');

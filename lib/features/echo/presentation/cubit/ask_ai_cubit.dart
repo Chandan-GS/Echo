@@ -6,6 +6,7 @@ import 'package:fllama/fllama.dart';
 import 'package:project_echo/features/echo/data/ask/ask_retrieval.dart';
 import 'package:project_echo/features/echo/data/ask/conversation_memory.dart';
 import 'package:project_echo/features/echo/data/datasources/briefing_prompt.dart';
+import 'package:project_echo/features/echo/data/relevance/temporal_relevance.dart';
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
 import 'package:project_echo/features/echo/data/datasources/tflite_embedding_service.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
@@ -142,8 +143,15 @@ class AskAiCubit extends Cubit<AskAiState> {
                 (e) => formatNotification(
                   source: e.source,
                   sender: e.sender,
-                  content: _clip(e.content, _maxContentChars),
-                  when: askTimeLabel(e, now),
+                  content: _clip(
+                    rewriteRelativeDays(e.content, e.timestamp, now),
+                    _maxContentChars,
+                  ),
+                  when: askTimeLabel(
+                    e,
+                    now,
+                    withArrival: isArrivalQuestion(text),
+                  ),
                 ),
               )
               .join('\n');
@@ -327,10 +335,6 @@ class AskAiCubit extends Cubit<AskAiState> {
                 .replaceAll(RegExp(r'<\|[^|]*\|>', dotAll: true), '')
                 .trim();
             _messages[lastIdx] = _messages[lastIdx].copyWith(text: cleanText);
-            print(
-              '=== ASK AI: ECHO GENERATED OUTPUT ===\n$cleanText\n=====================================',
-            );
-
             emit(AskAiMessageReceived(messages: List.from(_messages)));
             _activeRequestId = null;
             if (!done.isCompleted) done.complete();
@@ -342,6 +346,7 @@ class AskAiCubit extends Cubit<AskAiState> {
 
       // Remember the exchange (small talk carries no topic worth following).
       final answer = _messages[echoIndex].text.trim();
+      print('=== ASK AI: ECHO GENERATED OUTPUT ===\n$answer\n=====');
       if (!smallTalk && answer.isNotEmpty) {
         await memory.add(
           ConversationTurn(

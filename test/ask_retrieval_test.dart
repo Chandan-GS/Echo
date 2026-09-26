@@ -88,6 +88,13 @@ void main() {
       expect(askTimeLabel(ravi, now), 'Today (Sat 26 Sep), 10:30 AM, already over');
       expect(askTimeLabel(didi, now), 'arrived today at 12:30 PM');
     });
+
+    test('arrival questions get the arrival time too', () {
+      expect(isArrivalQuestion('what came in yesterday'), isTrue);
+      expect(isArrivalQuestion("what's on tomorrow"), isFalse);
+      expect(askTimeLabel(ravi, now, withArrival: true),
+          'Today (Sat 26 Sep), 10:30 AM, already over; arrived today at 8:00 AM');
+    });
   });
 
   test('small talk is recognized as a whole message only', () {

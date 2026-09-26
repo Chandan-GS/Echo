@@ -48,6 +48,8 @@ final _arrivalPattern = RegExp(
   caseSensitive: false,
 );
 
+bool isArrivalQuestion(String question) => _arrivalPattern.hasMatch(question);
+
 /// The time span a question asks about, if any: explicit ("tomorrow", "on
 /// Monday", "yesterday") or implied ("what's coming up?" → now until the end
 /// of tomorrow). Empty when the question isn't about a time.
@@ -98,7 +100,7 @@ List<RankedNotification> rankForQuestion({
       .toSet();
   final asksWeather = words.any(_weatherQueryWords.contains);
   final timeWindows = questionWindows(question, now);
-  final asksArrivals = _arrivalPattern.hasMatch(question);
+  final asksArrivals = isArrivalQuestion(question);
 
   final scored = <RankedNotification>[];
   for (final e in entries) {
@@ -170,13 +172,20 @@ double _timeScore(
 
 /// How a notification is presented to the model: its most relevant window,
 /// resolved against [now], e.g. "[Tomorrow (Sun 27 Sep), 11:00 AM]" or
-/// "[Today (Sat 26 Sep), 10:30 AM, already over]".
-String askTimeLabel(RawData e, DateTime now) {
+/// "[Today (Sat 26 Sep), 10:30 AM, already over]". [withArrival] adds when it
+/// arrived, for questions about what came in when.
+String askTimeLabel(RawData e, DateTime now, {bool withArrival = false}) {
   final windows = relevanceWindows('${e.sender} ${e.content}', e.timestamp);
   final current = windows.where((w) => !w.end.isBefore(now));
   final window = current.isNotEmpty ? current.first : windows.last;
   final over = window.explicit && window.end.isBefore(now);
-  return '${describeWhen(window, e.timestamp, now)}${over ? ', already over' : ''}';
+  final label = describeEntry(e, window, now, withArrival: withArrival);
+  if (!over) return label;
+  // "…, 10:30 AM, already over" — before any "; arrived …" suffix.
+  final split = label.indexOf('; ');
+  return split < 0
+      ? '$label, already over'
+      : '${label.substring(0, split)}, already over${label.substring(split)}';
 }
 
 Iterable<String> _words(String s) => s

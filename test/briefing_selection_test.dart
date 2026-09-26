@@ -117,6 +117,45 @@ void main() {
         'arrived yesterday at 11:05 PM');
   });
 
+  test('the cap drops the least important items, not the latest ones', () {
+    final items = selectForBriefing(
+      [
+        ...forTomorrow,
+        note('Newsletter', 'Weekly digest is here', at(26, 20)),
+        note('Promo', 'New arrivals in store', at(26, 20, 5)),
+      ],
+      at(26, 21),
+      limit: 10,
+    );
+    final senders = items.map((i) => i.entry.sender).toSet();
+    // All ten dated items survive; the two undated ones are what's cut.
+    expect(senders, containsAll(forTomorrow.map((e) => e.sender)));
+    expect(senders, isNot(contains('Newsletter')));
+    // Still presented chronologically.
+    final starts = items.map((i) => i.window.start).toList();
+    expect(starts, orderedEquals([...starts]..sort()));
+  });
+
+  group('describeEntry', () {
+    test('an undated item whose named time was already over says so', () {
+      final ishaan = note('Ishaan', 'Quick call at 9 AM today?', at(26, 13, 19));
+      final item = selectForBriefing([ishaan], at(26, 14)).single;
+      expect(
+        describeEntry(ishaan, item.window, at(26, 14)),
+        'arrived today at 1:19 PM; mentions Today (Sat 26 Sep), 9:00 AM, already over',
+      );
+    });
+
+    test('a named range shows both ends; arrival can be appended', () {
+      final plumber = note('Landlord', 'Plumber tomorrow 7:00-8:00 PM', at(25, 22, 30));
+      final item = selectForBriefing([plumber], at(26, 14)).single;
+      expect(describeEntry(plumber, item.window, at(26, 14)),
+          'Today (Sat 26 Sep), 7:00 PM to 8:00 PM');
+      expect(describeEntry(plumber, item.window, at(26, 14), withArrival: true),
+          'Today (Sat 26 Sep), 7:00 PM to 8:00 PM; arrived yesterday at 10:30 PM');
+    });
+  });
+
   test('isStillRelevant keeps future-dated notifications past 24 hours', () {
     final trip = note('Rahul', 'Goa trip on Oct 3', at(20, 10));
     expect(isStillRelevant(trip, at(27, 10)), isTrue);

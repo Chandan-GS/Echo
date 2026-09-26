@@ -33,10 +33,11 @@ String displaySource(String source, Map<String, String> aliases) {
 /// relevance window overlaps now → end of tomorrow. Anything whose time has
 /// passed, or that's about later than tomorrow, is left out.
 ///
-/// Dated items come first, in chronological order, then undated ones — ranked
-/// by similarity to [priorityVector] when given (phone), else most recent
-/// first (desktop, where synced notifications carry no embeddings). At most
-/// [limit] items, to keep the on-device model's prompt within its context.
+/// When more than [limit] qualify (the on-device model's context is small),
+/// the least important are dropped — dated items outrank undated ones, then
+/// similarity to [priorityVector] (phone) or recency (desktop, where synced
+/// notifications carry no embeddings) decides. What's kept is returned dated
+/// first, chronologically, then undated by importance.
 List<BriefingItem> selectForBriefing(
   Iterable<RawData> entries,
   DateTime now, {
@@ -70,18 +71,26 @@ List<BriefingItem> selectForBriefing(
     (window.explicit ? dated : undated).add(BriefingItem(e, window));
   }
 
-  dated.sort((a, b) => a.window.start.compareTo(b.window.start));
-  if (priorityVector != null) {
-    final score = {
-      for (final i in undated)
-        i: cosineSimilarity(priorityVector, i.entry.embedding),
-    };
-    undated.sort((a, b) => score[b]!.compareTo(score[a]!));
-  } else {
-    undated.sort((a, b) => b.entry.timestamp.compareTo(a.entry.timestamp));
-  }
+  // Importance for the cap: a named date/time is a strong signal on its own.
+  final importance = <BriefingItem, double>{
+    for (final i in [...dated, ...undated])
+      i: (i.window.explicit ? 1.0 : 0.0) +
+          (priorityVector != null
+              ? cosineSimilarity(priorityVector, i.entry.embedding)
+              : i.entry.timestamp.millisecondsSinceEpoch / 1e15),
+  };
+  final kept = ([...dated, ...undated]
+        ..sort((a, b) => importance[b]!.compareTo(importance[a]!)))
+      .take(limit)
+      .toSet();
 
-  return [...dated, ...undated].take(limit).toList();
+  dated
+    ..retainWhere(kept.contains)
+    ..sort((a, b) => a.window.start.compareTo(b.window.start));
+  undated
+    ..retainWhere(kept.contains)
+    ..sort((a, b) => importance[b]!.compareTo(importance[a]!));
+  return [...dated, ...undated];
 }
 
 double cosineSimilarity(List<double>? a, List<double>? b) {
@@ -102,15 +111,31 @@ bool isStillRelevant(RawData entry, DateTime now) =>
     relevanceWindows('${entry.sender} ${entry.content}', entry.timestamp)
         .any((w) => !w.end.isBefore(now));
 
+/// The full label for [e] shown to a model: when it applies ([window]), plus
+/// — for undated items whose text named a time already over when it arrived
+/// ("call at 9 AM?" received at 1 PM) — what that time was, so it isn't
+/// mistaken for something still to come. [withArrival] appends the arrival
+/// time for dated items too (Ask Echo questions about what came in when).
+String describeEntry(
+  RawData e,
+  RelevanceWindow window,
+  DateTime now, {
+  bool withArrival = false,
+}) {
+  final label = describeWhen(window, e.timestamp, now);
+  if (window.explicit) {
+    return withArrival ? '$label; ${_arrived(e.timestamp, now)}' : label;
+  }
+  final named = extractExplicitWindows('${e.sender} ${e.content}', e.timestamp);
+  if (named.isEmpty) return label;
+  return '$label; mentions ${describeWhen(named.last, e.timestamp, now)}, already over';
+}
+
 /// When a briefing item applies, resolved against [now], e.g.
 /// "Tomorrow (Sat 27 Sep), 11:00 AM", "Today (Fri 26 Sep), 5:00 PM to 5:30 PM",
 /// "Fri 12 Dec to Mon 15 Dec", or for undated items "arrived today at 9:14 PM".
 String describeWhen(RelevanceWindow window, DateTime receivedAt, DateTime now) {
-  if (!window.explicit) {
-    final day = _relativeDay(receivedAt, now);
-    final phrase = day == _short(receivedAt) ? 'on $day' : day.toLowerCase();
-    return 'arrived $phrase at ${_clock(receivedAt)}';
-  }
+  if (!window.explicit) return _arrived(receivedAt, now);
   final firstDay = startOfDay(window.start);
   final lastDay = startOfDay(
     window.hasTime ? window.start : window.end,
@@ -120,18 +145,22 @@ String describeWhen(RelevanceWindow window, DateTime receivedAt, DateTime now) {
       : '${_dayLabel(firstDay, now)} to ${_dayLabel(lastDay, now)}';
   if (!window.hasTime) return days;
   final sameDay = startOfDay(window.end) == firstDay;
-  final oneHourDefault =
-      window.end.difference(window.start) == const Duration(hours: 1);
-  final times = oneHourDefault
+  final times = !window.hasEndTime
       ? _clock(window.start)
       : '${_clock(window.start)} to ${_clock(window.end)}'
-          '${sameDay ? '' : ' (${_short(window.end)})'}';
+          '${sameDay ? '' : ' (${shortDate(window.end)})'}';
   return '$days, $times';
+}
+
+String _arrived(DateTime receivedAt, DateTime now) {
+  final day = _relativeDay(receivedAt, now);
+  final phrase = day == shortDate(receivedAt) ? 'on $day' : day.toLowerCase();
+  return 'arrived $phrase at ${_clock(receivedAt)}';
 }
 
 String _dayLabel(DateTime day, DateTime now) {
   final relative = _relativeDay(day, now);
-  final short = _short(day);
+  final short = shortDate(day);
   return relative == short ? short : '$relative ($short)';
 }
 
@@ -142,18 +171,9 @@ String _relativeDay(DateTime day, DateTime now) {
     0 => 'Today',
     1 => 'Tomorrow',
     -1 => 'Yesterday',
-    _ => _short(day),
+    _ => shortDate(day),
   };
 }
-
-const _weekdayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const _monthNames = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-];
-
-String _short(DateTime d) =>
-    '${_weekdayNames[d.weekday - 1]} ${d.day} ${_monthNames[d.month - 1]}';
 
 String _clock(DateTime t) {
   final hour = t.hour % 12 == 0 ? 12 : t.hour % 12;
