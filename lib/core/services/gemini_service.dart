@@ -39,7 +39,14 @@ class GeminiService {
     }
   }
 
-  Stream<GenerateContentResponse> generateStream(String apiKey, String prompt) {
+  /// [systemInstruction], when given, is sent as Gemini's real system
+  /// instruction and [prompt] as the user turn — rather than one blob in the
+  /// offline model's chat template, which Gemini just reads as extra text.
+  Stream<GenerateContentResponse> generateStream(
+    String apiKey,
+    String prompt, {
+    String? systemInstruction,
+  }) {
     final cleanKey = apiKey.trim();
 
     final model = GenerativeModel(
@@ -48,6 +55,8 @@ class GeminiService {
       model: RemoteConfigService.instance.geminiModel,
       apiKey: cleanKey,
       generationConfig: GenerationConfig(temperature: 0.3, topP: 0.9),
+      systemInstruction:
+          systemInstruction == null ? null : Content.system(systemInstruction),
     );
     return model.generateContentStream([Content.text(prompt)]);
   }

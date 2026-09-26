@@ -1,0 +1,19 @@
+name: echo_native
+description: Echo's native notification buffer and calendar access, registered in every Flutter engine (including the background briefing alarm).
+version: 0.0.1
+publish_to: none
+
+environment:
+  sdk: ^3.11.5
+  flutter: '>=3.3.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.chandangs.echo_native
+        pluginClass: EchoNativePlugin
