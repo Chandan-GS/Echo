@@ -10,12 +10,14 @@ String getBriefingSystemInstruction(
   String userName, {
   String? toneInstruction,
   bool includeExample = true,
+  DateTime? now,
 }) {
   final name = userName.trim().isEmpty ? 'sir' : userName.trim();
   final tone = (toneInstruction == null || toneInstruction.trim().isEmpty)
       ? 'Speak directly to the user in a professional yet warm tone.'
       : toneInstruction.trim();
-  final hour = DateTime.now().hour;
+  final current = now ?? DateTime.now();
+  final hour = current.hour;
   String greeting;
   if (hour >= 5 && hour < 12) {
     greeting = 'Good morning';
@@ -34,6 +36,9 @@ String getBriefingSystemInstruction(
       'Do not mechanically list notifications one by one. Instead, weave them together into a smooth, conversational summary. '
       'Group related topics (e.g., work, personal, news). '
       'Focus heavily on ACTIONABLE items and FUTURE events for today or tomorrow. Completely IGNORE any events or notifications that have already passed. '
+      'It is now ${describeNow(current)}. Each notification starts with a label in square brackets saying when it applies, already worked out against the current time — for example [Tomorrow (Sun 27 Sep), 11:00 AM] — or, when it names no time, when it arrived. '
+      'Words like "today" or "tomorrow" INSIDE a notification were written when it arrived and may now be out of date, so ALWAYS go by the bracketed label and never by the notification\'s own wording. '
+      'Cover today first, then tomorrow, and make clear which day each item is on. '
       'Start with a brief "$greeting $name". \n'
       '$tone '
       'STRICT RULE: Do NOT hallucinate, assume, or invent any meetings, tasks, or plans that are not explicitly present in the provided text. '
@@ -61,26 +66,48 @@ String getBriefingSystemInstruction(
 }
 
 String buildUserMessage(String notificationContext) =>
-    'Here are my notifications for today:\n\n$notificationContext\n\n'
-    'Write my morning briefing';
+    'Here are my notifications for today and tomorrow:\n\n$notificationContext\n\n'
+    'Write my briefing';
 
 String buildQwenPrompt(
   String notificationContext,
   String userName, {
   String? toneInstruction,
   bool includeExample = true,
+  DateTime? now,
 }) {
-  return '<|im_start|>system\n${getBriefingSystemInstruction(userName, toneInstruction: toneInstruction, includeExample: includeExample)}<|im_end|>\n'
+  return '<|im_start|>system\n${getBriefingSystemInstruction(userName, toneInstruction: toneInstruction, includeExample: includeExample, now: now)}<|im_end|>\n'
       '<|im_start|>user\n${buildUserMessage(notificationContext)}<|im_end|>\n'
       '<|im_start|>assistant\n';
 }
 
+/// One notification line for a prompt. [when] is the briefing's resolved
+/// time label (see `describeWhen`); Ask Echo passes none.
 String formatNotification({
   required String source,
   required String sender,
   required String content,
+  String? when,
 }) {
-  return '$sender ($source): $content';
+  final line = '$sender ($source): $content';
+  return when == null ? line : '[$when] $line';
+}
+
+const _weekdayNames = [
+  'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday',
+];
+const _monthNames = [
+  'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
+  'September', 'October', 'November', 'December',
+];
+
+/// "Sunday 27 September 2026, 7:02 AM"
+String describeNow(DateTime now) {
+  final hour = now.hour % 12 == 0 ? 12 : now.hour % 12;
+  final minute = now.minute.toString().padLeft(2, '0');
+  return '${_weekdayNames[now.weekday - 1]} ${now.day} '
+      '${_monthNames[now.month - 1]} ${now.year}, '
+      '$hour:$minute ${now.hour < 12 ? 'AM' : 'PM'}';
 }
 
 String stripForTts(String rawText) {

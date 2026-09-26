@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'package:project_echo/core/services/analytics_service.dart';
-import 'dart:math' as math;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -10,6 +9,7 @@ import 'package:fllama/fllama.dart';
 import 'package:project_echo/features/echo/data/datasources/briefing_prompt.dart';
 import 'package:project_echo/features/onboarding/data/onboarding_personalization.dart';
 import 'package:project_echo/features/echo/data/datasources/priority_query_embedding.dart';
+import 'package:project_echo/features/echo/data/relevance/briefing_selection.dart';
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:project_echo/core/services/gemini_service.dart';
@@ -77,20 +77,18 @@ class BriefingCubit extends Cubit<BriefingState> {
       // longer hard-gate here — the offline branch guards on modelPath itself.
       final modelPath = await createOfflineModelRepository().downloadedPathOrNull();
 
-      // ── 2. Get filtered context (Top 15 semantic RAG matches) ──────────────
-      final contextObj = await _getFilteredContext();
-
-      if (contextObj['context'] == 'No notifications available yet.') {
+      // ── 2. Pick what's relevant from now until the end of tomorrow ────────
+      final now = DateTime.now();
+      final entries = await IsarDataSource.getAllEntries();
+      if (entries.isEmpty) {
         emit(BriefingError('No important notifications available.'));
         return;
       }
 
-      final highestScore = contextObj['highestScore'] as double?;
-      print('RAG Highest Similarity Score: $highestScore');
-
-      if (highestScore != null && highestScore < 0.15) {
-        final clearSchedule =
-            "Echo: No urgent tasks detected for today. Have a clear schedule!";
+      final notificationContext = await _buildContext(entries, now);
+      if (notificationContext == null) {
+        const clearSchedule =
+            'Echo: Nothing needs your attention today or tomorrow. Enjoy the clear schedule!';
         emit(BriefingReady(rawText: clearSchedule, ttsText: clearSchedule));
         return;
       }
@@ -188,13 +186,14 @@ class BriefingCubit extends Cubit<BriefingState> {
       );
 
       final prompt = buildQwenPrompt(
-        contextObj['context'] as String,
+        notificationContext,
         userName,
         toneInstruction: tone.promptInstruction,
         // Only the small on-device phone model copies the few-shot example
         // verbatim; the stronger cloud and desktop-engine models handle it
         // fine (and generate a better-shaped briefing with it).
         includeExample: useDesktopEngine || !isOfflineEngine,
+        now: now,
       );
 
       _debugPrintLongString(
@@ -287,153 +286,40 @@ class BriefingCubit extends Cubit<BriefingState> {
     }
   }
 
-  double _cosineSimilarity(List<double>? a, List<double>? b) {
-    if (a == null || b == null || a.length != b.length) return 0.0;
-    double dotProduct = 0.0;
-    double normA = 0.0;
-    double normB = 0.0;
-    for (int i = 0; i < a.length; i++) {
-      dotProduct += a[i] * b[i];
-      normA += a[i] * a[i];
-      normB += b[i] * b[i];
-    }
-    if (normA == 0 || normB == 0) return 0.0;
-    return dotProduct / (math.sqrt(normA) * math.sqrt(normB));
-  }
+  /// The briefing's notification context at [now]: everything relevant from
+  /// now until the end of tomorrow, one line each, labelled with when it
+  /// applies. Null when nothing qualifies.
+  Future<String?> _buildContext(List<RawData> entries, DateTime now) async {
+    final prefs = await SharedPreferences.getInstance();
+    final aliases = Map<String, String>.from(
+      jsonDecode(prefs.getString('vault_category_aliases') ?? '{}'),
+    );
+    final blocked = prefs.getStringList('vault_blocked_categories') ?? [];
 
-  Future<Map<String, dynamic>> _getFilteredContext() async {
-    try {
-      final List<RawData> entries = await IsarDataSource.getAllEntries();
-      if (entries.isEmpty) {
-        return {
-          'context': 'No notifications available yet.',
-          'highestScore': 0.0,
-        };
-      }
+    // Desktop mirrors notifications from the phone WITHOUT embeddings (the
+    // sync payload omits the 384-float vectors, and TensorFlow Lite isn't
+    // available here to recompute them), so undated items are ranked by
+    // recency there instead of by priority similarity.
+    final isDesktop = Platform.isMacOS || Platform.isWindows;
+    final items = selectForBriefing(
+      entries,
+      now,
+      aliases: aliases,
+      blockedCategories: blocked,
+      priorityVector: isDesktop ? null : priorityQueryEmbedding,
+    );
+    if (items.isEmpty) return null;
 
-      // Garbage filter list (Pre-processor)
-      final junkSenders = [
-        'zomato',
-        'swiggy',
-        'myntra',
-        'lenskart',
-        'amazon',
-        'uber',
-        'hdfc',
-        'credit card',
-        'makemytrip',
-        'apollo',
-        'dominos',
-        'jio',
-        'urban company',
-        'blinkit',
-        'flipkart',
-        'quora',
-        'linkedin',
-        'medium',
-      ];
-      final junkKeywords = ['% off', 'otp', 'flash sale', 'discount', 'free'];
-
-      final prefs = await SharedPreferences.getInstance();
-      final aliasesString = prefs.getString('vault_category_aliases') ?? '{}';
-      final Map<String, String> categoryAliases = Map<String, String>.from(jsonDecode(aliasesString));
-      final blockedCategories = prefs.getStringList('vault_blocked_categories') ?? [];
-
-      final candidateEntries = entries.where((e) {
-        // Filter out old notifications (older than 24 hours) to keep only current and future events
-        if (e.timestamp.isBefore(
-          DateTime.now().subtract(const Duration(hours: 24)),
-        ))
-          return false;
-
-        final senderLower = e.sender.toLowerCase();
-        final contentLower = e.content.toLowerCase();
-        
-        final sourceKey = e.source.trim();
-        final defaultSource = sourceKey.isEmpty ? 'Unknown' : 
-            '${sourceKey[0].toUpperCase()}${sourceKey.substring(1).toLowerCase()}';
-        final displaySource = categoryAliases[defaultSource] ?? defaultSource;
-
-        if (blockedCategories.contains(displaySource)) return false;
-
-        for (final junk in junkSenders) {
-          if (senderLower.contains(junk)) return false;
-        }
-        for (final junk in junkKeywords) {
-          if (contentLower.contains(junk)) return false;
-        }
-        return true;
-      }).toList();
-
-      // Deduplicate by exact content to prevent identical mock messages
-      // from saturating the top 40 context.
-      final uniqueCandidates = <String, RawData>{};
-      for (final e in candidateEntries) {
-        uniqueCandidates[e.content] = e;
-      }
-
-      if (uniqueCandidates.isEmpty) {
-        return {
-          'context': 'No notifications available yet.',
-          'highestScore': 0.0,
-        };
-      }
-
-      // Desktop mirrors notifications from the phone WITHOUT embeddings (the
-      // sync payload omits the 384-float vectors, and TensorFlow Lite isn't
-      // available here to recompute them). So semantic scoring would be all
-      // zeros and wrongly trip the "no urgent tasks" fallback. Rank by recency
-      // instead and hand the model the latest signals to summarize.
-      if (Platform.isMacOS || Platform.isWindows) {
-        final recent = uniqueCandidates.values.toList()
-          ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
-        final lines = recent.take(15).map(
-              (e) => formatNotification(
-                source: e.source,
-                sender: e.sender,
-                content: e.content,
-              ),
-            );
-        return {'context': lines.join('\n'), 'highestScore': 1.0};
-      }
-
-      // Semantic Scoring (RAG)
-      // Score each candidate against the pre-calculated Priority Query Embedding
-      final scoredCandidates = uniqueCandidates.values.map((e) {
-        final score = _cosineSimilarity(priorityQueryEmbedding, e.embedding);
-        return {'entry': e, 'score': score};
-      }).toList();
-
-      // Sort descending by semantic score
-      scoredCandidates.sort(
-        (a, b) => (b['score'] as double).compareTo(a['score'] as double),
-      );
-
-      final highestScore = scoredCandidates.first['score'] as double;
-
-      // STRICT CAP: Take Top 15 semantic matches. Keeping this tight matters
-      // for the offline model — every extra notification inflates the prompt,
-      // and an over-long prompt overflows the local model's context window.
-      final topEntries = scoredCandidates
-          .take(15)
-          .map((e) => e['entry'] as RawData)
-          .toList();
-
-      final lines = topEntries.map(
-        (e) => formatNotification(
-          source: e.source,
-          sender: e.sender,
-          content: e.content,
-        ),
-      );
-
-      return {'context': lines.join('\n'), 'highestScore': highestScore};
-    } catch (_) {
-      return {
-        'context': 'No notifications available yet.',
-        'highestScore': 0.0,
-      };
-    }
+    return items
+        .map(
+          (i) => formatNotification(
+            source: i.entry.source,
+            sender: i.entry.sender,
+            content: i.entry.content,
+            when: describeWhen(i.window, i.entry.timestamp, now),
+          ),
+        )
+        .join('\n');
   }
 
   Future<void> goBack() async {
