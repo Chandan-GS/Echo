@@ -14,6 +14,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:project_echo/core/services/gemini_service.dart';
 import 'package:project_echo/core/services/desktop_engine_client.dart';
 import 'package:project_echo/core/services/offline_model_repository.dart';
+import 'package:project_echo/features/vault/data/app_access.dart';
 
 part 'ask_ai_state.dart';
 
@@ -74,7 +75,11 @@ class AskAiCubit extends Cubit<AskAiState> {
       final followUp =
           !smallTalk && memory.isFollowUp(text, queryEmbedding, now);
 
-      final allNotifications = await IsarDataSource.getAllEntries();
+      // Blocked categories and apps switched off in Apps Echo hears aren't
+      // context, though they stay in the Vault.
+      final allNotifications = await withoutExcludedSources(
+        await IsarDataSource.getAllEntries(),
+      );
       print('Total notifications in Isar: ${allNotifications.length}');
 
       final ranked = smallTalk

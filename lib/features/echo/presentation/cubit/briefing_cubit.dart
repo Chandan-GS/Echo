@@ -18,6 +18,7 @@ import 'package:project_echo/core/services/widget_refresh_service.dart';
 import 'package:project_echo/core/services/phone_sync_service.dart';
 import 'package:project_echo/core/services/desktop_engine_client.dart';
 import 'package:project_echo/core/services/offline_model_repository.dart';
+import 'package:project_echo/features/vault/data/app_access.dart';
 
 part 'briefing_state.dart';
 
@@ -307,7 +308,8 @@ class BriefingCubit extends Cubit<BriefingState> {
     final aliases = Map<String, String>.from(
       jsonDecode(prefs.getString('vault_category_aliases') ?? '{}'),
     );
-    final blocked = prefs.getStringList('vault_blocked_categories') ?? [];
+    // Blocked categories, and apps switched off in Apps Echo hears.
+    final excluded = await loadExcludedSources();
 
     // Desktop mirrors notifications from the phone WITHOUT embeddings (the
     // sync payload omits the 384-float vectors, and TensorFlow Lite isn't
@@ -318,7 +320,7 @@ class BriefingCubit extends Cubit<BriefingState> {
       entries,
       now,
       aliases: aliases,
-      blockedCategories: blocked,
+      blockedCategories: excluded.toList(),
       priorityVector: isDesktop ? null : priorityQueryEmbedding,
       limit: onDevice ? 15 : 25,
     );

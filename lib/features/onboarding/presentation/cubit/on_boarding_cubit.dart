@@ -107,7 +107,19 @@ class OnBoardingCubit extends Cubit<OnBoardingState> {
   }
 
   void completePermissions() {
+    if (Platform.isAndroid) {
+      emit(AppsStep());
+    } else {
+      emit(AiModeStep(selectedMode: null, isModelDownloaded: false));
+    }
+  }
+
+  void completeApps() {
     emit(AiModeStep(selectedMode: null, isModelDownloaded: false));
+  }
+
+  void goBackToApps() {
+    emit(AppsStep());
   }
 
   void selectAiMode(String mode) {

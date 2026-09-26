@@ -10,6 +10,7 @@ import 'package:project_echo/features/echo/data/relevance/temporal_relevance.dar
 import 'package:project_echo/features/todo/data/todo_planner.dart';
 import 'package:project_echo/features/todo/data/todo_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:project_echo/features/vault/data/app_access.dart';
 
 /// Makes and updates the to-do list. Only on request — a briefing never does
 /// this by itself.
@@ -32,7 +33,7 @@ class TodoGenerator {
     final aliases = Map<String, String>.from(
       jsonDecode(prefs.getString('vault_category_aliases') ?? '{}'),
     );
-    final blocked = prefs.getStringList('vault_blocked_categories') ?? [];
+    final excluded = await loadExcludedSources();
     final entries = await IsarDataSource.getAllEntries();
     final pool = since == null
         ? entries
@@ -42,7 +43,7 @@ class TodoGenerator {
       pool,
       now,
       aliases: aliases,
-      blockedCategories: blocked,
+      blockedCategories: excluded.toList(),
       priorityVector: isDesktop ? null : priorityQueryEmbedding,
       limit: 25,
     );

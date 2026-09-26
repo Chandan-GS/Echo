@@ -1,28 +1,30 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/presentation/animations/app_motion.dart';
 
 /// The single source of truth for how many setup steps the onboarding has.
 /// Every step screen passes its own 1-based index to [OnboardingProgress].
-const int kOnboardingTotalSteps = 6;
+/// Android has one more: choosing which apps Echo hears.
+int get kOnboardingTotalSteps => Platform.isAndroid ? 7 : 6;
 
 /// One solid, continuous progress bar that fills left-to-right as the user moves
 /// through setup. No step counters, no percentages — a single deliberate line.
 /// The fill animates smoothly between steps.
 class OnboardingProgress extends StatelessWidget {
   final int step; // 1-based
-  final int totalSteps;
+  final int? totalSteps;
 
-  const OnboardingProgress({
-    super.key,
-    required this.step,
-    this.totalSteps = kOnboardingTotalSteps,
-  });
+  const OnboardingProgress({super.key, required this.step, this.totalSteps});
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final target = (step / totalSteps).clamp(0.0, 1.0);
+    final target = (step / (totalSteps ?? kOnboardingTotalSteps)).clamp(
+      0.0,
+      1.0,
+    );
 
     return LayoutBuilder(
       builder: (context, constraints) {

@@ -11,6 +11,8 @@ import 'package:project_echo/core/presentation/animations/app_motion.dart';
 import 'package:project_echo/core/presentation/animations/fade_slide_in.dart';
 import 'package:project_echo/features/echo/presentation/widgets/echo_mascot.dart';
 import 'package:project_echo/features/vault/presentation/screens/desktop_vault_screen.dart';
+import 'package:project_echo/features/vault/presentation/screens/app_access_screen.dart';
+import 'package:project_echo/core/presentation/animations/page_transitions.dart';
 
 class VaultScreen extends StatelessWidget {
   const VaultScreen({super.key});
@@ -127,14 +129,21 @@ class _VaultViewState extends State<_VaultView> {
             children: [
               const SizedBox(height: 24),
               FadeSlideIn(
-                child: Text(
-                  'The Vault',
-                  style: GoogleFonts.oldStandardTt(
-                    fontSize: 40,
-                    fontWeight: FontWeight.w700,
-                    color: context.colors.textPrimary,
-                    height: 1.15,
-                  ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'The Vault',
+                        style: GoogleFonts.oldStandardTt(
+                          fontSize: 40,
+                          fontWeight: FontWeight.w700,
+                          color: context.colors.textPrimary,
+                          height: 1.15,
+                        ),
+                      ),
+                    ),
+                    if (Platform.isAndroid) _appAccessButton(context),
+                  ],
                 ),
               ),
               const SizedBox(height: 24),
@@ -216,6 +225,42 @@ class _VaultViewState extends State<_VaultView> {
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Opens Apps Echo hears; on return the Vault picks up any change to
+  /// blocked categories made there.
+  Widget _appAccessButton(BuildContext context) {
+    return Tooltip(
+      message: 'Apps Echo hears',
+      child: Material(
+        color: context.colors.surface,
+        shape: CircleBorder(
+          side: BorderSide(
+            color: context.colors.dividerColor.withValues(alpha: 0.7),
+          ),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () async {
+            final vault = context.read<VaultCubit>();
+            await Navigator.of(
+              context,
+              rootNavigator: true,
+            ).push(bouncyRoute(const AppAccessScreen()));
+            vault.reloadSettings();
+          },
+          child: SizedBox(
+            width: 48,
+            height: 48,
+            child: Icon(
+              Icons.tune_rounded,
+              size: 22,
+              color: context.colors.textPrimary,
+            ),
           ),
         ),
       ),

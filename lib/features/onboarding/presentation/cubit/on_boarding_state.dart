@@ -19,6 +19,9 @@ final class PermissionsStep extends OnBoardingState {
   bool get canContinue => notificationGranted && calendarGranted;
 }
 
+/// Android only: which apps Echo hears (see Vault → Apps Echo hears).
+final class AppsStep extends OnBoardingState {}
+
 final class AiModeStep extends OnBoardingState {
   final String? selectedMode; // 'offline' or 'online'
   final bool isModelDownloaded;

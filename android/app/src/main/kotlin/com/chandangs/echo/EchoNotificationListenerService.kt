@@ -17,6 +17,32 @@ class EchoNotificationListenerService : NotificationListenerService() {
         private var lastProcessedTime: Long = 0
 
         var isFlutterListening: Boolean = false
+
+        /** The connected listener, for reading what's in the shade right now. */
+        @Volatile var instance: EchoNotificationListenerService? = null
+    }
+
+    override fun onListenerConnected() {
+        super.onListenerConnected()
+        instance = this
+    }
+
+    override fun onListenerDisconnected() {
+        instance = null
+        super.onListenerDisconnected()
+    }
+
+    /** Packages with a notification in the shade, busiest first. */
+    fun activePackages(): List<String> = try {
+        activeNotifications.orEmpty()
+            .filter { !it.isOngoing && it.packageName != packageName }
+            .groupingBy { it.packageName }
+            .eachCount()
+            .entries
+            .sortedByDescending { it.value }
+            .map { it.key }
+    } catch (e: Exception) {
+        emptyList()
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
@@ -33,6 +59,11 @@ class EchoNotificationListenerService : NotificationListenerService() {
         
         // Filter out system and ongoing notifications
         if (sbn.isOngoing || packageName == "android" || packageName == "com.android.systemui") {
+            return
+        }
+
+        // Apps switched off in Vault → Apps Echo hears are never captured.
+        if (!AppAccessRules.hears(applicationContext, packageName)) {
             return
         }
 

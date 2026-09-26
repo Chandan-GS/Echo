@@ -105,9 +105,27 @@ class MainActivity : FlutterActivity() {
         }
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, APP_ICONS_CHANNEL).setMethodCallHandler { call, result ->
-            if (call.method != "icon") {
-                result.notImplemented()
-                return@setMethodCallHandler
+            when (call.method) {
+                "installedApps" -> {
+                    iconExecutor.execute {
+                        val apps = try {
+                            AppIcons.installedApps(applicationContext)
+                        } catch (e: Exception) {
+                            emptyList()
+                        }
+                        runOnUiThread { result.success(apps) }
+                    }
+                    return@setMethodCallHandler
+                }
+                "activePackages" -> {
+                    result.success(EchoNotificationListenerService.instance?.activePackages() ?: emptyList<String>())
+                    return@setMethodCallHandler
+                }
+                "icon" -> {}
+                else -> {
+                    result.notImplemented()
+                    return@setMethodCallHandler
+                }
             }
             val pkg = call.argument<String>("package")
             val label = call.argument<String>("label")

@@ -40,6 +40,30 @@ object AppIcons {
         return out.toByteArray()
     }
 
+    /**
+     * Every app with a launcher icon, except Echo: package, name and Android's
+     * category (ApplicationInfo.CATEGORY_*, -1 when the app doesn't set one).
+     */
+    fun installedApps(context: Context): List<Map<String, Any>> {
+        val pm = context.packageManager
+        val launcher = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val seen = mutableSetOf<String>()
+        val apps = mutableListOf<Map<String, Any>>()
+        for (info in pm.queryIntentActivities(launcher, 0)) {
+            val app = info.activityInfo.applicationInfo
+            val pkg = app.packageName
+            if (pkg == context.packageName || !seen.add(pkg)) continue
+            apps.add(
+                mapOf(
+                    "package" to pkg,
+                    "label" to app.loadLabel(pm).toString(),
+                    "category" to app.category,
+                ),
+            )
+        }
+        return apps
+    }
+
     private fun isInstalled(pm: PackageManager, pkg: String): Boolean = try {
         pm.getApplicationInfo(pkg, 0)
         true

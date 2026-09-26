@@ -5,6 +5,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:isar/isar.dart';
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
+import 'package:project_echo/core/services/source_packages.dart';
+import 'package:project_echo/features/vault/data/app_access.dart';
 
 part 'vault_state.dart';
 
@@ -204,6 +206,16 @@ class VaultCubit extends Cubit<VaultState> {
 
       await prefs.setStringList('vault_blocked_categories', updatedBlocks);
 
+      // Blocking a category switches its apps off in Apps Echo hears (so
+      // they're no longer captured); unblocking switches them back on.
+      final packages = await SourcePackages.load(category);
+      if (packages.isNotEmpty) {
+        final access = await AppAccess.load();
+        await access
+            .withApps(packages.keys, !updatedBlocks.contains(category))
+            .save();
+      }
+
       // If blocking the currently selected category, we can switch back to 'All'
       final newSelectedCat =
           (updatedBlocks.contains(category) &&
@@ -224,6 +236,20 @@ class VaultCubit extends Cubit<VaultState> {
 
       await prefs.setString('vault_category_icons', jsonEncode(updatedIcons));
 
+      await _emitLoadedState(
+        currentState.allItems,
+        currentState.selectedCategory,
+      );
+    }
+  }
+
+  /// Re-reads blocked categories and icons after they change elsewhere
+  /// (Apps Echo hears), without reloading the list.
+  Future<void> reloadSettings() async {
+    final currentState = state;
+    if (currentState is VaultLoaded) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.reload();
       await _emitLoadedState(
         currentState.allItems,
         currentState.selectedCategory,
