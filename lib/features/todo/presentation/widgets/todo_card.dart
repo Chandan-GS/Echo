@@ -827,13 +827,17 @@ class _TodoSheetState extends State<_TodoSheet> {
   final Set<int> _expanded = {};
   final _tomorrowKey = GlobalKey();
 
-  /// Rows fade and rise in one after another as the sheet arrives; rows far
-  /// down (off screen anyway) don't keep the cascade waiting.
-  Widget _cascade(int index, Widget child) => FadeSlideIn(
-    delay: Duration(milliseconds: 160 + 45 * math.min(index, 10)),
-    offsetY: 18,
-    child: child,
-  );
+  /// Rows fade and rise in one after another as the sheet arrives. [index]
+  /// counts from the first row on screen; null means "not on screen at
+  /// first" (today's rows when the sheet opens at Tomorrow), shown without
+  /// waiting.
+  Widget _cascade(int? index, Widget child) => index == null
+      ? child
+      : FadeSlideIn(
+          delay: Duration(milliseconds: 60 + 35 * math.min(index, 8)),
+          offsetY: 16,
+          child: child,
+        );
 
   @override
   void initState() {
@@ -842,11 +846,8 @@ class _TodoSheetState extends State<_TodoSheet> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         final ctx = _tomorrowKey.currentContext;
         if (ctx != null) {
-          Scrollable.ensureVisible(
-            ctx,
-            duration: const Duration(milliseconds: 320),
-            curve: Curves.easeOutCubic,
-          );
+          // Open already at Tomorrow rather than scrolling there on screen.
+          Scrollable.ensureVisible(ctx);
         }
       });
     }
@@ -858,6 +859,7 @@ class _TodoSheetState extends State<_TodoSheet> {
     return BlocBuilder<TodoCubit, TodoState>(
       builder: (context, s) {
         final today = s.today, tomorrow = s.tomorrow;
+        final atTomorrow = widget.startAtTomorrow && tomorrow.isNotEmpty;
         Widget row(TodoItem item, int i) => _TodoRow(
           key: ValueKey('sheet-${item.id}'),
           item: item,
@@ -930,22 +932,28 @@ class _TodoSheetState extends State<_TodoSheet> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         for (var i = 0; i < today.length; i++)
-                          _cascade(i, row(today[i], i)),
+                          _cascade(atTomorrow ? null : i, row(today[i], i)),
                         if (tomorrow.isNotEmpty) ...[
-                          Padding(
-                            key: _tomorrowKey,
-                            padding: const EdgeInsets.fromLTRB(2, 20, 2, 4),
-                            child: Text(
-                              'Tomorrow',
-                              style: GoogleFonts.oldStandardTt(
-                                fontSize: 20,
-                                fontWeight: FontWeight.w700,
-                                color: c.textPrimary,
+                          _cascade(
+                            atTomorrow ? 0 : today.length,
+                            Padding(
+                              key: _tomorrowKey,
+                              padding: const EdgeInsets.fromLTRB(2, 20, 2, 4),
+                              child: Text(
+                                'Tomorrow',
+                                style: GoogleFonts.oldStandardTt(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w700,
+                                  color: c.textPrimary,
+                                ),
                               ),
                             ),
                           ),
                           for (var i = 0; i < tomorrow.length; i++)
-                            _cascade(today.length + 1 + i, row(tomorrow[i], i)),
+                            _cascade(
+                              (atTomorrow ? 1 : today.length + 1) + i,
+                              row(tomorrow[i], i),
+                            ),
                         ],
                       ],
                     ),
