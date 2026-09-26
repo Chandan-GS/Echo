@@ -65,7 +65,6 @@ class _EchoViewState extends State<_EchoView> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       context.read<BriefingCubit>().loadCachedBriefing();
-      context.read<TodoCubit>().load();
       WidgetRefreshService.refresh();
       PhoneSyncService.instance.syncNow();
     }

@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:project_echo/core/services/analytics_service.dart';
 import 'package:project_echo/core/services/widget_refresh_service.dart';
@@ -91,6 +91,9 @@ class TodoCubit extends Cubit<TodoState> {
   final TodoGenerator _generator;
   StreamSubscription<void>? _isarWatch;
   Timer? _recount;
+  // Items ticked in a home-screen widget land while the app is in the
+  // background; reload whenever it comes back, whichever tab is showing.
+  late final AppLifecycleListener _lifecycle;
 
   // A list made from the end of the briefing is revealed only once home is
   // back on screen, so the entrance isn't played behind the briefing.
@@ -102,6 +105,7 @@ class TodoCubit extends Cubit<TodoState> {
     : _store = store ?? TodoStore(),
       _generator = generator ?? TodoGenerator(store: store),
       super(TodoState(now: DateTime.now())) {
+    _lifecycle = AppLifecycleListener(onResume: load);
     load();
     _watchNotifications();
   }
@@ -258,6 +262,7 @@ class TodoCubit extends Cubit<TodoState> {
   Future<void> close() {
     _isarWatch?.cancel();
     _recount?.cancel();
+    _lifecycle.dispose();
     return super.close();
   }
 }
