@@ -11,4 +11,6 @@
     <color name="todo_widget_track">#DCDAD3</color>
     <color name="todo_widget_check_ring">#8C49884F</color>
     <color name="todo_widget_divider">#1F5A5A5A</color>
+    <color name="todo_widget_text_done">#731E1E1E</color>
+    <color name="todo_widget_green_done">#7349884F</color>
 </resources>
