@@ -211,7 +211,11 @@ class _DailyBriefingScreenState extends State<DailyBriefingScreen> {
                               child: SingleChildScrollView(
                                 physics: const BouncingScrollPhysics(),
                                 child: Padding(
-                                  padding: const EdgeInsets.only(bottom: 60),
+                                  // The list offer ends the transcript; leave
+                                  // room so it scrolls clear of the fade below.
+                                  padding: EdgeInsets.only(
+                                    bottom: widget.todoCubit == null ? 60 : 120,
+                                  ),
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.stretch,
                                     children: [

@@ -55,6 +55,20 @@ class TodoState {
 
   int get doneToday => today.where((i) => i.done).length;
 
+  /// Today's list is finished (and not mid-update).
+  bool get allDoneToday =>
+      phase == TodoPhase.idle && today.isNotEmpty && doneToday == today.length;
+
+  /// When the last of today's items was ticked, if known.
+  DateTime? get lastDoneToday {
+    DateTime? last;
+    for (final i in today) {
+      final at = i.doneAt;
+      if (at != null && (last == null || at.isAfter(last))) last = at;
+    }
+    return last;
+  }
+
   bool get hasList {
     final made = meta.madeAt;
     return today.isNotEmpty ||
@@ -213,7 +227,8 @@ class TodoCubit extends Cubit<TodoState> {
     final wasAllDone =
         state.today.isNotEmpty && state.doneToday == state.today.length;
     final items = [
-      for (final i in state.items) i.id == id ? i.copyWith(done: !i.done) : i,
+      for (final i in state.items)
+        i.id == id ? i.withDone(!i.done, DateTime.now()) : i,
     ];
     emit(state.copyWith(items: items, justAdded: {}, justChanged: {}));
     await _store.save(items, state.meta);
