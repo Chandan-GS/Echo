@@ -392,8 +392,8 @@ class _ProgressRing extends StatelessWidget {
       duration: const Duration(milliseconds: 600),
       curve: const Cubic(0.2, 0.8, 0.2, 1),
       builder: (context, value, _) => SizedBox(
-        width: 60,
-        height: 60,
+        width: 52,
+        height: 52,
         child: CustomPaint(
           painter: _RingPainter(
             value: value,
@@ -411,33 +411,18 @@ class _ProgressRing extends StatelessWidget {
                   ? Icon(
                       Icons.check_rounded,
                       key: const ValueKey('all-done'),
-                      size: 28,
+                      size: 24,
                       color: context.colors.primaryGreen,
                     )
-                  : Column(
+                  : Text(
+                      '$done',
                       key: const ValueKey('count'),
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          '$done',
-                          style: GoogleFonts.nunito(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                            height: 1.05,
-                            color: context.colors.textPrimary,
-                            fontFeatures: const [FontFeature.tabularFigures()],
-                          ),
-                        ),
-                        Text(
-                          'of $total',
-                          style: GoogleFonts.nunito(
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w700,
-                            height: 1.1,
-                            color: context.colors.textSecondary,
-                          ),
-                        ),
-                      ],
+                      style: GoogleFonts.nunito(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        color: context.colors.textPrimary,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      ),
                     ),
             ),
           ),
