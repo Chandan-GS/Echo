@@ -86,7 +86,10 @@ object TodoWidgetData {
             for (i in 0 until array.length()) {
                 val o = array.getJSONObject(i)
                 if (o.getInt("id") == id) {
-                    o.put("done", done ?: !o.optBoolean("done", false))
+                    val now = done ?: !o.optBoolean("done", false)
+                    o.put("done", now)
+                    // Mirrors TodoItem.doneAt, for "last one at 4:12 PM" in the app.
+                    o.put("doneAt", if (now) System.currentTimeMillis() else org.json.JSONObject.NULL)
                     break
                 }
             }

@@ -29,6 +29,9 @@ class TodoItem {
 
   final bool done;
 
+  /// When it was ticked off (null while not done) — "last one at 4:12 PM".
+  final DateTime? doneAt;
+
   /// Added by the most recent update (drawn with a small dot).
   final bool isNew;
 
@@ -49,6 +52,7 @@ class TodoItem {
     required this.sourceKey,
     required this.created,
     this.done = false,
+    this.doneAt,
     this.isNew = false,
     this.movedFrom,
   });
@@ -77,8 +81,27 @@ class TodoItem {
     sourceKey: sourceKey ?? this.sourceKey,
     created: created,
     done: done ?? this.done,
+    doneAt: doneAt,
     isNew: isNew ?? this.isNew,
     movedFrom: movedFrom ?? this.movedFrom,
+  );
+
+  /// Ticked on or off at [now].
+  TodoItem withDone(bool value, DateTime now) => TodoItem(
+    id: id,
+    title: title,
+    day: day,
+    time: time,
+    sort: sort,
+    sender: sender,
+    app: app,
+    sourceText: sourceText,
+    sourceKey: sourceKey,
+    created: created,
+    done: value,
+    doneAt: value ? now : null,
+    isNew: isNew,
+    movedFrom: movedFrom,
   );
 
   Map<String, dynamic> toJson() => {
@@ -92,6 +115,7 @@ class TodoItem {
     'source': sourceText,
     'key': sourceKey,
     'done': done,
+    'doneAt': doneAt?.millisecondsSinceEpoch,
     'new': isNew,
     'movedFrom': movedFrom,
     'created': created.millisecondsSinceEpoch,
@@ -108,6 +132,9 @@ class TodoItem {
     sourceText: (j['source'] as String?) ?? '',
     sourceKey: (j['key'] as String?) ?? '',
     done: (j['done'] as bool?) ?? false,
+    doneAt: j['doneAt'] is int
+        ? DateTime.fromMillisecondsSinceEpoch(j['doneAt'] as int)
+        : null,
     isNew: (j['new'] as bool?) ?? false,
     movedFrom: j['movedFrom'] as String?,
     created: DateTime.fromMillisecondsSinceEpoch((j['created'] as int?) ?? 0),

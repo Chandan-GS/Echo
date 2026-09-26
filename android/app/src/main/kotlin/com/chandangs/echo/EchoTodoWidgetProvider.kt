@@ -111,6 +111,7 @@ class EchoTodoWidgetProvider : AppWidgetProvider() {
                         "Your to-do list comes from today's briefing.",
                 )
                 views.setViewVisibility(R.id.todo_list, View.GONE)
+                views.setViewVisibility(R.id.todo_done, View.GONE)
                 views.setTextViewText(R.id.todo_more, "")
                 views.setTextViewText(R.id.todo_tomorrow, "")
                 manager.updateAppWidget(widgetId, views)
@@ -118,6 +119,21 @@ class EchoTodoWidgetProvider : AppWidgetProvider() {
             }
 
             views.setViewVisibility(R.id.todo_empty, View.GONE)
+
+            // Everything done (and not mid-tick): one calm line instead of a
+            // stack of crossed-out rows.
+            if (today.isNotEmpty() && left == 0 && pinnedId == -1) {
+                views.setTextViewText(R.id.todo_left, "All done")
+                views.setViewVisibility(R.id.todo_list, View.GONE)
+                views.setViewVisibility(R.id.todo_done, View.VISIBLE)
+                views.setImageViewBitmap(R.id.todo_done_badge, TodoWidgetArt.check(context, 34f, true, green, ring, tick))
+                views.setTextViewText(R.id.todo_done_sub, "${today.size} done")
+                views.setTextViewText(R.id.todo_more, "")
+                views.setTextViewText(R.id.todo_tomorrow, if (tomorrow.isNotEmpty()) "Tomorrow · ${tomorrow.size}" else "")
+                manager.updateAppWidget(widgetId, views)
+                return
+            }
+            views.setViewVisibility(R.id.todo_done, View.GONE)
             views.setViewVisibility(R.id.todo_list, View.VISIBLE)
             views.setTextViewText(
                 R.id.todo_left,

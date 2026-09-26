@@ -51,6 +51,14 @@ Future<void> showTodoSheet(BuildContext context, {bool tomorrow = false}) {
     useRootNavigator: true,
     isScrollControlled: true,
     backgroundColor: context.colors.surface,
+    // Rises a touch slower than the default with a soft settle at the top,
+    // and eases away quickly; the rows then cascade in (see _TodoSheet).
+    sheetAnimationStyle: const AnimationStyle(
+      duration: Duration(milliseconds: 520),
+      curve: Cubic(0.22, 1.18, 0.36, 1),
+      reverseDuration: Duration(milliseconds: 260),
+      reverseCurve: Curves.easeInCubic,
+    ),
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
     ),
@@ -155,7 +163,7 @@ class _TodoCardState extends State<TodoCard>
     } else if (total == 0) {
       count = 'Nothing left for today';
     } else if (done == total) {
-      count = 'All done';
+      count = 'All $total done';
     } else {
       count = '${total - done} of $total left';
     }
@@ -190,7 +198,9 @@ class _TodoCardState extends State<TodoCard>
             ],
           ),
         ),
-        if (s.hasList) _ProgressRing(done: done, total: total),
+        // When everything's done the panel below says so; no ring needed.
+        if (s.hasList && !s.allDoneToday)
+          _ProgressRing(done: done, total: total),
       ],
     );
   }
@@ -305,12 +315,21 @@ class _TodoCardState extends State<TodoCard>
           ),
         ),
       const SizedBox(height: 6),
-      for (var i = 0; i < shown.length; i++) rowFor(shown[i], i),
-      if (today.length > shown.length)
+      if (s.allDoneToday) ...[
+        // One calm panel instead of a pile of crossed-out items.
+        _AllDonePanel(count: today.length, lastDoneAt: s.lastDoneToday),
         _LinkRow(
-          label: 'See all ${today.length} for today',
+          label: 'See all ${today.length} done',
           onTap: () => showTodoSheet(context),
         ),
+      ] else ...[
+        for (var i = 0; i < shown.length; i++) rowFor(shown[i], i),
+        if (today.length > shown.length)
+          _LinkRow(
+            label: 'See all ${today.length} for today',
+            onTap: () => showTodoSheet(context),
+          ),
+      ],
       if (s.phase == TodoPhase.updating) ...[
         const SizedBox(height: 12),
         const DraftingSkeleton(
@@ -373,8 +392,8 @@ class _ProgressRing extends StatelessWidget {
       duration: const Duration(milliseconds: 600),
       curve: const Cubic(0.2, 0.8, 0.2, 1),
       builder: (context, value, _) => SizedBox(
-        width: 48,
-        height: 48,
+        width: 60,
+        height: 60,
         child: CustomPaint(
           painter: _RingPainter(
             value: value,
@@ -384,14 +403,42 @@ class _ProgressRing extends StatelessWidget {
             fill: context.colors.primaryGreen,
           ),
           child: Center(
-            child: Text(
-              total == 0 ? '–' : '$done/$total',
-              style: GoogleFonts.nunito(
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-                color: context.colors.textPrimary,
-                fontFeatures: const [FontFeature.tabularFigures()],
-              ),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 260),
+              transitionBuilder: (child, a) =>
+                  ScaleTransition(scale: a, child: child),
+              child: total > 0 && done == total
+                  ? Icon(
+                      Icons.check_rounded,
+                      key: const ValueKey('all-done'),
+                      size: 28,
+                      color: context.colors.primaryGreen,
+                    )
+                  : Column(
+                      key: const ValueKey('count'),
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '$done',
+                          style: GoogleFonts.nunito(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            height: 1.05,
+                            color: context.colors.textPrimary,
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                          ),
+                        ),
+                        Text(
+                          'of $total',
+                          style: GoogleFonts.nunito(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w700,
+                            height: 1.1,
+                            color: context.colors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
             ),
           ),
         ),
@@ -408,10 +455,10 @@ class _RingPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final rect = (Offset.zero & size).deflate(2.5);
+    final rect = (Offset.zero & size).deflate(3);
     final stroke = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 5
+      ..strokeWidth = 5.5
       ..strokeCap = StrokeCap.round;
     canvas.drawArc(rect, 0, 2 * math.pi, false, stroke..color = track);
     if (value > 0) {
@@ -614,6 +661,118 @@ class _TomorrowRow extends StatelessWidget {
   }
 }
 
+/// Shown when today's list is finished: a green badge whose tick draws itself,
+/// "That's everything for today", and when the last item was done.
+class _AllDonePanel extends StatefulWidget {
+  final int count;
+  final DateTime? lastDoneAt;
+  const _AllDonePanel({required this.count, required this.lastDoneAt});
+
+  @override
+  State<_AllDonePanel> createState() => _AllDonePanelState();
+}
+
+class _AllDonePanelState extends State<_AllDonePanel>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _in = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  )..forward();
+
+  late final Animation<double> _rise = CurvedAnimation(
+    parent: _in,
+    curve: const Interval(0, 0.55, curve: Cubic(0.2, 0.8, 0.2, 1)),
+  );
+  late final Animation<double> _pop = CurvedAnimation(
+    parent: _in,
+    curve: const Interval(0.12, 0.7, curve: Cubic(0.34, 1.56, 0.64, 1)),
+  );
+  late final Animation<double> _tick = CurvedAnimation(
+    parent: _in,
+    curve: const Interval(0.45, 0.85, curve: Curves.easeOut),
+  );
+
+  @override
+  void dispose() {
+    _in.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final last = widget.lastDoneAt;
+    return AnimatedBuilder(
+      animation: _in,
+      builder: (context, _) => Opacity(
+        opacity: _rise.value.clamp(0.0, 1.0),
+        child: Transform.translate(
+          offset: Offset(0, 14 * (1 - _rise.value)),
+          child: Container(
+            margin: const EdgeInsets.fromLTRB(0, 14, 0, 6),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: c.primaryGreen.withValues(
+                alpha: context.isDarkMode ? 0.14 : 0.10,
+              ),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Row(
+              children: [
+                Transform.scale(
+                  scale: _pop.value,
+                  child: Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: c.primaryGreen,
+                      shape: BoxShape.circle,
+                    ),
+                    child: CustomPaint(
+                      painter: _CheckPainter(
+                        _tick.value,
+                        context.isDarkMode
+                            ? const Color(0xFF16301B)
+                            : Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "That's everything for today",
+                        style: GoogleFonts.nunito(
+                          fontSize: 15.5,
+                          fontWeight: FontWeight.w800,
+                          color: c.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        last == null
+                            ? '${widget.count} done'
+                            : '${widget.count} done · last one at ${_clock(last)}',
+                        style: GoogleFonts.nunito(
+                          fontSize: 13,
+                          color: c.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// "See all 7 for today ›"
 class _LinkRow extends StatelessWidget {
   final String label;
@@ -667,6 +826,14 @@ class _TodoSheet extends StatefulWidget {
 class _TodoSheetState extends State<_TodoSheet> {
   final Set<int> _expanded = {};
   final _tomorrowKey = GlobalKey();
+
+  /// Rows fade and rise in one after another as the sheet arrives; rows far
+  /// down (off screen anyway) don't keep the cascade waiting.
+  Widget _cascade(int index, Widget child) => FadeSlideIn(
+    delay: Duration(milliseconds: 160 + 45 * math.min(index, 10)),
+    offsetY: 18,
+    child: child,
+  );
 
   @override
   void initState() {
@@ -762,7 +929,8 @@ class _TodoSheetState extends State<_TodoSheet> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        for (var i = 0; i < today.length; i++) row(today[i], i),
+                        for (var i = 0; i < today.length; i++)
+                          _cascade(i, row(today[i], i)),
                         if (tomorrow.isNotEmpty) ...[
                           Padding(
                             key: _tomorrowKey,
@@ -777,7 +945,7 @@ class _TodoSheetState extends State<_TodoSheet> {
                             ),
                           ),
                           for (var i = 0; i < tomorrow.length; i++)
-                            row(tomorrow[i], i),
+                            _cascade(today.length + 1 + i, row(tomorrow[i], i)),
                         ],
                       ],
                     ),
