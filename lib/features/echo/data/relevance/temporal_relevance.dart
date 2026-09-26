@@ -81,7 +81,15 @@ List<RelevanceWindow> relevanceWindows(String text, DateTime receivedAt) {
 }
 
 /// Windows for the dates and times [text] names explicitly (empty if none).
-List<RelevanceWindow> extractExplicitWindows(String text, DateTime receivedAt) {
+///
+/// [rollPastTimes] moves a day-less time that's long past ("10 AM" said at
+/// 11 PM) to the next day — right for a notification announcing something,
+/// wrong for a question about what already happened, so questions pass false.
+List<RelevanceWindow> extractExplicitWindows(
+  String text,
+  DateTime receivedAt, {
+  bool rollPastTimes = true,
+}) {
   final taken = <_Span>[];
   final days = _findDays(text, receivedAt, taken);
   final times = _findTimes(text, taken);
@@ -128,7 +136,8 @@ List<RelevanceWindow> extractExplicitWindows(String text, DateTime receivedAt) {
 
   for (final t in unattached) {
     var window = t.on(receivedAt);
-    if (window.start.isBefore(receivedAt.subtract(_timeOnlyRollover))) {
+    if (rollPastTimes &&
+        window.start.isBefore(receivedAt.subtract(_timeOnlyRollover))) {
       window = t.on(_addDays(receivedAt, 1));
     }
     windows.add(window);

@@ -339,7 +339,7 @@ String _boldPatternIfNotBolded(String text, RegExp pattern) {
   });
 }
 
-String getAskAiSystemInstruction(String userName) {
+String getAskAiSystemInstruction(String userName, {DateTime? now}) {
   final name = userName.trim().isEmpty ? 'sir' : userName.trim();
   return 'You are Echo, $name\'s personal butler — attentive, warm, and a bit '
       'devoted to looking after them, the way a trusted butler would. '
@@ -363,19 +363,34 @@ String getAskAiSystemInstruction(String userName) {
       'invent people, messages, or events that aren\'t there. Be specific and '
       'concrete: name the actual sender, time, or detail from the list rather '
       'than speaking in vague generalities. '
+      'It is now ${describeNow(now ?? DateTime.now())}. Each notification starts with a label in square brackets saying when it applies, '
+      'already worked out against the current time — or, if it names no time, when it arrived. Words like "today" or "tomorrow" INSIDE a '
+      'notification were written when it arrived and may be out of date, so always go by the label; "already over" means it has passed. '
+      'If an "Earlier today" exchange is included, use it only to work out what the new question refers to (who "she" is, what "that" means), '
+      'then answer the new question. '
       'Keep every reply to one or two short sentences.';
 }
 
-String buildAskAiUserMessage(String query, String notificationContext) {
-  return 'Notifications:\n$notificationContext\n\nQuestion: $query';
+/// [history] is the compact "Earlier today" exchange, included only for
+/// follow-up questions.
+String buildAskAiUserMessage(
+  String query,
+  String notificationContext, {
+  String? history,
+}) {
+  final earlier =
+      (history == null || history.isEmpty) ? '' : 'Earlier today:\n$history\n\n';
+  return '${earlier}Notifications:\n$notificationContext\n\nQuestion: $query';
 }
 
 String buildAskAiQwenPrompt(
   String query,
   String notificationContext,
-  String userName,
-) {
-  return '<|im_start|>system\n${getAskAiSystemInstruction(userName)}<|im_end|>\n'
-      '<|im_start|>user\n${buildAskAiUserMessage(query, notificationContext)}<|im_end|>\n'
+  String userName, {
+  DateTime? now,
+  String? history,
+}) {
+  return '<|im_start|>system\n${getAskAiSystemInstruction(userName, now: now)}<|im_end|>\n'
+      '<|im_start|>user\n${buildAskAiUserMessage(query, notificationContext, history: history)}<|im_end|>\n'
       '<|im_start|>assistant\n';
 }
