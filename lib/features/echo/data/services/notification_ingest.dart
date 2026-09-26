@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:echo_native/echo_native.dart';
 import 'package:flutter/foundation.dart';
 import 'package:isar/isar.dart';
+import 'package:project_echo/core/services/app_icon_service.dart';
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
 import 'package:project_echo/features/echo/data/datasources/tflite_embedding_service.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
@@ -81,6 +82,10 @@ class NotificationIngest {
           ? 'Unknown'
           : '${rawSource[0].toUpperCase()}${rawSource.substring(1).toLowerCase()}';
       final source = categoryAliases[defaultSource] ?? defaultSource;
+      await AppIconService.remember(
+        defaultSource,
+        json['packageName'] as String?,
+      );
 
       final sender = json['sender'] as String? ?? '';
       final content = json['content'] as String? ?? '';

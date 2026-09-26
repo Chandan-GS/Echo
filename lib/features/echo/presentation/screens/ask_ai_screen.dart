@@ -14,6 +14,7 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'package:project_echo/features/echo/presentation/widgets/siri_waveform_visualizer.dart';
 import 'package:project_echo/features/echo/presentation/widgets/echo_mascot.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:project_echo/features/vault/presentation/widgets/source_icon.dart';
 
 class AskAiScreen extends StatelessWidget {
   /// True when rendered as a persistent desktop sidebar tab (inside
@@ -1318,16 +1319,20 @@ class RagSourcesWidgetState extends State<RagSourcesWidget> {
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Container(
-                                  padding: const EdgeInsets.all(6),
-                                  decoration: BoxDecoration(
-                                    color: context.colors.background,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Icon(
-                                    _getSourceIcon(src.source),
-                                    size: 12,
-                                    color: context.colors.textSecondary,
+                                SourceIcon(
+                                  source: src.source,
+                                  size: 24,
+                                  fallback: Container(
+                                    padding: const EdgeInsets.all(6),
+                                    decoration: BoxDecoration(
+                                      color: context.colors.background,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(
+                                      _getSourceIcon(src.source),
+                                      size: 12,
+                                      color: context.colors.textSecondary,
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(width: 10),

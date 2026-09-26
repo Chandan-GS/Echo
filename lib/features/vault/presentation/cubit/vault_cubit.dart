@@ -196,6 +196,20 @@ class VaultCubit extends Cubit<VaultState> {
     }
   }
 
+  /// Drops a picked glyph so the category shows its app's own icon again.
+  Future<void> clearCategoryIcon(String category) async {
+    final prefs = await SharedPreferences.getInstance();
+    final currentState = state;
+    if (currentState is VaultLoaded) {
+      final updatedIcons = Map<String, int>.from(currentState.categoryIcons)
+        ..remove(category.toLowerCase());
+
+      await prefs.setString('vault_category_icons', jsonEncode(updatedIcons));
+
+      await _emitLoadedState(currentState.allItems, currentState.selectedCategory);
+    }
+  }
+
   @override
   Future<void> close() {
     _isarSubscription?.cancel();

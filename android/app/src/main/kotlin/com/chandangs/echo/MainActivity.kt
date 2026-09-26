@@ -12,11 +12,16 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
+import java.util.concurrent.Executors
 
 class MainActivity : FlutterActivity() {
     private val PERMISSIONS_CHANNEL = "project_echo/permissions"
     private val NOTIFICATIONS_EVENT_CHANNEL = "project_echo/notification_stream"
     private val WIDGET_CHANNEL = "project_echo/widget"
+    private val APP_ICONS_CHANNEL = "project_echo/app_icons"
+
+    // Drawing and PNG-encoding icons stays off the main thread.
+    private val iconExecutor = Executors.newFixedThreadPool(2)
 
     private var notificationReceiver: BroadcastReceiver? = null
 
@@ -96,6 +101,24 @@ class MainActivity : FlutterActivity() {
                 else -> {
                     result.notImplemented()
                 }
+            }
+        }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, APP_ICONS_CHANNEL).setMethodCallHandler { call, result ->
+            if (call.method != "icon") {
+                result.notImplemented()
+                return@setMethodCallHandler
+            }
+            val pkg = call.argument<String>("package")
+            val label = call.argument<String>("label")
+            val size = call.argument<Int>("size") ?: 144
+            iconExecutor.execute {
+                val png = try {
+                    AppIcons.png(applicationContext, pkg, label, size)
+                } catch (e: Exception) {
+                    null
+                }
+                runOnUiThread { result.success(png) }
             }
         }
 

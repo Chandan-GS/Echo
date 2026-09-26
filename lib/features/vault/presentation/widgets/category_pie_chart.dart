@@ -1,9 +1,13 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
+import 'package:project_echo/features/vault/presentation/cubit/vault_cubit.dart';
 import 'package:project_echo/features/vault/presentation/widgets/pie_chart_geometry.dart';
+import 'package:project_echo/features/vault/presentation/widgets/source_icon.dart';
+import 'package:project_echo/features/vault/presentation/widgets/vault_utils.dart';
 
 class CategoryPieChart extends StatefulWidget {
   final Map<String, int> categoryCounts;
@@ -36,8 +40,20 @@ class _PieSlice {
 }
 
 class _CategoryPieChartState extends State<CategoryPieChart>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late AnimationController _animController;
+
+  // Fades each slice's app icon in while the ring is being scrubbed, and out
+  // on release, so the resting ring stays clean.
+  late final AnimationController _iconsController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 220),
+  );
+  late final Animation<double> _icons = CurvedAnimation(
+    parent: _iconsController,
+    curve: Curves.easeOutBack,
+    reverseCurve: Curves.easeInCubic,
+  );
   int? _hoveredIndex;
   List<_PieSlice> _slices = [];
 
@@ -87,7 +103,12 @@ class _CategoryPieChartState extends State<CategoryPieChart>
 
     // Pure geometry: guards total<=0 and normalizes sweeps to exactly 2π so
     // many tiny categories can't overflow past 360° and overlap.
-    final geometry = computePieSlices(widget.categoryCounts);
+    // Wider floor than the default so the thinnest slices still hold an icon
+    // and are easy to land on while scrubbing.
+    final geometry = computePieSlices(
+      widget.categoryCounts,
+      minSweepDegrees: 20,
+    );
 
     for (int i = 0; i < geometry.length; i++) {
       final g = geometry[i];
@@ -182,6 +203,7 @@ class _CategoryPieChartState extends State<CategoryPieChart>
   }
 
   void _handlePanEnd() {
+    _iconsController.reverse();
     if (_hoveredIndex != null &&
         _hoveredIndex! >= 0 &&
         _hoveredIndex! < _slices.length) {
@@ -193,6 +215,7 @@ class _CategoryPieChartState extends State<CategoryPieChart>
 
   @override
   void dispose() {
+    _iconsController.dispose();
     _animController.dispose();
     super.dispose();
   }
@@ -216,16 +239,20 @@ class _CategoryPieChartState extends State<CategoryPieChart>
         final size = math.min(constraints.maxWidth, constraints.maxHeight) - 80;
 
         return GestureDetector(
-          onPanDown: (details) => _updateHover(
-            details.localPosition,
-            Size(constraints.maxWidth, constraints.maxHeight),
-          ),
+          onPanDown: (details) {
+            _iconsController.forward();
+            _updateHover(
+              details.localPosition,
+              Size(constraints.maxWidth, constraints.maxHeight),
+            );
+          },
           onPanUpdate: (details) => _updateHover(
             details.localPosition,
             Size(constraints.maxWidth, constraints.maxHeight),
           ),
           onPanEnd: (details) => _handlePanEnd(),
           onPanCancel: () {
+            _iconsController.reverse();
             _hoveredIndex = null;
             _startAnimation();
           },
@@ -249,6 +276,7 @@ class _CategoryPieChartState extends State<CategoryPieChart>
                     ),
                   ),
                 ),
+                IgnorePointer(child: _sliceIcons(size)),
                 // Center text for hovered item
                 if (_hoveredIndex != null &&
                     _hoveredIndex! >= 0 &&
@@ -317,6 +345,81 @@ class _CategoryPieChartState extends State<CategoryPieChart>
   }
 }
 
+extension on _CategoryPieChartState {
+  /// Each slice's icon, centred on its arc and riding out with the dock
+  /// effect. Built only while the ring is being scrubbed.
+  Widget _sliceIcons(double ringSize) {
+    return AnimatedBuilder(
+      animation: _icons,
+      builder: (context, _) {
+        final t = _icons.value;
+        if (_iconsController.isDismissed) return const SizedBox.shrink();
+
+        Map<String, int> customIcons = const {};
+        try {
+          final vault = context.read<VaultCubit>().state;
+          if (vault is VaultLoaded) customIcons = vault.categoryIcons;
+        } catch (_) {}
+
+        // The chart's full square (the ring is inset 40 on each side), which
+        // holds the hovered slice's dock (+25) and its bigger icon.
+        final box = ringSize + 80;
+        final center = box / 2;
+        final children = <Widget>[];
+        for (int i = 0; i < _slices.length; i++) {
+          final s = _slices[i];
+          final hover = _hoverValues[i] ?? 0.0;
+          final radius = ringSize / 2 + hover * 25.0;
+          final iconSize = 26.0 + hover * 8.0;
+          // Judged on the resting ring, so hovering never drops an icon.
+          if (s.sweepAngle * ringSize / 2 < 26.0 + 4) continue;
+
+          final mid = s.startAngle + s.sweepAngle / 2;
+          final custom = customIconFor(s.category, customIcons);
+          final glyph = Container(
+            width: iconSize,
+            height: iconSize,
+            decoration: BoxDecoration(
+              color: context.colors.surface,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              custom ?? getSourceIcon(s.category),
+              size: iconSize * 0.6,
+              color: context.colors.textPrimary,
+            ),
+          );
+          children.add(
+            Positioned(
+              left: center + math.cos(mid) * radius - iconSize / 2,
+              top: center + math.sin(mid) * radius - iconSize / 2,
+              child: custom != null
+                  ? glyph
+                  : SourceIcon(
+                      source: s.category,
+                      size: iconSize,
+                      fallback: glyph,
+                    ),
+            ),
+          );
+        }
+
+        return Opacity(
+          opacity: t.clamp(0.0, 1.0),
+          child: Transform.scale(
+            scale: 0.85 + 0.15 * t,
+            child: SizedBox(
+              width: box,
+              height: box,
+              child: Stack(clipBehavior: Clip.none, children: children),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _PieChartPainter extends CustomPainter {
   final List<_PieSlice> slices;
   final Map<int, double> hoverValues;
@@ -366,7 +469,7 @@ class _PieChartPainter extends CustomPainter {
       ..color = s.color
       ..style = PaintingStyle.stroke
       ..strokeWidth =
-          30.0 +
+          44.0 +
           (hoverVal * 15.0) // Thicker when hovered
       ..strokeCap = StrokeCap.butt;
 
