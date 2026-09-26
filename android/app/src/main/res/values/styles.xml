@@ -47,6 +47,7 @@
         <item name="android:gravity">center_vertical</item>
         <item name="android:orientation">horizontal</item>
     </style>
+    <!-- A FrameLayout, not a View: widgets may only inflate an allowed set of classes. -->
     <style name="TodoDivider">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">1dp</item>

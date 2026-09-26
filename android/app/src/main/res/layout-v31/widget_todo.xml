@@ -116,7 +116,7 @@
             android:id="@+id/todo_row1_time"
             style="@style/TodoRowTime" />
     </LinearLayout>
-    <View
+    <FrameLayout
         android:id="@+id/todo_div2"
         style="@style/TodoDivider" />
     <LinearLayout
@@ -132,7 +132,7 @@
             android:id="@+id/todo_row2_time"
             style="@style/TodoRowTime" />
     </LinearLayout>
-    <View
+    <FrameLayout
         android:id="@+id/todo_div3"
         style="@style/TodoDivider" />
     <LinearLayout
@@ -148,7 +148,7 @@
             android:id="@+id/todo_row3_time"
             style="@style/TodoRowTime" />
     </LinearLayout>
-    <View
+    <FrameLayout
         android:id="@+id/todo_div4"
         style="@style/TodoDivider" />
     <LinearLayout
