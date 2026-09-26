@@ -7,16 +7,13 @@ class TfliteEmbeddingService {
   final BertTokenizer _tokenizer = BertTokenizer();
   Interpreter? _interpreter;
   // Runs inference in a background isolate so it never blocks the UI thread.
-  // The synchronous `_interpreter.run*` calls were freezing the app for ~0.5s
-  // per notification while draining the capture backlog.
   IsolateInterpreter? _isolateInterpreter;
   bool _initialized = false;
 
-  // Serializes embedding calls. The native interpreter isn't safe for
-  // concurrent use, and now that inference runs off the main isolate, a live
-  // notification arriving mid-drain (or an Ask Echo query) could otherwise
-  // start a second embedding while one is already in flight. Chain calls so
-  // exactly one runs at a time.
+  // Serializes embedding calls. IsolateInterpreter returns immediately, without
+  // writing any output, if a run is already in flight, so an overlapping call
+  // (a live notification mid-drain, or an Ask Echo query) would silently get a
+  // zero vector. The native interpreter isn't safe for concurrent use either.
   Future<void> _queue = Future<void>.value();
 
   TfliteEmbeddingService._();
@@ -35,15 +32,14 @@ class TfliteEmbeddingService {
       'assets/ai refs/all-MiniLM-L6-v2-quant.tflite',
       options: options,
     );
-    // Wrap the interpreter so inference executes off the main isolate.
     _isolateInterpreter =
         await IsolateInterpreter.create(address: _interpreter!.address);
     _initialized = true;
   }
 
   Future<List<double>> getEmbedding(String text) {
-    // Chain onto the queue so only one embedding runs at a time; swallow errors
-    // on the chain so a single failure can't wedge every later call.
+    // Errors are swallowed on the chain only, so one failure can't wedge every
+    // later call; the caller still receives it via `result`.
     final result = _queue.then((_) => _computeEmbedding(text));
     _queue = result.then((_) {}, onError: (_) {});
     return result;

@@ -66,8 +66,8 @@ class VoiceCatalog {
       debugPrint('VoiceCatalog: getVoices failed: $e');
       _voices = const [];
     }
-    // Log a count only — dumping the full voice list here (hundreds of entries)
-    // built a huge string on the main thread and caused a multi-second UI stall.
+    // Count only: the full list can run to hundreds of entries and stalls the
+    // UI thread while the string is built.
     debugPrint('VoiceCatalog: ${_voices!.length} usable English voices');
     return _voices!;
   }

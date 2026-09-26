@@ -38,7 +38,7 @@ void main() async {
     DeviceOrientation.portraitDown,
   ]);
   final prefs = await SharedPreferences.getInstance();
-  bool isOnboardingFinished = prefs.getBool('onboarding_finished') ?? false;
+  final isOnboardingFinished = prefs.getBool('onboarding_finished') ?? false;
 
   // Stamp the first-ever launch so the Profile screen can show "Member for N
   // days". Set once, never overwritten.
@@ -65,14 +65,9 @@ void main() async {
   // Note: notification permission is requested in-context during onboarding
   // (the Permissions step), not abruptly at cold start.
 
-  // Once onboarding is complete, we never send the user back through it.
-  // This previously force-reset onboarding whenever the offline engine was
-  // selected without the model on disk — but that kicked users all the way
-  // back to onboarding (losing their home state) on any launch where they
-  // simply hadn't downloaded the model or the check transiently failed. The
-  // app now handles "offline engine, no model" gracefully in-feature (the
-  // briefing and Ask Echo prompt the user to download the model or switch to
-  // the cloud engine), so no reset is warranted.
+  // Onboarding is never re-entered once finished. A missing on-device model is
+  // handled in-feature: the briefing and Ask Echo prompt the user to download
+  // it or switch to the cloud engine.
 
   await NotificationService.instance.initialize();
 
