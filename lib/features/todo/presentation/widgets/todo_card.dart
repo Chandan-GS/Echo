@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -72,6 +73,10 @@ Future<void> showTodoSheet(BuildContext context, {bool tomorrow = false}) {
 class _TodoCardState extends State<TodoCard>
     with SingleTickerProviderStateMixin {
   final Set<int> _expanded = {};
+
+  /// Items just ticked on this card: they stay in place while the check
+  /// plays, then fold away (see [_Leavable]).
+  final Set<int> _leaving = {};
   bool _arriving = false;
   int _arrivalKey = 0;
 
@@ -250,26 +255,37 @@ class _TodoCardState extends State<TodoCard>
     final today = s.today;
     final tomorrow = s.tomorrow;
     final added = s.justAdded.toList();
-    // Home shows at most four: what's still to do first, by time. The rest
-    // are one tap away in the sheet, so home never becomes a long scroll.
-    final shown = [
-      ...today.where((i) => !i.done),
-      ...today.where((i) => i.done),
-    ].take(_visible).toList();
+    _leaving.retainWhere((id) => today.any((i) => i.id == id && i.done));
+    // Home shows at most four, and only what's still to do, by time. Done
+    // items are in the sheet, so home never becomes a long scroll.
+    final shown = today
+        .where((i) => !i.done || _leaving.contains(i.id))
+        .take(_visible)
+        .toList();
+    final allDone = s.allDoneToday && _leaving.isEmpty;
 
     Widget rowFor(TodoItem item, int index) {
-      Widget row = _TodoRow(
+      Widget row = _Leavable(
         key: ValueKey('todo-${item.id}'),
-        item: item,
-        first: index == 0,
-        expanded: _expanded.contains(item.id),
-        changed: s.justChanged.contains(item.id),
-        onToggle: () => toggleTodo(context, item),
-        onExpand: () => setState(() {
-          _expanded.contains(item.id)
-              ? _expanded.remove(item.id)
-              : _expanded.add(item.id);
-        }),
+        leaving: _leaving.contains(item.id),
+        onGone: () => setState(() => _leaving.remove(item.id)),
+        child: _TodoRow(
+          item: item,
+          first: index == 0,
+          expanded: _expanded.contains(item.id),
+          changed: s.justChanged.contains(item.id),
+          onToggle: () {
+            setState(() {
+              item.done ? _leaving.remove(item.id) : _leaving.add(item.id);
+            });
+            toggleTodo(context, item);
+          },
+          onExpand: () => setState(() {
+            _expanded.contains(item.id)
+                ? _expanded.remove(item.id)
+                : _expanded.add(item.id);
+          }),
+        ),
       );
       if (_arriving) {
         row = FadeSlideIn(
@@ -315,7 +331,7 @@ class _TodoCardState extends State<TodoCard>
           ),
         ),
       const SizedBox(height: 6),
-      if (s.allDoneToday) ...[
+      if (allDone) ...[
         // One calm panel instead of a pile of crossed-out items.
         _AllDonePanel(count: today.length, lastDoneAt: s.lastDoneToday),
         _LinkRow(
@@ -378,6 +394,93 @@ String _clock(DateTime t) {
 }
 
 // ── Pieces ──────────────────────────────────────────────────────────────────
+
+/// Keeps a just-ticked row in place while its check and strike-through
+/// play, then folds it away and calls [onGone]. Always in the tree (not
+/// only while leaving) so the row's own check animation isn't remounted.
+class _Leavable extends StatefulWidget {
+  final bool leaving;
+  final VoidCallback onGone;
+  final Widget child;
+
+  const _Leavable({
+    super.key,
+    required this.leaving,
+    required this.onGone,
+    required this.child,
+  });
+
+  @override
+  State<_Leavable> createState() => _LeavableState();
+}
+
+class _LeavableState extends State<_Leavable>
+    with SingleTickerProviderStateMixin {
+  static const _hold = Duration(milliseconds: 650);
+
+  late final AnimationController _present = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 340),
+    value: 1,
+  );
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.leaving) _scheduleLeave();
+  }
+
+  @override
+  void didUpdateWidget(covariant _Leavable oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.leaving && !oldWidget.leaving) _scheduleLeave();
+    if (!widget.leaving && oldWidget.leaving) {
+      // Unticked before it left: stay.
+      _timer?.cancel();
+      _present.forward();
+    }
+  }
+
+  void _scheduleLeave() {
+    _timer?.cancel();
+    _timer = Timer(_hold, () async {
+      if (!mounted) return;
+      await _present.reverse();
+      if (mounted && widget.leaving) widget.onGone();
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _present.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final curve = CurvedAnimation(
+      parent: _present,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    );
+    return SizeTransition(
+      sizeFactor: curve,
+      alignment: Alignment.topCenter,
+      child: FadeTransition(
+        opacity: curve,
+        child: SlideTransition(
+          position: Tween(
+            begin: const Offset(0.06, 0),
+            end: Offset.zero,
+          ).animate(curve),
+          child: widget.child,
+        ),
+      ),
+    );
+  }
+}
 
 class _ProgressRing extends StatelessWidget {
   final int done;
