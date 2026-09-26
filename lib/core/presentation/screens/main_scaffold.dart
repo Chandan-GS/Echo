@@ -9,6 +9,7 @@ import 'package:project_echo/core/presentation/animations/fade_indexed_stack.dar
 import 'package:project_echo/core/presentation/widgets/animated_nav_icons.dart';
 import 'package:project_echo/core/presentation/screens/desktop_shell.dart';
 import 'package:project_echo/features/echo/presentation/cubit/briefing_cubit.dart';
+import 'package:project_echo/features/todo/presentation/cubit/todo_cubit.dart';
 import 'package:project_echo/features/echo/presentation/screens/echo_home_screen.dart';
 import 'package:project_echo/features/echo/presentation/screens/desktop_home_screen.dart';
 import 'package:project_echo/features/vault/presentation/screens/vault_screen.dart';
@@ -125,8 +126,13 @@ class _MainScaffoldState extends State<MainScaffold> {
     // EchoHomeScreen so a briefing keeps generating across tab switches and can
     // never be torn down by incidental navigation — and so the whole shell can
     // surface a "working in background" indicator.
-    return BlocProvider(
-      create: (_) => BriefingCubit(),
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider(create: (_) => BriefingCubit()),
+        // The to-do list lives beside the briefing: home shows it, the
+        // briefing screen can make or update it.
+        BlocProvider(create: (_) => TodoCubit()),
+      ],
       child: (Platform.isMacOS || Platform.isWindows)
           ? DesktopShell(
               selectedIndex: _selectedIndex,

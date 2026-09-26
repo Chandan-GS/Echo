@@ -60,4 +60,24 @@ class GeminiService {
     );
     return model.generateContentStream([Content.text(prompt)]);
   }
+
+  /// A single, non-streamed reply constrained to JSON — for small structured
+  /// jobs like the to-do list, where only the finished object is useful.
+  Future<String> generateJson(
+    String apiKey,
+    String prompt, {
+    required String systemInstruction,
+  }) async {
+    final model = GenerativeModel(
+      model: RemoteConfigService.instance.geminiModel,
+      apiKey: apiKey.trim(),
+      generationConfig: GenerationConfig(
+        temperature: 0.2,
+        responseMimeType: 'application/json',
+      ),
+      systemInstruction: Content.system(systemInstruction),
+    );
+    final response = await model.generateContent([Content.text(prompt)]);
+    return response.text ?? '';
+  }
 }
