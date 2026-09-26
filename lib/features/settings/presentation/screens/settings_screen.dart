@@ -83,10 +83,18 @@ class _ProfileViewState extends State<_ProfileView>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: context.colors.background,
+      // Scrolls behind the phone's nav dock; MediaQuery's bottom padding is
+      // the room it needs at the end (see MainScaffold).
       body: SafeArea(
+        bottom: false,
         child: SingleChildScrollView(
           physics: const BouncingScrollPhysics(),
-          padding: EdgeInsets.symmetric(horizontal: _isDesktop ? 40.0 : 24.0),
+          padding: EdgeInsets.fromLTRB(
+            _isDesktop ? 40.0 : 24.0,
+            0,
+            _isDesktop ? 40.0 : 24.0,
+            MediaQuery.paddingOf(context).bottom + 16,
+          ),
           // Desktop fills the window, so centre the content and cap it — a
           // full-bleed settings form across a wide window reads as unfinished;
           // ~1040 keeps the two columns comfortable.
@@ -263,8 +271,6 @@ class _ProfileViewState extends State<_ProfileView>
 
                   const SizedBox(height: 32),
                   _aboutSection(context),
-
-                  const SizedBox(height: 120), // Padding for the bottom nav bar
                 ],
               ),
             ),

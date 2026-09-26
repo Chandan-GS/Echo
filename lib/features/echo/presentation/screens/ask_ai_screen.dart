@@ -23,21 +23,25 @@ class AskAiScreen extends StatelessWidget {
   /// nothing to "back" out of, the sidebar itself is the navigation.
   final bool embedded;
 
-  const AskAiScreen({super.key, this.embedded = false});
+  /// Asked as soon as the screen opens (from the nav dock's question bar).
+  final String? initialQuestion;
+
+  const AskAiScreen({super.key, this.embedded = false, this.initialQuestion});
 
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
       create: (context) => AskAiCubit(),
-      child: _AskAiView(embedded: embedded),
+      child: _AskAiView(embedded: embedded, initialQuestion: initialQuestion),
     );
   }
 }
 
 class _AskAiView extends StatefulWidget {
   final bool embedded;
+  final String? initialQuestion;
 
-  const _AskAiView({required this.embedded});
+  const _AskAiView({required this.embedded, this.initialQuestion});
 
   @override
   State<_AskAiView> createState() => _AskAiViewState();
@@ -75,6 +79,12 @@ class _AskAiViewState extends State<_AskAiView> {
     super.initState();
     _initAudio();
     _loadUserName();
+    final question = widget.initialQuestion?.trim();
+    if (question != null && question.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) context.read<AskAiCubit>().sendMessage(question);
+      });
+    }
   }
 
   String? _userName;

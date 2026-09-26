@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:go_router/go_router.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:project_echo/features/echo/presentation/cubit/briefing_cubit.dart';
@@ -20,25 +19,20 @@ import 'package:project_echo/features/echo/presentation/widgets/echo_mascot.dart
 import 'package:project_echo/core/presentation/animations/app_motion.dart';
 import 'package:project_echo/core/presentation/animations/fade_slide_in.dart';
 
+/// The phone's Today tab. Ask Echo lives in the nav dock (see NavDock).
 class EchoHomeScreen extends StatelessWidget {
-  /// Desktop only — switches the shell to the persistent Ask Echo sidebar tab
-  /// instead of pushing the phone's full-screen `/echo/chat` route. Null on
-  /// phone, where the "Ask Echo" cards push the route as before.
-  final VoidCallback? onAskEcho;
-
-  const EchoHomeScreen({super.key, this.onAskEcho});
+  const EchoHomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     // BriefingCubit is provided by MainScaffold (app-scoped) so a briefing
     // keeps generating across tab switches; this screen just renders the view.
-    return _EchoView(onAskEcho: onAskEcho);
+    return const _EchoView();
   }
 }
 
 class _EchoView extends StatefulWidget {
-  final VoidCallback? onAskEcho;
-  const _EchoView({this.onAskEcho});
+  const _EchoView();
 
   @override
   State<_EchoView> createState() => _EchoViewState();
@@ -106,7 +100,6 @@ class _EchoViewState extends State<_EchoView> with WidgetsBindingObserver {
             return _InitialView(
               onGenerate: () =>
                   context.read<BriefingCubit>().generateBriefing(),
-              onAskEcho: widget.onAskEcho,
             );
           }
 
@@ -119,7 +112,6 @@ class _EchoViewState extends State<_EchoView> with WidgetsBindingObserver {
                   context.read<BriefingCubit>().playCachedBriefing(rawText),
               onRegenerate: () =>
                   context.read<BriefingCubit>().generateBriefing(),
-              onAskEcho: widget.onAskEcho,
             );
           }
 
@@ -146,8 +138,7 @@ class _EchoViewState extends State<_EchoView> with WidgetsBindingObserver {
 // ---------------------------------------------------------------------------
 class _InitialView extends StatelessWidget {
   final VoidCallback onGenerate;
-  final VoidCallback? onAskEcho;
-  const _InitialView({required this.onGenerate, this.onAskEcho});
+  const _InitialView({required this.onGenerate});
 
   @override
   Widget build(BuildContext context) {
@@ -161,13 +152,6 @@ class _InitialView extends StatelessWidget {
         onTap: onGenerate,
         isPrimary: true,
       ),
-      secondary: _ActionCard(
-        title: 'Ask Echo',
-        subtitle: 'Chat with your secure assistant',
-        icon: Icons.chat_bubble_outline_rounded,
-        onTap: onAskEcho ?? () => context.push('/echo/chat'),
-        isPrimary: false,
-      ),
     );
   }
 }
@@ -178,12 +162,7 @@ class _InitialView extends StatelessWidget {
 class _CachedView extends StatelessWidget {
   final VoidCallback onPlay;
   final VoidCallback onRegenerate;
-  final VoidCallback? onAskEcho;
-  const _CachedView({
-    required this.onPlay,
-    required this.onRegenerate,
-    this.onAskEcho,
-  });
+  const _CachedView({required this.onPlay, required this.onRegenerate});
 
   @override
   Widget build(BuildContext context) {
@@ -197,31 +176,7 @@ class _CachedView extends StatelessWidget {
         onTap: onPlay,
         isPrimary: true,
       ),
-      secondary: Row(
-        children: [
-          Expanded(
-            child: _ActionCard(
-              title: 'Ask Echo',
-              subtitle: 'Chat',
-              icon: Icons.chat_bubble_outline_rounded,
-              onTap: onAskEcho ?? () => context.push('/echo/chat'),
-              isPrimary: false,
-              isSmall: true,
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: _ActionCard(
-              title: 'Regenerate',
-              subtitle: 'Update summary',
-              icon: Icons.auto_awesome_rounded,
-              onTap: onRegenerate,
-              isPrimary: false,
-              isSmall: true,
-            ),
-          ),
-        ],
-      ),
+      secondary: _RegenerateRow(onTap: onRegenerate),
     );
   }
 }
@@ -328,7 +283,13 @@ class _HomeShellState extends State<_HomeShell> {
       bottom: false,
       child: SingleChildScrollView(
         physics: const BouncingScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(24, 12, 24, 128),
+        // Clears the nav dock (MainScaffold sets the bottom padding).
+        padding: EdgeInsets.fromLTRB(
+          24,
+          12,
+          24,
+          MediaQuery.paddingOf(context).bottom + 16,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -371,9 +332,9 @@ class _HomeShellState extends State<_HomeShell> {
               child: widget.primary,
             ),
 
-            // ── Secondary actions, right under the primary one ────────────
+            // ── Secondary action, right under the primary one ─────────────
             if (widget.secondary != null) ...[
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               FadeSlideIn(
                 delay: AppMotion.staggerDelay(3),
                 child: widget.secondary!,
@@ -491,13 +452,90 @@ class _HeroEchoState extends State<_HeroEcho>
 // ---------------------------------------------------------------------------
 // Massive Action Card
 // ---------------------------------------------------------------------------
+/// Regenerate, as a slim row under Play: when today's briefing was made.
+class _RegenerateRow extends StatefulWidget {
+  final VoidCallback onTap;
+  const _RegenerateRow({required this.onTap});
+
+  @override
+  State<_RegenerateRow> createState() => _RegenerateRowState();
+}
+
+class _RegenerateRowState extends State<_RegenerateRow> {
+  DateTime? _madeAt;
+
+  @override
+  void initState() {
+    super.initState();
+    SharedPreferences.getInstance().then((prefs) {
+      final raw = prefs.getString('cached_briefing_time');
+      final at = raw == null ? null : DateTime.tryParse(raw);
+      final now = DateTime.now();
+      final today =
+          at != null &&
+          at.year == now.year &&
+          at.month == now.month &&
+          at.day == now.day;
+      if (mounted && today) setState(() => _madeAt = at);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final at = _madeAt;
+    return Material(
+      color: c.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: c.dividerColor.withValues(alpha: 0.6)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: widget.onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
+          child: Row(
+            children: [
+              Icon(Icons.refresh_rounded, size: 20, color: c.textSecondary),
+              const SizedBox(width: 12),
+              Text(
+                'Regenerate',
+                style: GoogleFonts.nunito(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: c.textPrimary,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                at == null ? 'Update summary' : 'Made at ${_clock(at)}',
+                style: GoogleFonts.nunito(
+                  fontSize: 12.5,
+                  color: c.textSecondary,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  static String _clock(DateTime t) {
+    final h = t.hour % 12 == 0 ? 12 : t.hour % 12;
+    final m = t.minute.toString().padLeft(2, '0');
+    return '$h:$m ${t.hour < 12 ? 'AM' : 'PM'}';
+  }
+}
+
 class _ActionCard extends StatefulWidget {
   final String title;
   final String subtitle;
   final IconData icon;
   final VoidCallback onTap;
   final bool isPrimary;
-  final bool isSmall;
 
   const _ActionCard({
     required this.title,
@@ -505,7 +543,6 @@ class _ActionCard extends StatefulWidget {
     required this.icon,
     required this.onTap,
     required this.isPrimary,
-    this.isSmall = false,
   });
 
   @override
@@ -556,7 +593,7 @@ class _ActionCardState extends State<_ActionCard>
       child: ScaleTransition(
         scale: _scaleAnimation,
         child: Container(
-          padding: EdgeInsets.all(widget.isSmall ? 16 : 24),
+          padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
             color: bgColor,
             borderRadius: BorderRadius.circular(24),
@@ -575,64 +612,37 @@ class _ActionCardState extends State<_ActionCard>
               ),
             ],
           ),
-          child: widget.isSmall
-              ? Column(
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(widget.icon, color: fgColor, size: 24),
-                    const SizedBox(height: 24),
                     Text(
                       widget.title,
                       style: GoogleFonts.nunito(
-                        fontSize: 18,
+                        fontSize: 24,
                         fontWeight: FontWeight.bold,
                         color: fgColor,
+                        letterSpacing: -0.5,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 6),
                     Text(
                       widget.subtitle,
                       style: GoogleFonts.nunito(
-                        fontSize: 12,
-                        fontWeight: FontWeight.normal,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
                         color: fgColor.withValues(alpha: 0.7),
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
-                  ],
-                )
-              : Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            widget.title,
-                            style: GoogleFonts.nunito(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              color: fgColor,
-                              letterSpacing: -0.5,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            widget.subtitle,
-                            style: GoogleFonts.nunito(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: fgColor.withValues(alpha: 0.7),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Icon(widget.icon, color: fgColor, size: 32),
                   ],
                 ),
+              ),
+              const SizedBox(width: 16),
+              Icon(widget.icon, color: fgColor, size: 32),
+            ],
+          ),
         ),
       ),
     );

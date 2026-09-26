@@ -175,6 +175,10 @@ class BriefingCubit extends Cubit<BriefingState> {
               final prefs = await SharedPreferences.getInstance();
               final today = DateTime.now().toIso8601String().split('T').first;
               await prefs.setString('cached_briefing_date', today);
+              await prefs.setString(
+                'cached_briefing_time',
+                DateTime.now().toIso8601String(),
+              );
               await prefs.setString('cached_briefing_text', rawText);
               // Best-effort: no-ops when this runs in the headless alarm
               // isolate (no Activity to receive it) — the widget's own

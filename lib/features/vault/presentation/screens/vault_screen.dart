@@ -121,7 +121,10 @@ class _VaultViewState extends State<_VaultView> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: context.colors.background,
+      // Lists scroll behind the phone's nav dock and pad their ends by
+      // MediaQuery's bottom padding (see MainScaffold).
       body: SafeArea(
+        bottom: false,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24.0),
           child: Column(
@@ -274,7 +277,12 @@ class _VaultViewState extends State<_VaultView> {
         Expanded(
           child: ListView.builder(
             physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.symmetric(vertical: 8.0),
+            padding: EdgeInsets.fromLTRB(
+              0,
+              8,
+              0,
+              MediaQuery.paddingOf(context).bottom + 8,
+            ),
             itemCount: state.displayedItems.length,
             itemBuilder: (context, index) {
               // Cascade the first screenful on load; items scrolled into view
@@ -296,40 +304,43 @@ class _VaultViewState extends State<_VaultView> {
   }
 
   Widget _buildCategoriesView(VaultLoaded state, BuildContext parentContext) {
-    return Column(
+    return Padding(
       key: const ValueKey('categories_view'),
-      children: [
-        Expanded(
-          child: Container(
-            width: double.infinity,
-            child: CategoryPieChart(
-              categoryCounts: state.categoryCounts,
-              onCategorySelected: (category) {
-                showCategoryDetailsSheet(parentContext, category);
-              },
+      padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom),
+      child: Column(
+        children: [
+          Expanded(
+            child: Container(
+              width: double.infinity,
+              child: CategoryPieChart(
+                categoryCounts: state.categoryCounts,
+                onCategorySelected: (category) {
+                  showCategoryDetailsSheet(parentContext, category);
+                },
+              ),
             ),
           ),
-        ),
-        if (state.blockedCategories.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 16.0),
-            child: TextButton.icon(
-              onPressed: () =>
-                  _showManageBlockedCategoriesDialog(parentContext, state),
-              icon: Icon(
-                Icons.block,
-                color: parentContext.colors.textSecondary,
-              ),
-              label: Text(
-                'Manage Blocked (${state.blockedCategories.length})',
-                style: GoogleFonts.nunito(
+          if (state.blockedCategories.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16.0),
+              child: TextButton.icon(
+                onPressed: () =>
+                    _showManageBlockedCategoriesDialog(parentContext, state),
+                icon: Icon(
+                  Icons.block,
                   color: parentContext.colors.textSecondary,
-                  fontWeight: FontWeight.bold,
+                ),
+                label: Text(
+                  'Manage Blocked (${state.blockedCategories.length})',
+                  style: GoogleFonts.nunito(
+                    color: parentContext.colors.textSecondary,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 

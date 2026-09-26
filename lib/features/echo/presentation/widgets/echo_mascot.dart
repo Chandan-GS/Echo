@@ -39,6 +39,22 @@ class EchoMascot extends StatefulWidget {
   /// [size] — used for the home hero, where Echo should read large and clear.
   final bool showRings;
 
+  /// Look towards a touch anywhere on screen, not only one close by — for a
+  /// small Echo tucked in a corner (the nav dock).
+  final bool followTouchAnywhere;
+
+  /// The soft halo behind Echo. Off where he sits on a surface of his own
+  /// (the nav dock), where it reads as a shadow.
+  final bool glow;
+
+  /// How far the eyes and head travel when he looks around. Above 1 for a
+  /// small Echo, whose normal range is too slight to see.
+  final double gazeReach;
+
+  /// Vertical travel, when it should differ from [gazeReach] — looking up
+  /// and down reads less than side to side, so a small Echo needs more.
+  final double? gazeReachY;
+
   const EchoMascot({
     super.key,
     this.state = EchoState.idle,
@@ -47,6 +63,10 @@ class EchoMascot extends StatefulWidget {
     this.voiceGlow = false,
     this.onTap,
     this.showRings = true,
+    this.followTouchAnywhere = false,
+    this.glow = true,
+    this.gazeReach = 1,
+    this.gazeReachY,
   });
 
   @override
@@ -109,6 +129,12 @@ class _EchoMascotState extends State<EchoMascot>
     final box = context.findRenderObject();
     if (box is! RenderBox || !box.hasSize || !box.attached) return null;
     final d = pointer - box.localToGlobal(box.size.center(Offset.zero));
+    if (widget.followTouchAnywhere) {
+      // Direction only; full tilt once the touch is a thumb's width away.
+      if (d.distance < 1) return Offset.zero;
+      final reach = (d.distance / 140).clamp(0.0, 1.0);
+      return Offset(d.dx / d.distance * reach, d.dy / d.distance * reach);
+    }
     if (d.distance > math.max(420.0, box.size.width * 3)) return null;
     return Offset((d.dx / 220).clamp(-1.0, 1.0), (d.dy / 220).clamp(-1.0, 1.0));
   }
@@ -186,6 +212,9 @@ class _EchoMascotState extends State<EchoMascot>
               head: Offset(_hx, _hy),
               stretch: _stretch,
               showRings: widget.showRings,
+              glow: widget.glow,
+              reach: widget.gazeReach,
+              reachY: widget.gazeReachY ?? widget.gazeReach,
             ),
           );
         },
@@ -227,6 +256,9 @@ class _EchoPainter extends CustomPainter {
   final Offset head; // where the head leans (trails the eyes), -1..1
   final double stretch; // eye squash while the gaze moves fast
   final bool showRings;
+  final bool glow;
+  final double reach; // multiplies eye and head travel, side to side
+  final double reachY; // … and up and down
   _EchoPainter(
     this.t,
     this.ms,
@@ -238,6 +270,9 @@ class _EchoPainter extends CustomPainter {
     required this.head,
     required this.stretch,
     required this.showRings,
+    this.glow = true,
+    this.reach = 1,
+    this.reachY = 1,
   });
 
   static const _tau = 2 * math.pi;
@@ -326,18 +361,23 @@ class _EchoPainter extends CustomPainter {
     final glowR = s(voiceGlow ? 104 : 98);
     final glowBase = voiceGlow ? _glowGreen : _glow;
     final glowAlpha = voiceGlow ? 0.5 : (dim ? 0.5 : (isDark ? 0.5 : 0.9));
-    canvas.drawCircle(
-      glowC,
-      glowR,
-      Paint()
-        ..shader = RadialGradient(
-          colors: [
-            glowBase.withValues(alpha: glowAlpha),
-            glowBase.withValues(alpha: 0),
-          ],
-        ).createShader(Rect.fromCircle(center: glowC, radius: glowR))
-        ..maskFilter = MaskFilter.blur(BlurStyle.normal, s(voiceGlow ? 10 : 6)),
-    );
+    if (glow) {
+      canvas.drawCircle(
+        glowC,
+        glowR,
+        Paint()
+          ..shader = RadialGradient(
+            colors: [
+              glowBase.withValues(alpha: glowAlpha),
+              glowBase.withValues(alpha: 0),
+            ],
+          ).createShader(Rect.fromCircle(center: glowC, radius: glowR))
+          ..maskFilter = MaskFilter.blur(
+            BlurStyle.normal,
+            s(voiceGlow ? 10 : 6),
+          ),
+      );
+    }
 
     // ── Behind the orb: rings / orbital band back ─────────────────────────────
     switch (state) {
@@ -392,8 +432,9 @@ class _EchoPainter extends CustomPainter {
       case EchoState.focused:
       case EchoState.happy:
         // The head leans toward wherever the eyes just looked.
-        tiltDx = s(4) * head.dx;
-        tiltDy = s(3) * head.dy + (moment == 'nod' ? s(4.5) * strength : 0);
+        tiltDx = s(4) * reach * head.dx;
+        tiltDy =
+            s(3) * reachY * head.dy + (moment == 'nod' ? s(4.5) * strength : 0);
         tiltRot = 0.105 * head.dx;
         if (moment == 'curious') tiltScale = 1 + 0.05 * strength;
         if (state == EchoState.focused) tiltRot += 0.052 * math.sin(ms / 420);
@@ -510,7 +551,7 @@ class _EchoPainter extends CustomPainter {
         ..strokeWidth = s(3.4)
         ..strokeCap = StrokeCap.round;
       canvas.save();
-      canvas.translate(s(6) * gaze.dx, s(4.2) * gaze.dy);
+      canvas.translate(s(6) * reach * gaze.dx, s(4.2) * reachY * gaze.dy);
       for (final cx in const [108.0, 132.0]) {
         canvas.drawPath(
           Path()
@@ -556,8 +597,8 @@ class _EchoPainter extends CustomPainter {
         if (sy * extraY > 0.5) {
           canvas.drawCircle(
             Offset(
-              c.dx + s(2) - s(1.6) * gaze.dx,
-              c.dy - s(3.6) - s(1.3) * gaze.dy,
+              c.dx + s(2) - s(1.6) * reach * gaze.dx,
+              c.dy - s(3.6) - s(1.3) * reachY * gaze.dy,
             ),
             s(2),
             glint,
@@ -566,7 +607,7 @@ class _EchoPainter extends CustomPainter {
       }
 
       canvas.save();
-      canvas.translate(s(6) * gaze.dx, s(4.2) * gaze.dy);
+      canvas.translate(s(6) * reach * gaze.dx, s(4.2) * reachY * gaze.dy);
       eye(108, winkAmount); // left eye: blink + interactive wink
       eye(132, 1); // right eye: blink only
       canvas.restore();
@@ -759,5 +800,8 @@ class _EchoPainter extends CustomPainter {
       old.gaze != gaze ||
       old.head != head ||
       old.stretch != stretch ||
-      old.showRings != showRings;
+      old.showRings != showRings ||
+      old.glow != glow ||
+      old.reach != reach ||
+      old.reachY != reachY;
 }

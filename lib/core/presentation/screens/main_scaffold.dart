@@ -6,7 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/presentation/animations/fade_indexed_stack.dart';
-import 'package:project_echo/core/presentation/widgets/animated_nav_icons.dart';
+import 'package:project_echo/core/presentation/widgets/nav_dock.dart';
 import 'package:project_echo/core/presentation/screens/desktop_shell.dart';
 import 'package:project_echo/features/echo/presentation/cubit/briefing_cubit.dart';
 import 'package:project_echo/features/todo/presentation/cubit/todo_cubit.dart';
@@ -32,6 +32,9 @@ class _MainScaffoldState extends State<MainScaffold> {
   // has no route of its own here, so route-based auto-sync would never
   // select it and would stomp it back off on the next rebuild.
   bool _desktopAskEchoActive = false;
+
+  // Phone only — the nav dock is the Ask Echo bar.
+  bool _asking = false;
 
   @override
   void initState() {
@@ -115,6 +118,18 @@ class _MainScaffoldState extends State<MainScaffold> {
 
   void _closeHomeChat() => setState(() => _desktopAskEchoActive = false);
 
+  void _openAsk() {
+    HapticFeedback.lightImpact();
+    setState(() => _asking = true);
+  }
+
+  void _closeAsk() => setState(() => _asking = false);
+
+  void _ask(String question) {
+    _closeAsk();
+    context.push('/echo/chat', extra: question);
+  }
+
   @override
   Widget build(BuildContext context) {
     final routeIndex = _calculateSelectedIndex(context);
@@ -133,212 +148,176 @@ class _MainScaffoldState extends State<MainScaffold> {
         // briefing screen can make or update it.
         BlocProvider(create: (_) => TodoCubit()),
       ],
-      child: (Platform.isMacOS || Platform.isWindows)
-          ? DesktopShell(
-              selectedIndex: _selectedIndex,
-              onItemSelected: _onDesktopItemSelected,
-              content: FadeIndexedStack(
-                index: _selectedIndex,
-                children: [
-                  DesktopHomeScreen(
-                    chatActive: _desktopAskEchoActive,
-                    onOpenChat: _openHomeChat,
-                    onCloseChat: _closeHomeChat,
-                    onOpenSettings: () => _onDesktopItemSelected(2),
-                  ),
-                  const VaultScreen(),
-                  const SettingsScreen(),
-                ],
-              ),
-            )
-          : Scaffold(
-              body: Stack(
-                children: [
-                  // Persistent screen area using IndexedStack to prevent rebuild jitter
-                  Positioned.fill(
-                    bottom: 80,
-                    child: FadeIndexedStack(
-                      index: _selectedIndex,
-                      children: const [
-                        EchoHomeScreen(),
-                        VaultScreen(),
-                        SettingsScreen(),
-                      ],
-                    ),
-                  ),
-                  // Floating "generating in background" pill — shown on any tab other
-                  // than Today (which already shows the full generating view). Tap to
-                  // jump back to the briefing.
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 140,
-                    child: BlocBuilder<BriefingCubit, BriefingState>(
-                      builder: (context, state) {
-                        final show =
-                            state is BriefingGenerating && _selectedIndex != 0;
-                        return AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 250),
-                          child: show
-                              ? Center(
-                                  child: _GeneratingPill(
-                                    onTap: () => _onItemTapped(0),
-                                  ),
-                                )
-                              : const SizedBox.shrink(),
-                        );
-                      },
-                    ),
-                  ),
-                  // Floating Capsule Nav Bar
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 20,
-                    child: Center(
-                      child: _FloatingNavBar(
-                        selectedIndex: _selectedIndex,
-                        onItemSelected: _onItemTapped,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // go_router's shell Navigator. The tabs below are drawn here, not
+          // by its (empty) pages, but it has to be mounted: back presses and
+          // pops look it up, and without it system back quits the app.
+          Offstage(child: widget.child),
+          _shell(context),
+        ],
+      ),
     );
   }
-}
 
-class _FloatingNavBar extends StatelessWidget {
-  final int selectedIndex;
-  final ValueChanged<int> onItemSelected;
+  Widget _shell(BuildContext context) {
+    return (Platform.isMacOS || Platform.isWindows)
+        ? DesktopShell(
+            selectedIndex: _selectedIndex,
+            onItemSelected: _onDesktopItemSelected,
+            content: FadeIndexedStack(
+              index: _selectedIndex,
+              children: [
+                DesktopHomeScreen(
+                  chatActive: _desktopAskEchoActive,
+                  onOpenChat: _openHomeChat,
+                  onCloseChat: _closeHomeChat,
+                  onOpenSettings: () => _onDesktopItemSelected(2),
+                ),
+                const VaultScreen(),
+                const SettingsScreen(),
+              ],
+            ),
+          )
+        : _phone(context);
+  }
 
-  const _FloatingNavBar({
-    required this.selectedIndex,
-    required this.onItemSelected,
-  });
+  Widget _phone(BuildContext context) {
+    final media = MediaQuery.of(context);
+    final keyboard = media.viewInsets.bottom;
+    final systemBar = media.viewPadding.bottom;
+    // The dock floats a fixed gap above whatever Android has at the bottom
+    // (gesture handle or three buttons), or above the keyboard while asking.
+    final dockBottom = _asking && keyboard > 0 ? keyboard + 10 : systemBar + 12;
+    // What the tabs keep clear at the bottom so nothing ends under the dock.
+    final clearance = systemBar + 12 + kNavDockHeight + 12;
+    const motion = Duration(milliseconds: 260);
 
-  @override
-  Widget build(BuildContext context) {
-    final items = [
-      _NavBarItem(
-        label: 'Today',
-        iconBuilder: (isSelected, color) => BounceInIcon(
-          isSelected: isSelected,
-          selectedIcon: Icons.home_rounded,
-          unselectedIcon: Icons.home_outlined,
-          color: color,
-          size: 26,
-        ),
-      ),
-      _NavBarItem(
-        label: 'Vault',
-        iconBuilder: (isSelected, color) => BounceInIcon(
-          isSelected: isSelected,
-          selectedIcon: Icons.inbox,
-          unselectedIcon: Icons.inbox_outlined,
-          color: color,
-          size: 26,
-        ),
-      ),
-      _NavBarItem(
-        label: 'Profile',
-        iconBuilder: (isSelected, color) => BounceInIcon(
-          isSelected: isSelected,
-          selectedIcon: Icons.person,
-          unselectedIcon: Icons.person_outline,
-          color: color,
-          size: 26,
-        ),
-      ),
-    ];
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(34),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 0.0, vertical: 8),
-        child: Container(
-          padding: EdgeInsets.symmetric(horizontal: 10),
-          height: 68,
-          width: double.infinity,
-          decoration: BoxDecoration(borderRadius: BorderRadius.circular(34)),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8.0),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final totalWidth = constraints.maxWidth;
-                final itemWidth = totalWidth / 3;
-                final activeLeft = selectedIndex * itemWidth;
-
-                return Stack(
-                  children: [
-                    // Fluid sliding active capsule
-                    AnimatedPositioned(
-                      duration: const Duration(milliseconds: 200),
-                      curve: Curves.easeOutBack,
-                      left: activeLeft,
-                      top: 8,
-                      bottom: 8,
-                      width: itemWidth,
-                      child: Container(
-                        margin: EdgeInsets.symmetric(horizontal: 16),
-                        decoration: BoxDecoration(
-                          color: context.colors.lightGreenBackground,
-                          borderRadius: BorderRadius.circular(26),
-                        ),
-                      ),
-                    ),
-                    // Nav Items Row
-                    Row(
-                      children: List.generate(items.length, (index) {
-                        final item = items[index];
-                        final isSelected = selectedIndex == index;
-
-                        return Expanded(
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: () => onItemSelected(index),
-                            child: Center(
-                              child: AnimatedDefaultTextStyle(
-                                duration: const Duration(milliseconds: 250),
-                                style: GoogleFonts.nunito(
-                                  fontSize: 11,
-                                  fontWeight: isSelected
-                                      ? FontWeight.w800
-                                      : FontWeight.w600,
-                                  color: context.colors.textPrimary,
-                                ),
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    item.iconBuilder(
-                                      isSelected,
-                                      context.colors.textPrimary,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        );
-                      }),
-                    ),
+    return PopScope(
+      canPop: !_asking,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _asking) _closeAsk();
+      },
+      child: Scaffold(
+        resizeToAvoidBottomInset: false,
+        body: Stack(
+          children: [
+            // Full height: content scrolls behind the dock, and screens
+            // pad their ends by MediaQuery's bottom padding (the clearance).
+            Positioned.fill(
+              child: MediaQuery(
+                data: media.copyWith(
+                  padding: media.padding.copyWith(bottom: clearance),
+                ),
+                child: FadeIndexedStack(
+                  index: _selectedIndex,
+                  children: const [
+                    EchoHomeScreen(),
+                    VaultScreen(),
+                    SettingsScreen(),
                   ],
-                );
-              },
+                ),
+              ),
             ),
-          ),
+            // Content fades out under the dock instead of cutting off.
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: clearance,
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      colors: [
+                        context.colors.background,
+                        context.colors.background.withValues(alpha: 0),
+                      ],
+                      stops: const [0.45, 1],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            // Floating "generating in background" pill — shown on any tab
+            // other than Today (which already shows the full generating
+            // view). Tap to jump back to the briefing.
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: clearance + 8,
+              child: BlocBuilder<BriefingCubit, BriefingState>(
+                builder: (context, state) {
+                  final show =
+                      state is BriefingGenerating && _selectedIndex != 0;
+                  return AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 250),
+                    child: show
+                        ? Center(
+                            child: _GeneratingPill(
+                              onTap: () => _onItemTapped(0),
+                            ),
+                          )
+                        : const SizedBox.shrink(),
+                  );
+                },
+              ),
+            ),
+            // Dims the screen behind the question bar; tap to close it.
+            Positioned.fill(
+              child: IgnorePointer(
+                ignoring: !_asking,
+                child: AnimatedOpacity(
+                  duration: motion,
+                  opacity: _asking ? 1 : 0,
+                  child: GestureDetector(
+                    onTap: _closeAsk,
+                    child: const ColoredBox(color: Color(0x73000000)),
+                  ),
+                ),
+              ),
+            ),
+            AnimatedPositioned(
+              duration: motion,
+              curve: Curves.easeOutCubic,
+              left: 0,
+              right: 0,
+              bottom: dockBottom + kNavDockHeight + 12,
+              child: IgnorePointer(
+                ignoring: !_asking,
+                child: AnimatedOpacity(
+                  duration: motion,
+                  opacity: _asking ? 1 : 0,
+                  child: AskSuggestionChips(
+                    questions: kAskSuggestions,
+                    onAsk: _ask,
+                  ),
+                ),
+              ),
+            ),
+            AnimatedPositioned(
+              duration: motion,
+              curve: Curves.easeOutCubic,
+              left: 20,
+              right: 20,
+              bottom: dockBottom,
+              child: NavDock(
+                selectedIndex: _selectedIndex,
+                onTabSelected: _onItemTapped,
+                asking: _asking,
+                onOpenAsk: _openAsk,
+                onCloseAsk: _closeAsk,
+                onAsk: _ask,
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
-}
-
-class _NavBarItem {
-  final String label;
-  final Widget Function(bool isSelected, Color color) iconBuilder;
-
-  _NavBarItem({required this.label, required this.iconBuilder});
 }
 
 /// A small breathing dot used to signal ongoing background work.
