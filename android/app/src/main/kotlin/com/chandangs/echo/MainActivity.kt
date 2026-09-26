@@ -52,6 +52,8 @@ class MainActivity : FlutterActivity() {
                 "refresh" -> {
                     EchoBriefingWidgetProvider.updateAll(this)
                     EchoStreakWidgetProvider.updateAll(this)
+                    EchoTodoWidgetProvider.updateAll(this)
+                    EchoTodoOrbWidgetProvider.updateAll(this)
                     result.success(null)
                 }
                 else -> {

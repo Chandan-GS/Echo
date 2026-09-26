@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Echo To-do Progress (2×2): Echo inside a progress halo, and what's next. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/orb_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_todo_bg"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+    <ImageView
+        android:id="@+id/orb_halo"
+        android:layout_width="96dp"
+        android:layout_height="96dp"
+        android:importantForAccessibility="no" />
+
+    <TextView
+        android:id="@+id/orb_count"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:fontFamily="@font/old_standard_tt_bold"
+        android:gravity="center"
+        android:includeFontPadding="false"
+        android:text="2 of 5"
+        android:textColor="@color/todo_widget_text"
+        android:textSize="18sp" />
+
+    <TextView
+        android:id="@+id/orb_next"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:ellipsize="end"
+        android:gravity="center"
+        android:maxLines="1"
+        android:text="5 PM · Join Team sync"
+        android:textColor="@color/todo_widget_green"
+        android:textSize="12sp"
+        android:textStyle="bold" />
+</LinearLayout>
