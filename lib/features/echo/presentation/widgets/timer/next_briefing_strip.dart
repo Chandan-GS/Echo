@@ -9,7 +9,7 @@ import 'package:project_echo/features/settings/presentation/cubit/settings_cubit
 import 'package:project_echo/features/settings/presentation/cubit/settings_state.dart';
 
 /// The next-briefing countdown as a slim strip, so the to-do list can sit
-/// higher on the home screen. Same schedule logic as `NextBriefingTimer`.
+/// higher on the home screen.
 class NextBriefingStrip extends StatefulWidget {
   const NextBriefingStrip({super.key});
 
