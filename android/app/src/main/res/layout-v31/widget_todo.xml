@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Echo To-do (4×3): today's list, unfinished first. -->
+<!-- Echo To-do (4×3), Android 12+: real CheckBoxes, so ticking animates in the widget. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/todo_root"
     android:layout_width="match_parent"
@@ -66,9 +66,9 @@
     <LinearLayout
         android:id="@+id/todo_row1"
         style="@style/TodoRow">
-        <ImageView
+        <CheckBox
             android:id="@+id/todo_row1_check"
-            style="@style/TodoRowCheck" />
+            style="@style/TodoRowCheckBox" />
         <TextView
             android:id="@+id/todo_row1_title"
             style="@style/TodoRowTitle" />
@@ -82,9 +82,9 @@
     <LinearLayout
         android:id="@+id/todo_row2"
         style="@style/TodoRow">
-        <ImageView
+        <CheckBox
             android:id="@+id/todo_row2_check"
-            style="@style/TodoRowCheck" />
+            style="@style/TodoRowCheckBox" />
         <TextView
             android:id="@+id/todo_row2_title"
             style="@style/TodoRowTitle" />
@@ -98,9 +98,9 @@
     <LinearLayout
         android:id="@+id/todo_row3"
         style="@style/TodoRow">
-        <ImageView
+        <CheckBox
             android:id="@+id/todo_row3_check"
-            style="@style/TodoRowCheck" />
+            style="@style/TodoRowCheckBox" />
         <TextView
             android:id="@+id/todo_row3_title"
             style="@style/TodoRowTitle" />
@@ -114,9 +114,9 @@
     <LinearLayout
         android:id="@+id/todo_row4"
         style="@style/TodoRow">
-        <ImageView
+        <CheckBox
             android:id="@+id/todo_row4_check"
-            style="@style/TodoRowCheck" />
+            style="@style/TodoRowCheckBox" />
         <TextView
             android:id="@+id/todo_row4_title"
             style="@style/TodoRowTitle" />

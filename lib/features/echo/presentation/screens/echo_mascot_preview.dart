@@ -14,6 +14,8 @@ class EchoMascotPreview extends StatelessWidget {
     (EchoState.thinking, 'Thinking', 'A gentle swirl while it processes'),
     (EchoState.speaking, 'Speaking', 'Rings ripple outward with your briefing'),
     (EchoState.sleeping, 'Sleeping', 'Resting, recharging in the background'),
+    (EchoState.focused, 'Focused', 'Eyes up, working something out for you'),
+    (EchoState.happy, 'Happy', 'Something landed, or the day is done'),
   ];
 
   @override

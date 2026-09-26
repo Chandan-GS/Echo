@@ -11,7 +11,7 @@ import android.text.style.RelativeSizeSpan
 import android.util.Log
 import android.widget.RemoteViews
 
-/** "Echo To-do Progress": Echo inside a halo that fills as today's list is done. */
+/** "Echo To-do Progress": a ring that fills as today's list is done, and what's next. */
 class EchoTodoOrbWidgetProvider : AppWidgetProvider() {
 
     companion object {
@@ -45,41 +45,55 @@ class EchoTodoOrbWidgetProvider : AppWidgetProvider() {
         val tomorrow = TodoWidgetData.tomorrow(context)
         val done = today.count { it.done }
         val total = today.size
-        val allDone = total > 0 && done == total
+        val left = total - done
 
         views.setImageViewBitmap(
-            R.id.orb_halo,
-            TodoWidgetArt.halo(context, 96f, if (total == 0) 0f else done / total.toFloat(), allDone, green, track),
+            R.id.orb_ring,
+            TodoWidgetArt.ring(context, 92f, if (total == 0) 0f else done / total.toFloat(), green, track),
         )
 
         if (!TodoWidgetData.hasList(context)) {
-            views.setTextViewText(R.id.orb_count, "No list yet")
-            views.setTextViewText(R.id.orb_next, "Make one from your briefing")
+            views.setTextViewText(R.id.orb_count, "")
+            views.setTextViewText(
+                R.id.orb_label,
+                if (WidgetData.isReadyToday(WidgetData.prefs(context))) "No list yet" else "Briefing first",
+            )
+            views.setTextViewText(R.id.orb_next, "")
             manager.updateAppWidget(widgetId, views)
             return
         }
 
-        val count = SpannableStringBuilder()
-        if (total == 0) {
-            count.append("Nothing today")
-        } else {
-            count.append("$done of $total")
+        val count = SpannableStringBuilder("$done")
+        if (total > 0) {
             val start = count.length
-            count.append(" done")
-            count.setSpan(RelativeSizeSpan(0.7f), start, count.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            count.append("/$total")
+            count.setSpan(RelativeSizeSpan(0.58f), start, count.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             count.setSpan(ForegroundColorSpan(text2), start, count.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
-        views.setTextViewText(R.id.orb_count, count)
-
-        val next = today.firstOrNull { !it.done }
+        views.setTextViewText(R.id.orb_count, if (total == 0) "" else count)
         views.setTextViewText(
-            R.id.orb_next,
+            R.id.orb_label,
             when {
-                next != null -> if (next.time != null) "${next.time} · ${next.title}" else next.title
-                tomorrow.isNotEmpty() -> "Tomorrow: ${tomorrow.size} to-do${if (tomorrow.size == 1) "" else "s"}"
-                else -> "All clear"
+                total == 0 -> "Nothing today"
+                left == 0 -> "All done today"
+                else -> "$left left today"
             },
         )
+
+        val next = today.sortedBy { it.sort }.firstOrNull { !it.done }
+        val nextText = SpannableStringBuilder()
+        when {
+            next != null -> {
+                if (next.time != null) {
+                    nextText.append(next.time)
+                    nextText.setSpan(ForegroundColorSpan(green), 0, nextText.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    nextText.append(" · ")
+                }
+                nextText.append(next.title)
+            }
+            tomorrow.isNotEmpty() -> nextText.append("Tomorrow: ${tomorrow.size} to-do${if (tomorrow.size == 1) "" else "s"}")
+        }
+        views.setTextViewText(R.id.orb_next, nextText)
         manager.updateAppWidget(widgetId, views)
     }
 }

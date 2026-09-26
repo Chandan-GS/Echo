@@ -215,6 +215,32 @@ void main() {
     });
   });
 
+  group('keeping the list short', () {
+    test('a model reply is capped', () {
+      final many = [
+        for (var i = 1; i <= 20; i++) '{"t": "Task $i", "s": $i}',
+      ].join(',');
+      expect(parseMakeReply('[$many]'), hasLength(maxListItems));
+    });
+
+    test(
+      'without a model, dated notifications are preferred and the list is capped',
+      () {
+        final notes = [
+          for (var i = 0; i < 10; i++)
+            note('Undated $i', 'Hello number $i', at(26, 12, i)),
+          for (var i = 0; i < 4; i++)
+            note('Dated $i', 'Meet tomorrow at ${i + 9} AM', at(26, 10, i)),
+        ];
+        final cands = pick(notes);
+        final picks = localPicks(cands);
+        expect(picks, hasLength(maxListItems));
+        final firstFour = picks.take(4).map((i) => cands[i].entry.sender);
+        expect(firstFour.every((s) => s.startsWith('Dated')), isTrue);
+      },
+    );
+  });
+
   test('prompt lines are numbered, labelled and use corrected day words', () {
     final text = numberedLines(pick([neha]), now);
     expect(text, startsWith('1. [Today (Sat 26 Sep), 6:30 PM] Neha (Slack): '));

@@ -21,8 +21,8 @@ const makeInstruction =
     'client demo". "s" is the number of the notification it comes from. '
     'Include only things the person needs to do, attend or remember. Skip '
     'promotions, OTPs, delivery updates, receipts and general news. One item '
-    'per real task: merge notifications about the same thing. Never invent '
-    'anything.';
+    'per real task: merge notifications about the same thing. At most '
+    '$maxListItems items, the most important first. Never invent anything.';
 
 const updateInstruction =
     'You keep a person\'s to-do list up to date. "Open items" are already on '
@@ -38,6 +38,22 @@ const updateInstruction =
     '[]} if nothing applies.';
 
 const _maxSourceChars = 200;
+
+/// A list is a short plan, not a copy of the inbox.
+const maxListItems = 8;
+
+/// Without a model: at most [maxListItems] notifications become to-dos,
+/// preferring ones that name a date or time (the rest of the selection is
+/// already ordered by importance).
+List<int> localPicks(List<BriefingItem> candidates) {
+  final order = [
+    for (var i = 0; i < candidates.length; i++)
+      if (candidates[i].window.explicit) i,
+    for (var i = 0; i < candidates.length; i++)
+      if (!candidates[i].window.explicit) i,
+  ];
+  return order.take(maxListItems).toList();
+}
 
 /// "1. [Today (Sat 26 Sep), 6:30 PM] Neha (Slack): Client demo is today…"
 String numberedLines(List<BriefingItem> items, DateTime now) {
@@ -70,7 +86,7 @@ List<NewTodo> parseMakeReply(String raw) {
       : decoded is Map
       ? (decoded['add'] ?? decoded['items'] ?? const [])
       : const [];
-  return _newTodos(list);
+  return _newTodos(list).take(maxListItems).toList();
 }
 
 ({List<NewTodo> add, List<TodoChange> change}) parseUpdateReply(String raw) {

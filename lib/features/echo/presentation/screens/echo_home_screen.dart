@@ -11,7 +11,7 @@ import 'package:project_echo/core/services/phone_sync_service.dart';
 import 'package:project_echo/features/echo/presentation/screens/daily_briefing_screen.dart';
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
-import 'package:project_echo/features/echo/presentation/widgets/timer/next_briefing_strip.dart';
+import 'package:project_echo/features/echo/presentation/widgets/timer/next_briefing_timer.dart';
 import 'package:project_echo/features/todo/presentation/cubit/todo_cubit.dart';
 import 'package:project_echo/features/todo/presentation/widgets/todo_card.dart';
 import 'package:project_echo/features/echo/presentation/widgets/generating_view.dart';
@@ -161,16 +161,12 @@ class _InitialView extends StatelessWidget {
         onTap: onGenerate,
         isPrimary: true,
       ),
-      secondary: Row(
-        children: [
-          Expanded(
-            child: _QuickAction(
-              label: 'Ask Echo',
-              icon: Icons.chat_bubble_outline_rounded,
-              onTap: onAskEcho ?? () => context.push('/echo/chat'),
-            ),
-          ),
-        ],
+      secondary: _ActionCard(
+        title: 'Ask Echo',
+        subtitle: 'Chat with your secure assistant',
+        icon: Icons.chat_bubble_outline_rounded,
+        onTap: onAskEcho ?? () => context.push('/echo/chat'),
+        isPrimary: false,
       ),
     );
   }
@@ -204,18 +200,24 @@ class _CachedView extends StatelessWidget {
       secondary: Row(
         children: [
           Expanded(
-            child: _QuickAction(
-              label: 'Ask Echo',
+            child: _ActionCard(
+              title: 'Ask Echo',
+              subtitle: 'Chat',
               icon: Icons.chat_bubble_outline_rounded,
               onTap: onAskEcho ?? () => context.push('/echo/chat'),
+              isPrimary: false,
+              isSmall: true,
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 16),
           Expanded(
-            child: _QuickAction(
-              label: 'Regenerate',
+            child: _ActionCard(
+              title: 'Regenerate',
+              subtitle: 'Update summary',
               icon: Icons.auto_awesome_rounded,
               onTap: onRegenerate,
+              isPrimary: false,
+              isSmall: true,
             ),
           ),
         ],
@@ -327,61 +329,56 @@ class _HomeShellState extends State<_HomeShell> {
       bottom: false,
       child: SingleChildScrollView(
         physics: const BouncingScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 128),
+        padding: const EdgeInsets.fromLTRB(24, 12, 24, 128),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // ── Hero: Echo beside the greeting, compact so the list sits
-            // above the fold ────────────────────────────────────────────────
+            const SizedBox(height: 8),
+
+            // ── Hero: Echo, a calm luminous presence ──────────────────────
+            const FadeSlideIn(
+              child: Center(child: _HeroEcho()),
+            ),
+            const SizedBox(height: 16),
             FadeSlideIn(
-              child: Padding(
-                padding: const EdgeInsets.only(top: 4, bottom: 20),
-                child: Row(
-                  children: [
-                    const _HopOnArrival(
-                      child: EchoMascot(state: EchoState.idle, size: 76),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '$greeting,\n$name',
-                            style: GoogleFonts.oldStandardTt(
-                              fontSize: 27,
-                              fontWeight: FontWeight.w700,
-                              color: context.colors.textPrimary,
-                              height: 1.1,
-                            ),
-                          ),
-                          const SizedBox(height: 5),
-                          Text(
-                            widget.subtitle,
-                            style: GoogleFonts.nunito(
-                              fontSize: 14,
-                              color: context.colors.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+              delay: AppMotion.staggerDelay(1),
+              child: Text(
+                '$greeting,\n$name',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.oldStandardTt(
+                  fontSize: 34,
+                  fontWeight: FontWeight.w700,
+                  color: context.colors.textPrimary,
+                  height: 1.12,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            FadeSlideIn(
+              delay: AppMotion.staggerDelay(1),
+              child: Text(
+                widget.subtitle,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.nunito(
+                  fontSize: 15,
+                  color: context.colors.textSecondary,
                 ),
               ),
             ),
 
+            const SizedBox(height: 30),
+
             // ── Primary action ────────────────────────────────────────────
             FadeSlideIn(
-              delay: AppMotion.staggerDelay(1),
+              delay: AppMotion.staggerDelay(2),
               child: widget.primary,
             ),
 
-            // ── Secondary actions, always right under it ───────────────────
+            // ── Secondary actions, right under the primary one ────────────
             if (widget.secondary != null) ...[
-              const SizedBox(height: 10),
+              const SizedBox(height: 16),
               FadeSlideIn(
-                delay: AppMotion.staggerDelay(2),
+                delay: AppMotion.staggerDelay(3),
                 child: widget.secondary!,
               ),
             ],
@@ -389,21 +386,23 @@ class _HomeShellState extends State<_HomeShell> {
             // ── Today's to-dos ────────────────────────────────────────────
             const SizedBox(height: 16),
             FadeSlideIn(
-              delay: AppMotion.staggerDelay(3),
+              delay: AppMotion.staggerDelay(4),
               child: TodoCard(hasBriefing: widget.hasBriefing),
             ),
 
-            // ── Next briefing ─────────────────────────────────────────────
-            const SizedBox(height: 16),
-            FadeSlideIn(
-              delay: AppMotion.staggerDelay(4),
-              child: const NextBriefingStrip(),
-            ),
+            const SizedBox(height: 26),
 
-            // ── Ambient stat ──────────────────────────────────────────────
-            const SizedBox(height: 14),
+            // ── Next briefing countdown (self-labelled dial) ──────────────
             FadeSlideIn(
               delay: AppMotion.staggerDelay(5),
+              child: const NextBriefingTimer(),
+            ),
+
+            const SizedBox(height: 18),
+
+            // ── Ambient stat ──────────────────────────────────────────────
+            FadeSlideIn(
+              delay: AppMotion.staggerDelay(6),
               child: FutureBuilder<List<RawData>>(
                 future: IsarDataSource.getAllEntries(),
                 builder: (context, snapshot) {
@@ -419,33 +418,26 @@ class _HomeShellState extends State<_HomeShell> {
   }
 }
 
-/// Echo gives a little hop when a new to-do list lands.
-class _HopOnArrival extends StatefulWidget {
-  final Widget child;
-  const _HopOnArrival({required this.child});
+/// The home hero: Echo, large and without rings. It focuses while a to-do list
+/// is being written, and gives a happy hop when one lands.
+class _HeroEcho extends StatefulWidget {
+  const _HeroEcho();
 
   @override
-  State<_HopOnArrival> createState() => _HopOnArrivalState();
+  State<_HeroEcho> createState() => _HeroEchoState();
 }
 
-class _HopOnArrivalState extends State<_HopOnArrival>
-    with SingleTickerProviderStateMixin {
+class _HeroEchoState extends State<_HeroEcho> with SingleTickerProviderStateMixin {
   late final AnimationController _hop = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 700),
   );
-
   late final Animation<double> _lift = TweenSequence<double>([
-    TweenSequenceItem(tween: Tween(begin: 0.0, end: -12.0).chain(CurveTween(curve: Curves.easeOut)), weight: 30),
-    TweenSequenceItem(tween: Tween(begin: -12.0, end: 0.0).chain(CurveTween(curve: Curves.easeIn)), weight: 30),
+    TweenSequenceItem(tween: Tween(begin: 0.0, end: -14.0).chain(CurveTween(curve: Curves.easeOut)), weight: 30),
+    TweenSequenceItem(tween: Tween(begin: -14.0, end: 0.0).chain(CurveTween(curve: Curves.easeIn)), weight: 30),
     TweenSequenceItem(tween: ConstantTween(0.0), weight: 40),
   ]).animate(_hop);
-
-  late final Animation<double> _scale = TweenSequence<double>([
-    TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.06), weight: 30),
-    TweenSequenceItem(tween: Tween(begin: 1.06, end: 0.97), weight: 30),
-    TweenSequenceItem(tween: Tween(begin: 0.97, end: 1.0).chain(CurveTween(curve: AppMotion.spring)), weight: 40),
-  ]).animate(_hop);
+  bool _celebrating = false;
 
   @override
   void dispose() {
@@ -453,65 +445,35 @@ class _HopOnArrivalState extends State<_HopOnArrival>
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return BlocListener<TodoCubit, TodoState>(
-      listenWhen: (a, b) => a.arrival != b.arrival,
-      listener: (_, _) => _hop.forward(from: 0),
-      child: AnimatedBuilder(
-        animation: _hop,
-        builder: (context, child) => Transform.translate(
-          offset: Offset(0, _lift.value),
-          child: Transform.scale(scale: _scale.value, child: child),
-        ),
-        child: widget.child,
-      ),
-    );
+  void _onArrival() {
+    _hop.forward(from: 0);
+    setState(() => _celebrating = true);
+    Future.delayed(const Duration(milliseconds: 1900), () {
+      if (mounted) setState(() => _celebrating = false);
+    });
   }
-}
-
-/// A compact one-line secondary action (Ask Echo, Regenerate).
-class _QuickAction extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final VoidCallback onTap;
-  const _QuickAction({required this.label, required this.icon, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    final c = context.colors;
-    return Material(
-      color: c.surface,
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: () {
-          HapticFeedback.lightImpact();
-          onTap();
-        },
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: c.dividerColor.withValues(alpha: 0.5)),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 20, color: c.primaryGreen),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: GoogleFonts.nunito(
-                  fontSize: 14.5,
-                  fontWeight: FontWeight.w800,
-                  color: c.textPrimary,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+    return BlocConsumer<TodoCubit, TodoState>(
+      listenWhen: (a, b) =>
+          a.arrival != b.arrival ||
+          (a.phase == TodoPhase.updating && b.phase == TodoPhase.idle),
+      listener: (_, _) => _onArrival(),
+      buildWhen: (a, b) => a.phase != b.phase,
+      builder: (context, todo) {
+        final mood = todo.phase != TodoPhase.idle
+            ? EchoState.focused
+            : _celebrating
+                ? EchoState.happy
+                : EchoState.idle;
+        return AnimatedBuilder(
+          animation: _lift,
+          builder: (context, child) =>
+              Transform.translate(offset: Offset(0, _lift.value), child: child),
+          child: EchoMascot(state: mood, size: 180, showRings: false),
+        );
+      },
     );
   }
 }
@@ -525,6 +487,7 @@ class _ActionCard extends StatefulWidget {
   final IconData icon;
   final VoidCallback onTap;
   final bool isPrimary;
+  final bool isSmall;
 
   const _ActionCard({
     required this.title,
@@ -532,6 +495,7 @@ class _ActionCard extends StatefulWidget {
     required this.icon,
     required this.onTap,
     required this.isPrimary,
+    this.isSmall = false,
   });
 
   @override
@@ -582,7 +546,7 @@ class _ActionCardState extends State<_ActionCard>
       child: ScaleTransition(
         scale: _scaleAnimation,
         child: Container(
-          padding: const EdgeInsets.all(24),
+          padding: EdgeInsets.all(widget.isSmall ? 16 : 24),
           decoration: BoxDecoration(
             color: bgColor,
             borderRadius: BorderRadius.circular(24),
@@ -601,37 +565,64 @@ class _ActionCardState extends State<_ActionCard>
               ),
             ],
           ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
+          child: widget.isSmall
+              ? Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Icon(widget.icon, color: fgColor, size: 24),
+                    const SizedBox(height: 24),
                     Text(
                       widget.title,
                       style: GoogleFonts.nunito(
-                        fontSize: 24,
+                        fontSize: 18,
                         fontWeight: FontWeight.bold,
                         color: fgColor,
-                        letterSpacing: -0.5,
                       ),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 4),
                     Text(
                       widget.subtitle,
                       style: GoogleFonts.nunito(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                        fontWeight: FontWeight.normal,
                         color: fgColor.withValues(alpha: 0.7),
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
+                )
+              : Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            widget.title,
+                            style: GoogleFonts.nunito(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              color: fgColor,
+                              letterSpacing: -0.5,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            widget.subtitle,
+                            style: GoogleFonts.nunito(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: fgColor.withValues(alpha: 0.7),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Icon(widget.icon, color: fgColor, size: 32),
+                  ],
                 ),
-              ),
-              const SizedBox(width: 16),
-              Icon(widget.icon, color: fgColor, size: 32),
-            ],
-          ),
         ),
       ),
     );

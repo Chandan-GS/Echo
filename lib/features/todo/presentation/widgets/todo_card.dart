@@ -25,9 +25,44 @@ class TodoCard extends StatefulWidget {
   State<TodoCard> createState() => _TodoCardState();
 }
 
+const _visible = 4;
+
+/// Ticks an item on or off; finishing today's list opens the celebration.
+Future<void> toggleTodo(BuildContext context, TodoItem item) async {
+  HapticFeedback.lightImpact();
+  final cubit = context.read<TodoCubit>();
+  final navigator = Navigator.of(context, rootNavigator: true);
+  final finished = await cubit.toggle(item.id);
+  if (!finished) return;
+  final s = cubit.state;
+  await Future<void>.delayed(const Duration(milliseconds: 380));
+  navigator.push(
+    bouncyRoute(
+      TodoCelebrationScreen(done: s.today.length, tomorrow: s.tomorrow.length),
+    ),
+  );
+}
+
+/// The full list — today, then tomorrow — in a bottom sheet.
+Future<void> showTodoSheet(BuildContext context, {bool tomorrow = false}) {
+  final cubit = context.read<TodoCubit>();
+  return showModalBottomSheet<void>(
+    context: context,
+    useRootNavigator: true,
+    isScrollControlled: true,
+    backgroundColor: context.colors.surface,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+    ),
+    builder: (_) => BlocProvider.value(
+      value: cubit,
+      child: _TodoSheet(startAtTomorrow: tomorrow),
+    ),
+  );
+}
+
 class _TodoCardState extends State<TodoCard>
     with SingleTickerProviderStateMixin {
-  bool _tomorrowOpen = false;
   final Set<int> _expanded = {};
   bool _arriving = false;
   int _arrivalKey = 0;
@@ -53,24 +88,6 @@ class _TodoCardState extends State<TodoCard>
     Future.delayed(const Duration(milliseconds: 2600), () {
       if (mounted) setState(() => _arriving = false);
     });
-  }
-
-  Future<void> _toggle(TodoItem item) async {
-    HapticFeedback.lightImpact();
-    final cubit = context.read<TodoCubit>();
-    final finished = await cubit.toggle(item.id);
-    if (!finished || !mounted) return;
-    final s = cubit.state;
-    await Future<void>.delayed(const Duration(milliseconds: 380));
-    if (!mounted) return;
-    Navigator.of(context, rootNavigator: true).push(
-      bouncyRoute(
-        TodoCelebrationScreen(
-          done: s.today.length,
-          tomorrow: s.tomorrow.length,
-        ),
-      ),
-    );
   }
 
   @override
@@ -173,7 +190,7 @@ class _TodoCardState extends State<TodoCard>
             ],
           ),
         ),
-        _ProgressRing(done: done, total: s.hasList ? total : 0),
+        if (s.hasList) _ProgressRing(done: done, total: total),
       ],
     );
   }
@@ -184,7 +201,11 @@ class _TodoCardState extends State<TodoCard>
     if (s.phase == TodoPhase.writing) {
       return [
         const SizedBox(height: 16),
-        const DraftingSkeleton(rows: 5, writing: true),
+        const DraftingSkeleton(
+          key: ValueKey('draft-writing'),
+          rows: 5,
+          writing: true,
+        ),
         _note(context, "Reading today's briefing for things to do"),
       ];
     }
@@ -192,7 +213,7 @@ class _TodoCardState extends State<TodoCard>
     if (!s.hasList) {
       return [
         const SizedBox(height: 16),
-        const DraftingSkeleton(rows: 3),
+        const DraftingSkeleton(key: ValueKey('draft-idle'), rows: 3),
         Padding(
           padding: const EdgeInsets.fromLTRB(0, 16, 0, 12),
           child: Text(
@@ -219,6 +240,12 @@ class _TodoCardState extends State<TodoCard>
     final today = s.today;
     final tomorrow = s.tomorrow;
     final added = s.justAdded.toList();
+    // Home shows at most four: what's still to do first, by time. The rest
+    // are one tap away in the sheet, so home never becomes a long scroll.
+    final shown = [
+      ...today.where((i) => !i.done),
+      ...today.where((i) => i.done),
+    ].take(_visible).toList();
 
     Widget rowFor(TodoItem item, int index) {
       Widget row = _TodoRow(
@@ -227,7 +254,7 @@ class _TodoCardState extends State<TodoCard>
         first: index == 0,
         expanded: _expanded.contains(item.id),
         changed: s.justChanged.contains(item.id),
-        onToggle: () => _toggle(item),
+        onToggle: () => toggleTodo(context, item),
         onExpand: () => setState(() {
           _expanded.contains(item.id)
               ? _expanded.remove(item.id)
@@ -278,23 +305,26 @@ class _TodoCardState extends State<TodoCard>
           ),
         ),
       const SizedBox(height: 6),
-      for (var i = 0; i < today.length; i++) rowFor(today[i], i),
+      for (var i = 0; i < shown.length; i++) rowFor(shown[i], i),
+      if (today.length > shown.length)
+        _LinkRow(
+          label: 'See all ${today.length} for today',
+          onTap: () => showTodoSheet(context),
+        ),
       if (s.phase == TodoPhase.updating) ...[
         const SizedBox(height: 12),
-        const DraftingSkeleton(rows: 2, writing: true),
+        const DraftingSkeleton(
+          key: ValueKey('draft-updating'),
+          rows: 2,
+          writing: true,
+        ),
         _note(context, 'Checking ${s.pendingNew} new notifications…'),
       ],
-      if (tomorrow.isNotEmpty) ...[
+      if (tomorrow.isNotEmpty)
         _TomorrowRow(
           items: tomorrow,
-          open:
-              _tomorrowOpen || tomorrow.any((i) => s.justAdded.contains(i.id)),
-          onTap: () => setState(() => _tomorrowOpen = !_tomorrowOpen),
+          onTap: () => showTodoSheet(context, tomorrow: true),
         ),
-        if (_tomorrowOpen || tomorrow.any((i) => s.justAdded.contains(i.id)))
-          for (var i = 0; i < tomorrow.length; i++)
-            rowFor(tomorrow[i], today.length + i),
-      ],
       if (today.isEmpty && tomorrow.isEmpty)
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 14),
@@ -524,13 +554,8 @@ class _UpdateRow extends StatelessWidget {
 
 class _TomorrowRow extends StatelessWidget {
   final List<TodoItem> items;
-  final bool open;
   final VoidCallback onTap;
-  const _TomorrowRow({
-    required this.items,
-    required this.open,
-    required this.onTap,
-  });
+  const _TomorrowRow({required this.items, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -538,6 +563,7 @@ class _TomorrowRow extends StatelessWidget {
     final lead = first.isEmpty
         ? ''
         : first[0].toLowerCase() + first.substring(1);
+    final n = items.length;
     return InkWell(
       onTap: onTap,
       child: Container(
@@ -564,9 +590,7 @@ class _TomorrowRow extends StatelessWidget {
                       ),
                     ),
                     TextSpan(
-                      text: open
-                          ? '${items.length} thing${items.length == 1 ? '' : 's'}'
-                          : '${items.length} thing${items.length == 1 ? '' : 's'}, starting with $lead',
+                      text: '$n thing${n == 1 ? '' : 's'}, starting with $lead',
                     ),
                   ],
                 ),
@@ -578,18 +602,192 @@ class _TomorrowRow extends StatelessWidget {
                 ),
               ),
             ),
-            AnimatedRotation(
-              turns: open ? 0.5 : 0,
-              duration: const Duration(milliseconds: 200),
-              child: Icon(
-                Icons.expand_more_rounded,
-                size: 22,
-                color: context.colors.textSecondary,
-              ),
+            Icon(
+              Icons.chevron_right_rounded,
+              size: 22,
+              color: context.colors.textSecondary,
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// "See all 7 for today ›"
+class _LinkRow extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+  const _LinkRow({required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(2, 12, 2, 12),
+        decoration: BoxDecoration(
+          border: Border(
+            top: BorderSide(
+              color: context.colors.dividerColor.withValues(alpha: 0.6),
+            ),
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              label,
+              style: GoogleFonts.nunito(
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+                color: context.colors.primaryGreen,
+              ),
+            ),
+            Icon(
+              Icons.chevron_right_rounded,
+              size: 20,
+              color: context.colors.primaryGreen,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TodoSheet extends StatefulWidget {
+  final bool startAtTomorrow;
+  const _TodoSheet({required this.startAtTomorrow});
+
+  @override
+  State<_TodoSheet> createState() => _TodoSheetState();
+}
+
+class _TodoSheetState extends State<_TodoSheet> {
+  final Set<int> _expanded = {};
+  final _tomorrowKey = GlobalKey();
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.startAtTomorrow) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final ctx = _tomorrowKey.currentContext;
+        if (ctx != null) {
+          Scrollable.ensureVisible(
+            ctx,
+            duration: const Duration(milliseconds: 320),
+            curve: Curves.easeOutCubic,
+          );
+        }
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return BlocBuilder<TodoCubit, TodoState>(
+      builder: (context, s) {
+        final today = s.today, tomorrow = s.tomorrow;
+        Widget row(TodoItem item, int i) => _TodoRow(
+          key: ValueKey('sheet-${item.id}'),
+          item: item,
+          first: i == 0,
+          expanded: _expanded.contains(item.id),
+          changed: false,
+          onToggle: () => toggleTodo(context, item),
+          onExpand: () => setState(() {
+            _expanded.contains(item.id)
+                ? _expanded.remove(item.id)
+                : _expanded.add(item.id);
+          }),
+        );
+        final left = today.length - s.doneToday;
+        return ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.82,
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 38,
+                    height: 4,
+                    margin: const EdgeInsets.only(top: 10, bottom: 6),
+                    decoration: BoxDecoration(
+                      color: c.dividerColor,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(22, 8, 22, 6),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Today',
+                          style: GoogleFonts.oldStandardTt(
+                            fontSize: 26,
+                            fontWeight: FontWeight.w700,
+                            color: c.textPrimary,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        today.isEmpty
+                            ? 'Nothing for today'
+                            : (left == 0
+                                  ? 'All done'
+                                  : '$left of ${today.length} left'),
+                        style: GoogleFonts.nunito(
+                          fontSize: 13.5,
+                          color: c.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        for (var i = 0; i < today.length; i++) row(today[i], i),
+                        if (tomorrow.isNotEmpty) ...[
+                          Padding(
+                            key: _tomorrowKey,
+                            padding: const EdgeInsets.fromLTRB(2, 20, 2, 4),
+                            child: Text(
+                              'Tomorrow',
+                              style: GoogleFonts.oldStandardTt(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w700,
+                                color: c.textPrimary,
+                              ),
+                            ),
+                          ),
+                          for (var i = 0; i < tomorrow.length; i++)
+                            row(tomorrow[i], i),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
