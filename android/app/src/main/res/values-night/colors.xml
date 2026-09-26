@@ -8,4 +8,6 @@
     <color name="todo_widget_track">#3A3A3A</color>
     <color name="todo_widget_check_ring">#8C6EBC76</color>
     <color name="todo_widget_divider">#26A0A0A0</color>
+    <color name="todo_widget_text_done">#73EFEFEF</color>
+    <color name="todo_widget_green_done">#736EBC76</color>
 </resources>

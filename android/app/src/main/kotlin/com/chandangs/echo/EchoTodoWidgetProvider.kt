@@ -6,7 +6,6 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.graphics.Color
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -84,12 +83,23 @@ class EchoTodoWidgetProvider : AppWidgetProvider() {
             )
         }
 
+        /**
+         * Sets a text colour from a colour *resource*, so the launcher resolves
+         * it in the current light / dark mode. A colour resolved here would be
+         * frozen at whatever mode the phone was in when the widget last drew
+         * (that's how text went invisible after switching modes). Android 12+
+         * can defer it to the launcher; older versions resolve it now.
+         */
+        private fun textColor(context: Context, views: RemoteViews, id: Int, colorRes: Int) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                views.setColor(id, "setTextColor", colorRes)
+            } else {
+                views.setTextColor(id, context.getColor(colorRes))
+            }
+        }
+
         private fun render(context: Context, manager: AppWidgetManager, widgetId: Int, pinnedId: Int) {
             val views = RemoteViews(context.packageName, R.layout.widget_todo)
-            val green = context.getColor(R.color.todo_widget_green)
-            val text = context.getColor(R.color.todo_widget_text)
-            val ring = context.getColor(R.color.todo_widget_check_ring)
-            val tick = context.getColor(R.color.todo_widget_bg)
             val checkBoxes = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
             views.setTextViewText(R.id.todo_date, SimpleDateFormat("EEE d MMM", Locale.getDefault()).format(Date()))
@@ -126,7 +136,7 @@ class EchoTodoWidgetProvider : AppWidgetProvider() {
                 views.setTextViewText(R.id.todo_left, "All done")
                 views.setViewVisibility(R.id.todo_list, View.GONE)
                 views.setViewVisibility(R.id.todo_done, View.VISIBLE)
-                views.setImageViewBitmap(R.id.todo_done_badge, TodoWidgetArt.check(context, 34f, true, green, ring, tick))
+                views.setImageViewResource(R.id.todo_done_badge, R.drawable.todo_check_on)
                 views.setTextViewText(R.id.todo_done_sub, "${today.size} done")
                 views.setTextViewText(R.id.todo_more, "")
                 views.setTextViewText(R.id.todo_tomorrow, if (tomorrow.isNotEmpty()) "Tomorrow · ${tomorrow.size}" else "")
@@ -162,19 +172,16 @@ class EchoTodoWidgetProvider : AppWidgetProvider() {
                 val label = SpannableString(item.title)
                 if (item.done) label.setSpan(StrikethroughSpan(), 0, label.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 views.setTextViewText(title, label)
-                views.setTextColor(
-                    title,
-                    if (item.done) Color.argb(115, Color.red(text), Color.green(text), Color.blue(text)) else text,
-                )
+                textColor(context, views, title, if (item.done) R.color.todo_widget_text_done else R.color.todo_widget_text)
                 views.setTextViewText(time, item.time ?: "")
-                views.setTextColor(time, if (item.done) Color.argb(115, Color.red(green), Color.green(green), Color.blue(green)) else green)
+                textColor(context, views, time, if (item.done) R.color.todo_widget_green_done else R.color.todo_widget_green)
 
                 val toggle = toggleIntent(context, widgetId * 10 + i, item.id)
                 if (checkBoxes) {
                     views.setCompoundButtonChecked(check, item.done)
                     views.setOnCheckedChangeResponse(check, RemoteViews.RemoteResponse.fromPendingIntent(toggle))
                 } else {
-                    views.setImageViewBitmap(check, TodoWidgetArt.check(context, 22f, item.done, green, ring, tick))
+                    views.setImageViewResource(check, if (item.done) R.drawable.todo_check_on else R.drawable.todo_check_off)
                     views.setOnClickPendingIntent(check, toggle)
                 }
             }

@@ -4,10 +4,6 @@ import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
-import android.text.SpannableStringBuilder
-import android.text.Spanned
-import android.text.style.ForegroundColorSpan
-import android.text.style.RelativeSizeSpan
 import android.util.Log
 import android.widget.RemoteViews
 
@@ -35,10 +31,9 @@ class EchoTodoOrbWidgetProvider : AppWidgetProvider() {
     }
 
     private fun render(context: Context, manager: AppWidgetManager, widgetId: Int) {
+        // All colours live in the layout / drawables as resources, so the
+        // launcher resolves them in the current light / dark mode.
         val views = RemoteViews(context.packageName, R.layout.widget_todo_orb)
-        val green = context.getColor(R.color.todo_widget_green)
-        val text2 = context.getColor(R.color.todo_widget_text2)
-        val track = context.getColor(R.color.todo_widget_track)
         views.setOnClickPendingIntent(R.id.orb_root, EchoTodoWidgetProvider.openApp(context, 5000 + widgetId))
 
         val today = TodoWidgetData.today(context)
@@ -46,31 +41,23 @@ class EchoTodoOrbWidgetProvider : AppWidgetProvider() {
         val done = today.count { it.done }
         val total = today.size
         val left = total - done
-
-        views.setImageViewBitmap(
-            R.id.orb_ring,
-            TodoWidgetArt.ring(context, 92f, if (total == 0) 0f else done / total.toFloat(), green, track),
-        )
+        views.setProgressBar(R.id.orb_ring, 100, if (total == 0) 0 else done * 100 / total, false)
 
         if (!TodoWidgetData.hasList(context)) {
             views.setTextViewText(R.id.orb_count, "")
+            views.setTextViewText(R.id.orb_total, "")
             views.setTextViewText(
                 R.id.orb_label,
                 if (WidgetData.isReadyToday(WidgetData.prefs(context))) "No list yet" else "Briefing first",
             )
+            views.setTextViewText(R.id.orb_next_time, "")
             views.setTextViewText(R.id.orb_next, "")
             manager.updateAppWidget(widgetId, views)
             return
         }
 
-        val count = SpannableStringBuilder("$done")
-        if (total > 0) {
-            val start = count.length
-            count.append("/$total")
-            count.setSpan(RelativeSizeSpan(0.58f), start, count.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-            count.setSpan(ForegroundColorSpan(text2), start, count.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-        }
-        views.setTextViewText(R.id.orb_count, if (total == 0) "" else count)
+        views.setTextViewText(R.id.orb_count, if (total == 0) "" else "$done")
+        views.setTextViewText(R.id.orb_total, if (total == 0) "" else "/$total")
         views.setTextViewText(
             R.id.orb_label,
             when {
@@ -81,19 +68,15 @@ class EchoTodoOrbWidgetProvider : AppWidgetProvider() {
         )
 
         val next = today.sortedBy { it.sort }.firstOrNull { !it.done }
-        val nextText = SpannableStringBuilder()
-        when {
-            next != null -> {
-                if (next.time != null) {
-                    nextText.append(next.time)
-                    nextText.setSpan(ForegroundColorSpan(green), 0, nextText.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                    nextText.append(" · ")
-                }
-                nextText.append(next.title)
-            }
-            tomorrow.isNotEmpty() -> nextText.append("Tomorrow: ${tomorrow.size} to-do${if (tomorrow.size == 1) "" else "s"}")
-        }
-        views.setTextViewText(R.id.orb_next, nextText)
+        views.setTextViewText(R.id.orb_next_time, if (next?.time != null) "${next.time} · " else "")
+        views.setTextViewText(
+            R.id.orb_next,
+            when {
+                next != null -> next.title
+                tomorrow.isNotEmpty() -> "Tomorrow: ${tomorrow.size} to-do${if (tomorrow.size == 1) "" else "s"}"
+                else -> ""
+            },
+        )
         manager.updateAppWidget(widgetId, views)
     }
 }
