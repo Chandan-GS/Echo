@@ -12,6 +12,8 @@ import 'package:project_echo/features/echo/presentation/screens/daily_briefing_s
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:project_echo/features/echo/presentation/widgets/timer/next_briefing_timer.dart';
+import 'package:project_echo/features/todo/presentation/cubit/todo_cubit.dart';
+import 'package:project_echo/features/todo/presentation/widgets/todo_card.dart';
 import 'package:project_echo/features/echo/presentation/widgets/generating_view.dart';
 import 'package:project_echo/core/presentation/animations/page_transitions.dart';
 import 'package:project_echo/features/echo/presentation/widgets/echo_mascot.dart';
@@ -90,6 +92,7 @@ class _EchoViewState extends State<_EchoView> with WidgetsBindingObserver {
                   rawText: state.rawText,
                   ttsText: state.ttsText,
                   autoPlay: autoPlay,
+                  todoCubit: context.read<TodoCubit>(),
                   onReset: () {
                     context.read<BriefingCubit>().goBack();
                   },
@@ -150,6 +153,7 @@ class _InitialView extends StatelessWidget {
   Widget build(BuildContext context) {
     return _HomeShell(
       subtitle: "Generate today's briefing to get started.",
+      hasBriefing: false,
       primary: _ActionCard(
         title: 'Generate Briefing',
         subtitle: "Synthesize today's intelligence",
@@ -185,6 +189,7 @@ class _CachedView extends StatelessWidget {
   Widget build(BuildContext context) {
     return _HomeShell(
       subtitle: 'Your briefing is ready.',
+      hasBriefing: true,
       primary: _ActionCard(
         title: "Play Today's Briefing",
         subtitle: 'Listen to the cached summary',
@@ -233,6 +238,7 @@ class _ErrorView extends StatelessWidget {
   Widget build(BuildContext context) {
     return _HomeShell(
       subtitle: "We couldn't generate your briefing.",
+      hasBriefing: false,
       primary: _ActionCard(
         title: 'Try Again',
         subtitle: 'Attempt generation again',
@@ -266,9 +272,13 @@ class _HomeShell extends StatefulWidget {
   /// Optional secondary actions (already laid out — a row or a single card).
   final Widget? secondary;
 
+  /// Whether today's briefing exists (the to-do list is made from it).
+  final bool hasBriefing;
+
   const _HomeShell({
     required this.subtitle,
     required this.primary,
+    required this.hasBriefing,
     this.secondary,
   });
 
@@ -327,9 +337,7 @@ class _HomeShellState extends State<_HomeShell> {
 
             // ── Hero: Echo, a calm luminous presence ──────────────────────
             const FadeSlideIn(
-              child: Center(
-                child: EchoMascot(state: EchoState.idle, size: 190),
-              ),
+              child: Center(child: _HeroEcho()),
             ),
             const SizedBox(height: 16),
             FadeSlideIn(
@@ -366,28 +374,35 @@ class _HomeShellState extends State<_HomeShell> {
               child: widget.primary,
             ),
 
+            // ── Secondary actions, right under the primary one ────────────
+            if (widget.secondary != null) ...[
+              const SizedBox(height: 16),
+              FadeSlideIn(
+                delay: AppMotion.staggerDelay(3),
+                child: widget.secondary!,
+              ),
+            ],
+
+            // ── Today's to-dos ────────────────────────────────────────────
+            const SizedBox(height: 16),
+            FadeSlideIn(
+              delay: AppMotion.staggerDelay(4),
+              child: TodoCard(hasBriefing: widget.hasBriefing),
+            ),
+
             const SizedBox(height: 26),
 
             // ── Next briefing countdown (self-labelled dial) ──────────────
             FadeSlideIn(
-              delay: AppMotion.staggerDelay(3),
+              delay: AppMotion.staggerDelay(5),
               child: const NextBriefingTimer(),
             ),
-
-            // ── Secondary actions ─────────────────────────────────────────
-            if (widget.secondary != null) ...[
-              const SizedBox(height: 22),
-              FadeSlideIn(
-                delay: AppMotion.staggerDelay(4),
-                child: widget.secondary!,
-              ),
-            ],
 
             const SizedBox(height: 18),
 
             // ── Ambient stat ──────────────────────────────────────────────
             FadeSlideIn(
-              delay: AppMotion.staggerDelay(5),
+              delay: AppMotion.staggerDelay(6),
               child: FutureBuilder<List<RawData>>(
                 future: IsarDataSource.getAllEntries(),
                 builder: (context, snapshot) {
@@ -399,6 +414,66 @@ class _HomeShellState extends State<_HomeShell> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// The home hero: Echo, large and without rings. It focuses while a to-do list
+/// is being written, and gives a happy hop when one lands.
+class _HeroEcho extends StatefulWidget {
+  const _HeroEcho();
+
+  @override
+  State<_HeroEcho> createState() => _HeroEchoState();
+}
+
+class _HeroEchoState extends State<_HeroEcho> with SingleTickerProviderStateMixin {
+  late final AnimationController _hop = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 700),
+  );
+  late final Animation<double> _lift = TweenSequence<double>([
+    TweenSequenceItem(tween: Tween(begin: 0.0, end: -14.0).chain(CurveTween(curve: Curves.easeOut)), weight: 30),
+    TweenSequenceItem(tween: Tween(begin: -14.0, end: 0.0).chain(CurveTween(curve: Curves.easeIn)), weight: 30),
+    TweenSequenceItem(tween: ConstantTween(0.0), weight: 40),
+  ]).animate(_hop);
+  bool _celebrating = false;
+
+  @override
+  void dispose() {
+    _hop.dispose();
+    super.dispose();
+  }
+
+  void _onArrival() {
+    _hop.forward(from: 0);
+    setState(() => _celebrating = true);
+    Future.delayed(const Duration(milliseconds: 1900), () {
+      if (mounted) setState(() => _celebrating = false);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocConsumer<TodoCubit, TodoState>(
+      listenWhen: (a, b) =>
+          a.arrival != b.arrival ||
+          (a.phase == TodoPhase.updating && b.phase == TodoPhase.idle),
+      listener: (_, _) => _onArrival(),
+      buildWhen: (a, b) => a.phase != b.phase,
+      builder: (context, todo) {
+        final mood = todo.phase != TodoPhase.idle
+            ? EchoState.focused
+            : _celebrating
+                ? EchoState.happy
+                : EchoState.idle;
+        return AnimatedBuilder(
+          animation: _lift,
+          builder: (context, child) =>
+              Transform.translate(offset: Offset(0, _lift.value), child: child),
+          child: EchoMascot(state: mood, size: 180, showRings: false),
+        );
+      },
     );
   }
 }

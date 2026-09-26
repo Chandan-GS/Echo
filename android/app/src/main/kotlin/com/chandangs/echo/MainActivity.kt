@@ -1,5 +1,6 @@
 package com.chandangs.echo
 
+import android.appwidget.AppWidgetManager
 import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
@@ -18,6 +19,13 @@ class MainActivity : FlutterActivity() {
     private val WIDGET_CHANNEL = "project_echo/widget"
 
     private var notificationReceiver: BroadcastReceiver? = null
+
+    private val widgetKinds = mapOf(
+        "todo" to EchoTodoWidgetProvider::class.java,
+        "ring" to EchoTodoOrbWidgetProvider::class.java,
+        "brief" to EchoBriefingWidgetProvider::class.java,
+        "streak" to EchoStreakWidgetProvider::class.java,
+    )
     private var eventSink: EventChannel.EventSink? = null
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
@@ -52,7 +60,38 @@ class MainActivity : FlutterActivity() {
                 "refresh" -> {
                     EchoBriefingWidgetProvider.updateAll(this)
                     EchoStreakWidgetProvider.updateAll(this)
+                    EchoTodoWidgetProvider.updateAll(this)
+                    EchoTodoOrbWidgetProvider.updateAll(this)
                     result.success(null)
+                }
+                // For Profile → Widgets: what's placed, whether the launcher
+                // lets apps add widgets, and the data the previews show.
+                "state" -> {
+                    val manager = AppWidgetManager.getInstance(this)
+                    val prefs = WidgetData.prefs(this)
+                    result.success(
+                        mapOf(
+                            "canPin" to manager.isRequestPinAppWidgetSupported,
+                            "placed" to widgetKinds.mapValues { (_, cls) ->
+                                manager.getAppWidgetIds(ComponentName(this, cls)).size
+                            },
+                            "streak" to WidgetData.streak(prefs),
+                            "status" to WidgetData.statusText(prefs),
+                            "week" to WidgetData.weekStates(prefs).toList(),
+                        ),
+                    )
+                }
+                // Ask the launcher to add one of Echo's widgets. Android shows
+                // its own confirmation; the result only says whether the
+                // request went through, not whether the user said yes.
+                "pin" -> {
+                    val cls = widgetKinds[call.argument<String>("kind")]
+                    val manager = AppWidgetManager.getInstance(this)
+                    if (cls == null || !manager.isRequestPinAppWidgetSupported) {
+                        result.success(false)
+                    } else {
+                        result.success(manager.requestPinAppWidget(ComponentName(this, cls), null, null))
+                    }
                 }
                 else -> {
                     result.notImplemented()

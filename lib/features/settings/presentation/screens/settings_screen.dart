@@ -28,6 +28,9 @@ import 'package:project_echo/features/echo/presentation/screens/streak_celebrati
 import 'package:project_echo/features/echo/presentation/screens/echo_mascot_preview.dart';
 import 'package:project_echo/core/presentation/animations/page_transitions.dart';
 import 'package:project_echo/features/profile/presentation/widgets/streak_calendar.dart';
+import 'package:project_echo/core/services/home_widgets_service.dart';
+import 'package:project_echo/features/todo/presentation/cubit/todo_cubit.dart';
+import 'package:project_echo/features/widgets/presentation/screens/widgets_screen.dart';
 import 'dart:io';
 import 'package:project_echo/core/services/offline_model_repository.dart';
 
@@ -116,6 +119,11 @@ class _ProfileViewState extends State<_ProfileView>
               ),
 
               const SizedBox(height: 32),
+
+              if (HomeWidgetsService.supported) ...[
+                _widgetsSection(context),
+                const SizedBox(height: 32),
+              ],
 
               // Desktop: a genuine two-column layout — not a narrow phone
               // list centered in empty space. Phone: unchanged single column.
@@ -402,6 +410,57 @@ class _ProfileViewState extends State<_ProfileView>
       ),
     );
   }
+
+  /// Home screen widgets: a row that opens the Widgets page, saying how many
+  /// of Echo's widgets are already on the home screen.
+  Widget _widgetsSection(BuildContext context) {
+    return FadeSlideIn(
+      delay: AppMotion.staggerDelay(1),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionHeading(context, 'Home screen widgets'),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: context.colors.surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: context.colors.dividerColor),
+            ),
+            child: FutureBuilder<HomeWidgetsState?>(
+              key: ValueKey(_widgetsRefresh),
+              future: HomeWidgetsService.state(),
+              builder: (context, snap) {
+                final placed = snap.data?.kindsPlaced ?? 0;
+                return _aboutTile(
+                  context,
+                  icon: Icons.widgets_outlined,
+                  title: 'Widgets',
+                  subtitle: placed == 0
+                      ? '4 available · none on your home screen yet'
+                      : '4 available · $placed on your home screen',
+                  onTap: () async {
+                    await Navigator.of(context, rootNavigator: true).push(
+                      bouncyRoute(
+                        BlocProvider.value(
+                          value: context.read<TodoCubit>(),
+                          child: const WidgetsScreen(),
+                        ),
+                      ),
+                    );
+                    if (mounted) setState(() => _widgetsRefresh++);
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  int _widgetsRefresh = 0;
 
   Widget _aboutSection(BuildContext context) {
     return FadeSlideIn(

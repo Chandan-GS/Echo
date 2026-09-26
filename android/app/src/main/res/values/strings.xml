@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="todo_widget_label">Echo To-do</string>
+    <string name="todo_widget_description">Today\'s to-dos from your briefing. Tick them off here.</string>
+    <string name="todo_orb_widget_label">Echo To-do Progress</string>
+    <string name="todo_orb_widget_description">Echo with today\'s progress and what\'s next.</string>
+</resources>

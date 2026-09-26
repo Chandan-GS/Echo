@@ -1,4 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#5CA363</color>
+
+    <!-- To-do widgets (app_theme.dart light palette; night values in values-night) -->
+    <color name="todo_widget_bg">#F4F2EE</color>
+    <color name="todo_widget_stroke">#1A49884F</color>
+    <color name="todo_widget_text">#1E1E1E</color>
+    <color name="todo_widget_text2">#5A5A5A</color>
+    <color name="todo_widget_green">#49884F</color>
+    <color name="todo_widget_track">#DCDAD3</color>
+    <color name="todo_widget_check_ring">#8C49884F</color>
+    <color name="todo_widget_divider">#1F5A5A5A</color>
+    <color name="todo_widget_text_done">#731E1E1E</color>
+    <color name="todo_widget_green_done">#7349884F</color>
 </resources>
