@@ -1086,6 +1086,8 @@ class _MessageContent extends StatelessWidget {
       );
     }
 
+    if (message.isNotice) return _notice(context);
+
     return Container(
       constraints: BoxConstraints(
         maxWidth: MediaQuery.of(context).size.width * 0.82,
@@ -1111,6 +1113,34 @@ class _MessageContent extends StatelessWidget {
             RagSourcesWidget(sources: message.ragSources),
           ],
         ],
+      ),
+    );
+  }
+
+  /// A limit or error notice: plain words on amber, not an answer.
+  Widget _notice(BuildContext context) {
+    return Container(
+      constraints: BoxConstraints(
+        maxWidth: MediaQuery.of(context).size.width * 0.82,
+      ),
+      padding: EdgeInsets.symmetric(
+        horizontal: _desktop ? 13 : 16,
+        vertical: _desktop ? 9 : 13,
+      ),
+      decoration: BoxDecoration(
+        color: context.colors.amberBackground,
+        borderRadius: BorderRadius.circular(
+          _desktop ? 15 : 20,
+        ).copyWith(bottomLeft: const Radius.circular(6)),
+      ),
+      child: Text(
+        message.text,
+        style: GoogleFonts.nunito(
+          color: context.colors.textPrimary,
+          fontSize: _desktop ? 14 : 15,
+          fontWeight: FontWeight.w600,
+          height: 1.45,
+        ),
       ),
     );
   }

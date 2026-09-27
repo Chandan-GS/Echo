@@ -3,6 +3,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/services/gemini_service.dart';
+import 'package:project_echo/core/services/gemini_usage.dart';
+import 'package:project_echo/core/services/remote_config_service.dart';
+import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/features/settings/presentation/cubit/settings_cubit.dart';
 import 'package:project_echo/features/settings/presentation/cubit/settings_state.dart';
 import 'package:project_echo/features/onboarding/presentation/widgets/ai_mode_card.dart';
@@ -95,7 +98,10 @@ class _CloudEngineCardState extends State<CloudEngineCard> {
           isSelected: !state.isOfflineEngine,
           icon: Icons.cloud_queue,
           title: 'Cloud AI (Gemini)',
-          tags: const ['Gemini 2.5 Flash', 'Requires API Key'],
+          tags: [
+            modelLabel(RemoteConfigService.instance.geminiModel),
+            'Your own key',
+          ],
           speedLabel: 'Fastest',
           isFast: true,
           onTap: () {
@@ -164,6 +170,7 @@ class _CloudEngineCardState extends State<CloudEngineCard> {
                         ),
                       ],
                     ),
+                    const _GeminiToday(),
                   ],
                 )
               else
@@ -283,6 +290,135 @@ class _CloudEngineCardState extends State<CloudEngineCard> {
                     ),
                   ],
                 ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Today's Gemini use under the key: what's left when the daily limit is
+/// known, otherwise the count so far. An estimate from this phone.
+class _GeminiToday extends StatelessWidget {
+  const _GeminiToday();
+
+  static final _aiStudio = Uri.parse('https://aistudio.google.com/rate-limit');
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final small = GoogleFonts.nunito(fontSize: 12.5, color: c.textSecondary);
+    final strong = small.copyWith(
+      color: c.textPrimary,
+      fontWeight: FontWeight.w700,
+    );
+    return ValueListenableBuilder<GeminiUsageSnapshot?>(
+      valueListenable: GeminiUsage.instance.snapshot,
+      builder: (context, usage, _) {
+        if (usage == null) return const SizedBox.shrink();
+        final left = usage.left;
+        final limit = usage.dailyLimit;
+        return Container(
+          margin: const EdgeInsets.only(top: 16),
+          padding: const EdgeInsets.only(top: 14),
+          decoration: BoxDecoration(
+            border: Border(top: BorderSide(color: c.dividerColor)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Text(
+                    grouped(left ?? usage.requests),
+                    style: GoogleFonts.oldStandardTt(
+                      fontSize: 32,
+                      fontWeight: FontWeight.w700,
+                      color: c.textPrimary,
+                      height: 1,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      left != null
+                          ? 'of about ${grouped(limit!)} left today'
+                          : usage.requests == 1
+                          ? 'request today'
+                          : 'requests today',
+                      style: GoogleFonts.nunito(
+                        fontSize: 14,
+                        color: c.textSecondary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (usage.fractionLeft != null) ...[
+                const SizedBox(height: 12),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(99),
+                  child: LinearProgressIndicator(
+                    value: usage.fractionLeft,
+                    minHeight: 8,
+                    backgroundColor: c.dividerColor,
+                    color: usage.isLow ? context.warmAccent : c.primaryGreen,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text.rich(
+                      TextSpan(
+                        style: small,
+                        children: [
+                          if (left != null) ...[
+                            TextSpan(
+                              text: grouped(usage.requests),
+                              style: strong,
+                            ),
+                            const TextSpan(text: ' used · '),
+                          ],
+                          TextSpan(text: grouped(usage.tokens), style: strong),
+                          const TextSpan(text: ' tokens'),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Text('Resets at ${clockTime(usage.resetsAt)}', style: small),
+                ],
+              ),
+              const SizedBox(height: 10),
+              GestureDetector(
+                onTap: () =>
+                    launchUrl(_aiStudio, mode: LaunchMode.externalApplication),
+                child: Text.rich(
+                  TextSpan(
+                    style: small,
+                    children: [
+                      TextSpan(
+                        text: left != null
+                            ? 'An estimate from this phone. '
+                            : 'Your daily limit shows here once Gemini reports it. ',
+                      ),
+                      TextSpan(
+                        text: left != null
+                            ? 'Exact limits in AI Studio'
+                            : 'See it in AI Studio',
+                        style: small.copyWith(
+                          color: c.primaryGreen,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ],
           ),
         );

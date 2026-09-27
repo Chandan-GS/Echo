@@ -7,6 +7,9 @@ import 'package:project_echo/features/echo/presentation/cubit/briefing_cubit.dar
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/services/widget_refresh_service.dart';
 import 'package:project_echo/core/services/phone_sync_service.dart';
+import 'package:project_echo/core/services/gemini_usage.dart';
+import 'package:project_echo/core/services/offline_model_repository.dart';
+import 'package:project_echo/features/settings/presentation/cubit/settings_cubit.dart';
 import 'package:project_echo/features/echo/presentation/screens/daily_briefing_screen.dart';
 import 'package:project_echo/features/todo/presentation/cubit/todo_cubit.dart';
 import 'package:project_echo/features/todo/presentation/widgets/todo_card.dart';
@@ -120,6 +123,7 @@ class _EchoViewState extends State<_EchoView> with WidgetsBindingObserver {
           if (state is BriefingError) {
             return _ErrorView(
               message: state.message,
+              limitReached: state.limitReached,
               onRetry: () => context.read<BriefingCubit>().generateBriefing(),
             );
           }
@@ -184,11 +188,23 @@ class _CachedView extends StatelessWidget {
 // ---------------------------------------------------------------------------
 class _ErrorView extends StatelessWidget {
   final String message;
+  final bool limitReached;
   final VoidCallback onRetry;
-  const _ErrorView({required this.message, required this.onRetry});
+  const _ErrorView({
+    required this.message,
+    required this.onRetry,
+    this.limitReached = false,
+  });
 
   @override
   Widget build(BuildContext context) {
+    if (limitReached) {
+      return _HomeShell(
+        subtitle: "Gemini's limit for today is used up.",
+        hasBriefing: false,
+        primary: _LimitCard(message: message),
+      );
+    }
     return _HomeShell(
       subtitle: "We couldn't generate your briefing.",
       hasBriefing: false,
@@ -207,6 +223,107 @@ class _ErrorView extends StatelessWidget {
           fontSize: 12.5,
           color: context.colors.textSecondary,
         ),
+      ),
+    );
+  }
+}
+
+/// Gemini's daily limit stopped the briefing: say when it's back, and offer
+/// the on-device engine when its model is already downloaded.
+class _LimitCard extends StatefulWidget {
+  final String message;
+  const _LimitCard({required this.message});
+
+  @override
+  State<_LimitCard> createState() => _LimitCardState();
+}
+
+class _LimitCardState extends State<_LimitCard> {
+  bool _onDeviceReady = false;
+
+  @override
+  void initState() {
+    super.initState();
+    createOfflineModelRepository().downloadedPathOrNull().then((path) {
+      if (mounted && path != null) setState(() => _onDeviceReady = true);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    Widget button(String label, VoidCallback onTap, {bool filled = true}) =>
+        Material(
+          color: filled ? c.textPrimary : Colors.transparent,
+          shape: StadiumBorder(
+            side: filled
+                ? BorderSide.none
+                : BorderSide(color: c.textPrimary.withValues(alpha: 0.35)),
+          ),
+          child: InkWell(
+            customBorder: const StadiumBorder(),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              child: Text(
+                label,
+                style: GoogleFonts.nunito(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: filled ? c.background : c.textPrimary,
+                ),
+              ),
+            ),
+          ),
+        );
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+      decoration: BoxDecoration(
+        color: c.amberBackground,
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            "Today's briefing couldn't be written",
+            style: GoogleFonts.nunito(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: c.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            widget.message,
+            style: GoogleFonts.nunito(
+              fontSize: 14.5,
+              height: 1.4,
+              color: c.textPrimary.withValues(alpha: 0.85),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              if (_onDeviceReady)
+                button('Use on-device AI', () async {
+                  final briefing = context.read<BriefingCubit>();
+                  await context.read<SettingsCubit>().setAiEngine(
+                    isOffline: true,
+                  );
+                  briefing.generateBriefing();
+                }),
+              button(
+                'OK',
+                () => context.read<BriefingCubit>().goBack(),
+                filled: !_onDeviceReady,
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -398,13 +515,36 @@ class _RegenerateRowState extends State<_RegenerateRow> {
                 ),
               ),
               const Spacer(),
-              Text(
-                at == null ? 'Update summary' : 'Made at ${_clock(at)}',
-                style: GoogleFonts.nunito(
-                  fontSize: 12.5,
-                  color: c.textSecondary,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
+              // Running low on Gemini: the count replaces the time it was made.
+              ValueListenableBuilder<GeminiUsageSnapshot?>(
+                valueListenable: GeminiUsage.instance.snapshot,
+                builder: (context, usage, _) {
+                  final cloud = !context.select(
+                    (SettingsCubit s) => s.state.isOfflineEngine,
+                  );
+                  final left = usage?.left;
+                  if (cloud && usage != null && left != null && usage.isLow) {
+                    return Text(
+                      left == 0
+                          ? 'Gemini back at ${clockTime(usage.resetsAt)}'
+                          : '$left Gemini ${left == 1 ? 'request' : 'requests'} left',
+                      style: GoogleFonts.nunito(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w800,
+                        color: context.warmAccent,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      ),
+                    );
+                  }
+                  return Text(
+                    at == null ? 'Update summary' : 'Made at ${_clock(at)}',
+                    style: GoogleFonts.nunito(
+                      fontSize: 12.5,
+                      color: c.textSecondary,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  );
+                },
               ),
             ],
           ),

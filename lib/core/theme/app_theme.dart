@@ -39,6 +39,11 @@ extension AppThemeContext on BuildContext {
   /// The near-black green used for text/icons sitting on [selectionFill].
   Color get onSelection => const Color(0xFF16301B);
 
+  /// Warm text for a gentle heads-up (running low on Gemini), the text
+  /// counterpart of [AppColors.amberBackground].
+  Color get warmAccent =>
+      isDarkMode ? const Color(0xFFE6C77A) : const Color(0xFF8A6A12);
+
   AppColors get colors => isDarkMode
       ? const AppColors(
           background: AppTheme.backgroundDark,
