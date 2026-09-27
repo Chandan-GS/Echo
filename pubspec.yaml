@@ -63,6 +63,8 @@ dependencies:
   qr_flutter: ^4.1.0
   aptabase_flutter: ^0.5.0
   package_info_plus: ^10.2.1
+  echo_native:
+    path: packages/echo_native
 dev_dependencies:
   flutter_test:
     sdk: flutter

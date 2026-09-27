@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:math' as math;
 import 'package:project_echo/core/services/analytics_service.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:fllama/fllama.dart';
+import 'package:project_echo/features/echo/data/ask/ask_retrieval.dart';
+import 'package:project_echo/features/echo/data/ask/conversation_memory.dart';
 import 'package:project_echo/features/echo/data/datasources/briefing_prompt.dart';
+import 'package:project_echo/features/echo/data/relevance/temporal_relevance.dart';
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
 import 'package:project_echo/features/echo/data/datasources/tflite_embedding_service.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
@@ -44,14 +46,16 @@ class AskAiCubit extends Cubit<AskAiState> {
       // longer hard-gate here — the offline branch guards on modelPath itself.
       final modelPath = await createOfflineModelRepository().downloadedPathOrNull();
 
+      final now = DateTime.now();
+      final smallTalk = isSmallTalk(text);
+
       print('=== ASK AI: STARTING QUERY SEARCH ===\nQuery: $text');
       // Run on-device RAG using all-MiniLM model. The TensorFlow Lite native
       // library isn't bundled on desktop (macOS/Windows), and notifications
       // synced from the phone carry no embeddings anyway, so on desktop we skip
-      // embeddings entirely and fall back to keyword-only retrieval (the +0.4
-      // sender/source keyword boost below still surfaces relevant items).
+      // embeddings entirely and fall back to keyword + time retrieval.
       List<double>? queryEmbedding;
-      if (!(Platform.isMacOS || Platform.isWindows)) {
+      if (!smallTalk && !(Platform.isMacOS || Platform.isWindows)) {
         try {
           queryEmbedding =
               await TfliteEmbeddingService.instance.getEmbedding(text);
@@ -59,112 +63,44 @@ class AskAiCubit extends Cubit<AskAiState> {
           print('Embedding unavailable — keyword-only retrieval: $e');
         }
       }
+
+      // Today's conversation. A follow-up ("and Neha?", "when is it?") is
+      // spotted locally, then retrieval leans towards the previous topic and
+      // the prompt gets the last couple of exchanges — nothing otherwise.
+      final memory = await ConversationMemory.load(now);
+      final previous = memory.last;
+      final followUp =
+          !smallTalk && memory.isFollowUp(text, queryEmbedding, now);
+
       final allNotifications = await IsarDataSource.getAllEntries();
       print('Total notifications in Isar: ${allNotifications.length}');
 
-      // Cosine similarity comparison with Hybrid Keyword Boost
-      final queryLower = text.toLowerCase();
-      final stopWords = {
-        'notification',
-        'notifications',
-        'message',
-        'messages',
-        'email',
-        'emails',
-        'app',
-        'from',
-        'about',
-        'summarize',
-        'summarise',
-        'what',
-        'did',
-        'say',
-        'the',
-        'tell',
-        'me',
-        'any',
-        'update',
-        'updates',
-        'show',
-        'get',
-        'give',
-      };
+      final ranked = smallTalk
+          ? const <RankedNotification>[]
+          : rankForQuestion(
+              question: text,
+              now: now,
+              entries: allNotifications,
+              questionEmbedding: followUp
+                  ? blendEmbeddings(queryEmbedding, previous!.embedding)
+                  : queryEmbedding,
+              carriedIds:
+                  followUp ? previous!.sourceIds.toSet() : const <int>{},
+            );
+      var ragSources = ranked.map((r) => r.entry).toList();
 
-      final queryWords = queryLower
-          .split(RegExp(r'\W+'))
-          .where((w) => w.isNotEmpty && w.length > 2 && !stopWords.contains(w))
-          .toSet();
-
-      final scored = allNotifications.map((e) {
-        double similarity = _cosineSimilarity(queryEmbedding, e.embedding);
-
-        // Keyword boost for sender or source
-        final senderLower = e.sender.toLowerCase();
-        final sourceLower = e.source.toLowerCase();
-        final metaWords = {
-          ...senderLower.split(RegExp(r'\W+')),
-          ...sourceLower.split(RegExp(r'\W+')),
-        }.where((w) => w.isNotEmpty && !stopWords.contains(w)).toSet();
-
-        bool hasMetaMatch = queryWords.any((qw) => metaWords.contains(qw));
-        if (hasMetaMatch) {
-          similarity +=
-              0.4; // Significant boost for matching the sender or source name precisely
-        }
-
-        // Keyword boost for the notification's own text — metadata alone
-        // misses a plain-language query whose words simply appear in what
-        // the notification actually says. This matters most on desktop,
-        // which has no embeddings to fall back on (see the queryEmbedding
-        // guard above), so this is the only way content itself counts there.
-        final contentLower = e.content.toLowerCase();
-        final contentWords = contentLower
-            .split(RegExp(r'\W+'))
-            .where((w) => w.isNotEmpty && !stopWords.contains(w))
-            .toSet();
-        if (queryWords.any((qw) => contentWords.contains(qw))) {
-          similarity += 0.35;
-        }
-
-        // A query clearly asking about the weather should still find a
-        // weather notification even when neither the query nor the
-        // notification's sender ever uses the word "weather" itself — e.g. a
-        // system weather alert's sender is just "Google" and its content
-        // reads "29° in Bengaluru · Mostly cloudy", with zero literal
-        // keyword overlap against "what's the weather like today".
-        if (_isWeatherQuery(queryWords) && _looksLikeWeather(contentLower)) {
-          similarity += 0.5;
-        }
-
-        return _ScoredNotification(e, similarity);
-      }).toList();
-
-      scored.sort((a, b) => b.score.compareTo(a.score));
-
-      final Set<String> seenContents = {};
-      final List<_ScoredNotification> uniqueScored = [];
-
-      for (final s in scored) {
-        if (s.score >= 0.30) {
-          final normalizedContent = s.notification.content.toLowerCase().trim();
-          if (!seenContents.contains(normalizedContent)) {
-            seenContents.add(normalizedContent);
-            uniqueScored.add(s);
-            if (uniqueScored.length >= 10) break;
-          }
-        }
+      // A follow-up that matches nothing new ("what time was that?") is still
+      // about the previous answer's notifications.
+      if (ragSources.isEmpty && followUp) {
+        final ids = previous!.sourceIds.toSet();
+        ragSources =
+            allNotifications.where((e) => ids.contains(e.id)).toList();
       }
 
-      final relevantScored = uniqueScored;
-      final List<RawData> ragSources = relevantScored
-          .map((s) => s.notification)
-          .toList();
-
-      print('=== RAG SIMILARITY SEARCH RESULTS ===');
-      for (int i = 0; i < math.min(5, relevantScored.length); i++) {
-        final match = relevantScored[i];
+      print('=== RAG RESULTS (follow-up: $followUp) ===');
+      for (final match in ranked.take(5)) {
         print(
-          'Match #${i + 1}: [Score: ${match.score.toStringAsFixed(4)}] Sender: ${match.notification.sender} | Content: ${match.notification.content}',
+          '[Score: ${match.score.toStringAsFixed(4)}] Sender: ${match.entry.sender} | Content: ${match.entry.content}',
         );
       }
       print('=====================================');
@@ -173,26 +109,28 @@ class AskAiCubit extends Cubit<AskAiState> {
       // model an empty context and hope it improvises sensibly — on thin
       // context, the 1.5B model reliably degenerates into paraphrasing its own
       // system instruction back at the user instead of answering. Answer
-      // directly instead of invoking generation at all — the same defensive
-      // short-circuit the briefing cubit uses for a low RAG confidence score.
+      // directly instead of invoking generation at all.
       // Casual small talk ("hi", "thanks") never needed notification context
-      // in the first place, so it still goes to the model normally — the
-      // model generating a warm, natural reply here isn't the failure mode we
-      // were guarding against.
-      if (ragSources.isEmpty && !_isSmallTalk(text)) {
+      // in the first place, so it still goes to the model normally.
+      if (ragSources.isEmpty && !smallTalk) {
         final name = (await SharedPreferences.getInstance())
                 .getString('user_name') ??
             'sir';
-        _messages.add(
-          ChatMessage(
-            sender: 'echo',
-            text: _noMatchFallback(name, allNotifications),
-          ),
-        );
+        final fallback = _noMatchFallback(name, allNotifications);
+        _messages.add(ChatMessage(sender: 'echo', text: fallback));
         emit(
           AskAiMessageReceived(
             messages: List.from(_messages),
             isSearching: false,
+          ),
+        );
+        await memory.add(
+          ConversationTurn(
+            question: text,
+            answer: fallback,
+            sourceIds: const [],
+            embedding: queryEmbedding,
+            at: now,
           ),
         );
         return;
@@ -205,10 +143,19 @@ class AskAiCubit extends Cubit<AskAiState> {
                 (e) => formatNotification(
                   source: e.source,
                   sender: e.sender,
-                  content: e.content,
+                  content: _clip(
+                    rewriteRelativeDays(e.content, e.timestamp, now),
+                    _maxContentChars,
+                  ),
+                  when: askTimeLabel(
+                    e,
+                    now,
+                    withArrival: isArrivalQuestion(text),
+                  ),
                 ),
               )
               .join('\n');
+      final history = followUp ? memory.historyForPrompt() : null;
 
       final echoMsgPlaceholder = ChatMessage(
         sender: 'echo',
@@ -253,7 +200,13 @@ class AskAiCubit extends Cubit<AskAiState> {
       }
       final useDesktopEngine = desktopHost != null;
 
-      final prompt = buildAskAiQwenPrompt(text, contextString, userName);
+      final prompt = buildAskAiQwenPrompt(
+        text,
+        contextString,
+        userName,
+        now: now,
+        history: history,
+      );
 
       print('=== ASK AI: LLM INPUT PROMPT ===');
       _debugPrintLongString(prompt);
@@ -283,9 +236,12 @@ class AskAiCubit extends Cubit<AskAiState> {
         _messages[lastIdx] = _messages[lastIdx].copyWith(isGenerating: false);
         emit(AskAiMessageReceived(messages: List.from(_messages)));
       } else if (!isOfflineEngine && geminiApiKey.isNotEmpty) {
+        // Gemini gets a real system instruction and a plain user turn, not
+        // the offline model's chat template.
         final stream = GeminiService.instance.generateStream(
           geminiApiKey,
-          prompt,
+          buildAskAiUserMessage(text, contextString, history: history),
+          systemInstruction: getAskAiSystemInstruction(userName, now: now),
         );
         String cumulativeBuffer = '';
 
@@ -379,10 +335,6 @@ class AskAiCubit extends Cubit<AskAiState> {
                 .replaceAll(RegExp(r'<\|[^|]*\|>', dotAll: true), '')
                 .trim();
             _messages[lastIdx] = _messages[lastIdx].copyWith(text: cleanText);
-            print(
-              '=== ASK AI: ECHO GENERATED OUTPUT ===\n$cleanText\n=====================================',
-            );
-
             emit(AskAiMessageReceived(messages: List.from(_messages)));
             _activeRequestId = null;
             if (!done.isCompleted) done.complete();
@@ -390,6 +342,21 @@ class AskAiCubit extends Cubit<AskAiState> {
         });
 
         await done.future;
+      }
+
+      // Remember the exchange (small talk carries no topic worth following).
+      final answer = _messages[echoIndex].text.trim();
+      print('=== ASK AI: ECHO GENERATED OUTPUT ===\n$answer\n=====');
+      if (!smallTalk && answer.isNotEmpty) {
+        await memory.add(
+          ConversationTurn(
+            question: text,
+            answer: answer,
+            sourceIds: ragSources.map((e) => e.id).toList(),
+            embedding: queryEmbedding,
+            at: now,
+          ),
+        );
       }
     } catch (e) {
       // Remove this request's own placeholder if it never received any text,
@@ -414,42 +381,6 @@ class AskAiCubit extends Cubit<AskAiState> {
         ),
       );
     }
-  }
-
-  // Casual openers/closers that never need notification context to answer —
-  // matched as the whole (trimmed) message so a real question that happens to
-  // contain one of these words ("thanks for the update on my WhatsApp?")
-  // still falls through to normal RAG handling.
-  static final RegExp _smallTalkPattern = RegExp(
-    r"^(hi+|hey+|hello+|yo|sup|what'?s up|"
-    r"good\s*(morning|afternoon|evening|night)|"
-    r"how('?s| is| are) it going|how are you( doing)?|"
-    r"thanks?( you)?|thx|ty|"
-    r"ok(ay)?|cool|nice|great|got it|sounds good|"
-    r"bye|goodbye|see (you|ya)|good ?night)[\s!.?]*$",
-    caseSensitive: false,
-  );
-
-  bool _isSmallTalk(String text) => _smallTalkPattern.hasMatch(text.trim());
-
-  static const _weatherQueryWords = {
-    'weather', 'forecast', 'temperature', 'rain', 'raining', 'rainy',
-    'sunny', 'cloudy', 'climate', 'hot', 'cold', 'humid', 'humidity',
-    'storm', 'wind', 'windy', 'snow', 'snowing',
-  };
-
-  bool _isWeatherQuery(Set<String> queryWords) =>
-      queryWords.any(_weatherQueryWords.contains);
-
-  static final RegExp _degreePattern = RegExp(r'\d+\s*°');
-  static const _weatherContentMarkers = [
-    'cloudy', 'forecast', 'rain', 'sunny', 'humidity', 'storm',
-    'clear sky', 'overcast',
-  ];
-
-  bool _looksLikeWeather(String contentLower) {
-    if (_degreePattern.hasMatch(contentLower)) return true;
-    return _weatherContentMarkers.any(contentLower.contains);
   }
 
   /// A dead-end "I don't know" helps no one — point $name at what's actually
@@ -480,19 +411,10 @@ class AskAiCubit extends Cubit<AskAiState> {
         "but I do have $mentioned if that's useful instead.";
   }
 
-  double _cosineSimilarity(List<double>? a, List<double>? b) {
-    if (a == null || b == null || a.length != b.length) return 0.0;
-    double dotProduct = 0.0;
-    double normA = 0.0;
-    double normB = 0.0;
-    for (int i = 0; i < a.length; i++) {
-      dotProduct += a[i] * b[i];
-      normA += a[i] * a[i];
-      normB += b[i] * b[i];
-    }
-    if (normA == 0 || normB == 0) return 0.0;
-    return dotProduct / (math.sqrt(normA) * math.sqrt(normB));
-  }
+  static const _maxContentChars = 280;
+
+  static String _clip(String s, int max) =>
+      s.length <= max ? s : '${s.substring(0, max).trimRight()}…';
 
   void _debugPrintLongString(String text) {
     for (final line in text.split('\n')) {
@@ -522,10 +444,4 @@ class AskAiCubit extends Cubit<AskAiState> {
     cancelInference();
     return super.close();
   }
-}
-
-class _ScoredNotification {
-  final RawData notification;
-  final double score;
-  _ScoredNotification(this.notification, this.score);
 }

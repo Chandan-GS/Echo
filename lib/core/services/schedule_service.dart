@@ -5,6 +5,7 @@ import 'package:project_echo/core/services/streak_service.dart';
 import 'package:project_echo/core/services/widget_refresh_service.dart';
 import 'package:project_echo/features/echo/presentation/cubit/briefing_cubit.dart';
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
+import 'package:project_echo/features/echo/data/services/notification_ingest.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
@@ -44,6 +45,13 @@ Future<void> alarmCallback() async {
     }
 
     await IsarDataSource.instance;
+
+    // If the app hasn't been opened since last night, everything captured
+    // meanwhile is still in the native buffer. Pull it (plus today's and
+    // tomorrow's calendar) into Isar before deciding what the briefing covers.
+    await NotificationIngest.drainBuffer();
+    await NotificationIngest.syncCalendar();
+    await IsarDataSource.deleteOldNotifications();
 
     final cubit = BriefingCubit();
 

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:isar/isar.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
+import 'package:project_echo/features/echo/data/relevance/briefing_selection.dart';
 
 class IsarDataSource {
   static Isar? _isar;
@@ -130,21 +131,31 @@ class IsarDataSource {
     });
   }
 
-  /// Deletes all notification entries older than 24 hours.
+  /// Deletes notifications older than 24 hours, except those still pointing
+  /// at something ahead ("Goa trip on Oct 3" received a week earlier) — those
+  /// are kept until their time passes, so the briefing on the day can cover
+  /// them. Nothing is kept longer than [_maxRetention].
   static Future<void> deleteOldNotifications() async {
     try {
       final isar = await instance;
-      final limit = DateTime.now().subtract(const Duration(hours: 24));
+      final now = DateTime.now();
+      final limit = now.subtract(const Duration(hours: 24));
+      final hardLimit = now.subtract(_maxRetention);
       await isar.writeTxn(() async {
         final oldEntries = await isar.rawDatas.filter().timestampLessThan(limit).findAll();
-        if (oldEntries.isNotEmpty) {
-          final ids = oldEntries.map((e) => e.id).toList();
+        final ids = oldEntries
+            .where((e) => e.timestamp.isBefore(hardLimit) || !isStillRelevant(e, now))
+            .map((e) => e.id)
+            .toList();
+        if (ids.isNotEmpty) {
           await isar.rawDatas.deleteAll(ids);
-          debugPrint('Permanently deleted ${ids.length} notifications older than 24 hours.');
+          debugPrint('Permanently deleted ${ids.length} notifications no longer relevant.');
         }
       });
     } catch (e) {
       debugPrint('Error cleaning up old notifications: $e');
     }
   }
+
+  static const _maxRetention = Duration(days: 180);
 }

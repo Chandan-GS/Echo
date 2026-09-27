@@ -1,17 +1,14 @@
 package com.chandangs.echo
 
-import android.content.Context
 import android.content.Intent
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
-import org.json.JSONArray
+import com.chandangs.echo_native.NotificationBuffer
 import org.json.JSONObject
 
 class EchoNotificationListenerService : NotificationListenerService() {
     companion object {
-        const val PREFS_NAME = "echo_notification_prefs"
-        const val BUFFER_KEY = "notification_buffer"
         const val ACTION_NEW_NOTIFICATION = "com.chandangs.echo.NEW_NOTIFICATION"
         const val EXTRA_NOTIFICATION_DATA = "notification_data"
 
@@ -76,7 +73,7 @@ class EchoNotificationListenerService : NotificationListenerService() {
 
         // 1. Buffer to SharedPreferences ONLY if Flutter is not actively listening
         if (!isFlutterListening) {
-            bufferNotification(jsonString)
+            NotificationBuffer.append(applicationContext, jsonString)
         }
 
         // 2. Broadcast to MainActivity if active
@@ -101,22 +98,6 @@ class EchoNotificationListenerService : NotificationListenerService() {
                 val parts = pkg.split(".")
                 if (parts.size > 1) parts.last().replaceFirstChar { it.uppercase() } else pkg
             }
-        }
-    }
-
-    @Synchronized
-    private fun bufferNotification(data: String) {
-        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val currentBufferStr = prefs.getString(BUFFER_KEY, "[]")
-        try {
-            val array = JSONArray(currentBufferStr)
-            array.put(JSONObject(data))
-            prefs.edit().putString(BUFFER_KEY, array.toString()).apply()
-        } catch (e: Exception) {
-            Log.e("EchoNotification", "Error buffering notification", e)
-            val newArray = JSONArray()
-            newArray.put(JSONObject(data))
-            prefs.edit().putString(BUFFER_KEY, newArray.toString()).apply()
         }
     }
 }
