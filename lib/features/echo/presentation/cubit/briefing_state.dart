@@ -23,5 +23,9 @@ class BriefingReady extends BriefingState {
 
 class BriefingError extends BriefingState {
   final String message;
-  BriefingError(this.message);
+
+  /// Gemini's daily limit stopped it (Home then says when it resets).
+  final bool limitReached;
+
+  BriefingError(this.message, {this.limitReached = false});
 }

@@ -1,6 +1,7 @@
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
+import 'package:project_echo/core/services/gemini_usage.dart';
 import 'package:project_echo/core/services/remote_config_service.dart';
 
 class GeminiService {
@@ -42,23 +43,47 @@ class GeminiService {
   /// [systemInstruction], when given, is sent as Gemini's real system
   /// instruction and [prompt] as the user turn — rather than one blob in the
   /// offline model's chat template, which Gemini just reads as extra text.
+  ///
+  /// Every call is counted in [GeminiUsage]. When Gemini is overloaded before
+  /// replying, it retries once; other failures surface as [GeminiFailure].
   Stream<GenerateContentResponse> generateStream(
     String apiKey,
     String prompt, {
     String? systemInstruction,
-  }) {
-    final cleanKey = apiKey.trim();
-
+  }) async* {
+    final name = RemoteConfigService.instance.geminiModel;
     final model = GenerativeModel(
       // Model name is remote-controlled (see RemoteConfigService) so it can be
       // swapped from config.json without shipping a new build.
-      model: RemoteConfigService.instance.geminiModel,
-      apiKey: cleanKey,
+      model: name,
+      apiKey: apiKey.trim(),
       generationConfig: GenerationConfig(temperature: 0.3, topP: 0.9),
-      systemInstruction:
-          systemInstruction == null ? null : Content.system(systemInstruction),
+      systemInstruction: systemInstruction == null
+          ? null
+          : Content.system(systemInstruction),
     );
-    return model.generateContentStream([Content.text(prompt)]);
+    for (var attempt = 0; ; attempt++) {
+      var replied = false;
+      var tokens = 0;
+      try {
+        await for (final r in model.generateContentStream([
+          Content.text(prompt),
+        ])) {
+          replied = true;
+          tokens = r.usageMetadata?.totalTokenCount ?? tokens;
+          yield r;
+        }
+        await GeminiUsage.instance.recordCall(model: name, tokens: tokens);
+        return;
+      } catch (e) {
+        final hit = await GeminiUsage.instance.recordError(e, model: name);
+        if (!replied && attempt == 0 && isOverloaded(errorText(e))) {
+          await Future<void>.delayed(const Duration(seconds: 2));
+          continue;
+        }
+        throw GeminiFailure(e, hit);
+      }
+    }
   }
 
   /// A single, non-streamed reply constrained to JSON — for small structured
@@ -68,8 +93,9 @@ class GeminiService {
     String prompt, {
     required String systemInstruction,
   }) async {
+    final name = RemoteConfigService.instance.geminiModel;
     final model = GenerativeModel(
-      model: RemoteConfigService.instance.geminiModel,
+      model: name,
       apiKey: apiKey.trim(),
       generationConfig: GenerationConfig(
         temperature: 0.2,
@@ -77,7 +103,37 @@ class GeminiService {
       ),
       systemInstruction: Content.system(systemInstruction),
     );
-    final response = await model.generateContent([Content.text(prompt)]);
-    return response.text ?? '';
+    for (var attempt = 0; ; attempt++) {
+      try {
+        final response = await model.generateContent([Content.text(prompt)]);
+        await GeminiUsage.instance.recordCall(
+          model: name,
+          tokens: response.usageMetadata?.totalTokenCount ?? 0,
+        );
+        return response.text ?? '';
+      } catch (e) {
+        final hit = await GeminiUsage.instance.recordError(e, model: name);
+        if (attempt == 0 && isOverloaded(errorText(e))) {
+          await Future<void>.delayed(const Duration(seconds: 2));
+          continue;
+        }
+        throw GeminiFailure(e, hit);
+      }
+    }
   }
+}
+
+/// A failed Gemini call, with what to tell the user.
+class GeminiFailure implements Exception {
+  final Object cause;
+
+  /// The limit that was hit, when it was one.
+  final GeminiLimitHit? hit;
+
+  const GeminiFailure(this.cause, this.hit);
+
+  String get message => friendlyGeminiError(cause, hit: hit);
+
+  @override
+  String toString() => message;
 }

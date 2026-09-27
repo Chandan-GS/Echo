@@ -6,11 +6,16 @@ class ChatMessage {
   final bool isGenerating;
   final List<RawData> ragSources;
 
+  /// A notice from Echo about Gemini (for example its daily limit), shown
+  /// in a quieter style than an answer.
+  final bool isNotice;
+
   ChatMessage({
     required this.sender,
     required this.text,
     this.isGenerating = false,
     this.ragSources = const [],
+    this.isNotice = false,
   });
 
   ChatMessage copyWith({
@@ -24,6 +29,7 @@ class ChatMessage {
       text: text ?? this.text,
       isGenerating: isGenerating ?? this.isGenerating,
       ragSources: ragSources ?? this.ragSources,
+      isNotice: isNotice,
     );
   }
 }
