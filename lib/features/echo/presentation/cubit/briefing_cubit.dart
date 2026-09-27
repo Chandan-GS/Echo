@@ -18,6 +18,7 @@ import 'package:project_echo/core/services/widget_refresh_service.dart';
 import 'package:project_echo/core/services/phone_sync_service.dart';
 import 'package:project_echo/core/services/desktop_engine_client.dart';
 import 'package:project_echo/core/services/offline_model_repository.dart';
+import 'package:project_echo/features/vault/data/app_access.dart';
 
 part 'briefing_state.dart';
 
@@ -76,7 +77,8 @@ class BriefingCubit extends Cubit<BriefingState> {
       // The on-device model is only needed for the offline (Fllama) path below.
       // Cloud (Gemini) and desktop-engine paths don't require it, so we no
       // longer hard-gate here — the offline branch guards on modelPath itself.
-      final modelPath = await createOfflineModelRepository().downloadedPathOrNull();
+      final modelPath = await createOfflineModelRepository()
+          .downloadedPathOrNull();
 
       // ── 2. Pick what's relevant from now until the end of tomorrow ────────
       final now = DateTime.now();
@@ -112,7 +114,8 @@ class BriefingCubit extends Cubit<BriefingState> {
       // locally, so "prefer a computer" only ever makes sense on a phone. A
       // desktop build with a stale prefer_desktop_engine=true (e.g. leftover
       // from testing) would otherwise discover and call itself over HTTP.
-      final preferDesktopEngine = !(Platform.isMacOS || Platform.isWindows) &&
+      final preferDesktopEngine =
+          !(Platform.isMacOS || Platform.isWindows) &&
           (prefs.getBool('prefer_desktop_engine') ?? false);
       String? desktopHost;
       if (preferDesktopEngine) {
@@ -172,6 +175,10 @@ class BriefingCubit extends Cubit<BriefingState> {
               final prefs = await SharedPreferences.getInstance();
               final today = DateTime.now().toIso8601String().split('T').first;
               await prefs.setString('cached_briefing_date', today);
+              await prefs.setString(
+                'cached_briefing_time',
+                DateTime.now().toIso8601String(),
+              );
               await prefs.setString('cached_briefing_text', rawText);
               // Best-effort: no-ops when this runs in the headless alarm
               // isolate (no Activity to receive it) — the widget's own
@@ -215,17 +222,24 @@ class BriefingCubit extends Cubit<BriefingState> {
           onError: (e) => controller.addError(e),
         );
       } else if (!isOfflineEngine && geminiApiKey.isNotEmpty) {
-        final stream = GeminiService.instance.generateStream(geminiApiKey, prompt);
-        stream.listen((response) {
-          final chunk = response.text ?? '';
-          if (chunk.isNotEmpty) {
-            controller.add(chunk);
-          }
-        }, onDone: () {
-          controller.close();
-        }, onError: (e) {
-          controller.addError(e);
-        });
+        final stream = GeminiService.instance.generateStream(
+          geminiApiKey,
+          prompt,
+        );
+        stream.listen(
+          (response) {
+            final chunk = response.text ?? '';
+            if (chunk.isNotEmpty) {
+              controller.add(chunk);
+            }
+          },
+          onDone: () {
+            controller.close();
+          },
+          onError: (e) {
+            controller.addError(e);
+          },
+        );
       } else {
         // Offline path — this is the only branch that actually needs the model.
         if (modelPath == null) {
@@ -298,7 +312,8 @@ class BriefingCubit extends Cubit<BriefingState> {
     final aliases = Map<String, String>.from(
       jsonDecode(prefs.getString('vault_category_aliases') ?? '{}'),
     );
-    final blocked = prefs.getStringList('vault_blocked_categories') ?? [];
+    // Blocked categories, and apps switched off in Apps Echo hears.
+    final excluded = await loadExcludedSources();
 
     // Desktop mirrors notifications from the phone WITHOUT embeddings (the
     // sync payload omits the 384-float vectors, and TensorFlow Lite isn't
@@ -309,7 +324,7 @@ class BriefingCubit extends Cubit<BriefingState> {
       entries,
       now,
       aliases: aliases,
-      blockedCategories: blocked,
+      blockedCategories: excluded.toList(),
       priorityVector: isDesktop ? null : priorityQueryEmbedding,
       limit: onDevice ? 15 : 25,
     );
@@ -320,7 +335,11 @@ class BriefingCubit extends Cubit<BriefingState> {
           (i) => formatNotification(
             source: i.entry.source,
             sender: i.entry.sender,
-            content: rewriteRelativeDays(i.entry.content, i.entry.timestamp, now),
+            content: rewriteRelativeDays(
+              i.entry.content,
+              i.entry.timestamp,
+              now,
+            ),
             when: describeEntry(i.entry, i.window, now),
           ),
         )

@@ -4,6 +4,7 @@ import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:project_echo/features/vault/presentation/cubit/vault_cubit.dart';
+import 'package:project_echo/features/vault/presentation/widgets/source_icon.dart';
 import 'package:project_echo/features/vault/presentation/widgets/vault_utils.dart';
 
 class NotificationCardWidget extends StatelessWidget {
@@ -25,8 +26,19 @@ class NotificationCardWidget extends StatelessWidget {
       // Fallback if Cubit is not in tree
     }
 
-    final icon = getSourceIcon(notification.source);
     final themeColor = context.colors.primaryGreen;
+    final custom = customIconFor(notification.source, customIcons);
+    final icon = custom != null
+        ? Icon(custom, size: 16, color: themeColor)
+        : SourceIcon(
+            source: notification.source,
+            size: 18,
+            fallback: Icon(
+              getSourceIcon(notification.source),
+              size: 16,
+              color: themeColor,
+            ),
+          );
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10.0),
@@ -58,7 +70,7 @@ class NotificationCardWidget extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Icon(icon, size: 16, color: themeColor),
+                    icon,
                     const SizedBox(width: 8),
                     Text(
                       _capitalize(notification.source),

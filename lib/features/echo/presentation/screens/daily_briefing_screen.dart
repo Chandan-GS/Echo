@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:project_echo/core/services/analytics_service.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:project_echo/core/services/echo_tts.dart';
@@ -12,6 +13,8 @@ import 'package:project_echo/core/presentation/widgets/echo_app_bar.dart';
 import 'package:project_echo/features/echo/presentation/widgets/siri_waveform_visualizer.dart';
 import 'package:project_echo/features/echo/presentation/widgets/rich_transcript.dart';
 import 'package:project_echo/features/echo/presentation/screens/streak_celebration_screen.dart';
+import 'package:project_echo/features/todo/presentation/cubit/todo_cubit.dart';
+import 'package:project_echo/features/todo/presentation/widgets/briefing_list_prompt.dart';
 
 class DailyBriefingScreen extends StatefulWidget {
   final String rawText;
@@ -23,12 +26,18 @@ class DailyBriefingScreen extends StatefulWidget {
   /// doesn't have to tap the waveform themselves.
   final bool autoPlay;
 
+  /// The home screen's to-do list. When given, the transcript ends with an
+  /// offer to make (or update) it. This route sits above the shell that
+  /// provides the cubit, so it's passed in rather than read from context.
+  final TodoCubit? todoCubit;
+
   const DailyBriefingScreen({
     super.key,
     required this.rawText,
     required this.ttsText,
     required this.onReset,
     this.autoPlay = false,
+    this.todoCubit,
   });
 
   @override
@@ -202,9 +211,21 @@ class _DailyBriefingScreenState extends State<DailyBriefingScreen> {
                               child: SingleChildScrollView(
                                 physics: const BouncingScrollPhysics(),
                                 child: Padding(
-                                  padding: const EdgeInsets.only(bottom: 60),
-                                  child: RichTranscript(
-                                    rawText: widget.rawText,
+                                  // The list offer ends the transcript; leave
+                                  // room so it scrolls clear of the fade below.
+                                  padding: EdgeInsets.only(
+                                    bottom: widget.todoCubit == null ? 60 : 120,
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    children: [
+                                      RichTranscript(rawText: widget.rawText),
+                                      if (widget.todoCubit != null)
+                                        BlocProvider.value(
+                                          value: widget.todoCubit!,
+                                          child: const BriefingListPrompt(),
+                                        ),
+                                    ],
                                   ),
                                 ),
                               ),

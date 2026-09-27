@@ -14,6 +14,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:project_echo/core/services/gemini_service.dart';
 import 'package:project_echo/core/services/desktop_engine_client.dart';
 import 'package:project_echo/core/services/offline_model_repository.dart';
+import 'package:project_echo/features/vault/data/app_access.dart';
 
 part 'ask_ai_state.dart';
 
@@ -44,7 +45,8 @@ class AskAiCubit extends Cubit<AskAiState> {
       // The on-device model is only needed for the offline (Fllama) path below.
       // Cloud (Gemini) and desktop-engine paths don't require it, so we no
       // longer hard-gate here — the offline branch guards on modelPath itself.
-      final modelPath = await createOfflineModelRepository().downloadedPathOrNull();
+      final modelPath = await createOfflineModelRepository()
+          .downloadedPathOrNull();
 
       final now = DateTime.now();
       final smallTalk = isSmallTalk(text);
@@ -57,8 +59,9 @@ class AskAiCubit extends Cubit<AskAiState> {
       List<double>? queryEmbedding;
       if (!smallTalk && !(Platform.isMacOS || Platform.isWindows)) {
         try {
-          queryEmbedding =
-              await TfliteEmbeddingService.instance.getEmbedding(text);
+          queryEmbedding = await TfliteEmbeddingService.instance.getEmbedding(
+            text,
+          );
         } catch (e) {
           print('Embedding unavailable — keyword-only retrieval: $e');
         }
@@ -72,7 +75,11 @@ class AskAiCubit extends Cubit<AskAiState> {
       final followUp =
           !smallTalk && memory.isFollowUp(text, queryEmbedding, now);
 
-      final allNotifications = await IsarDataSource.getAllEntries();
+      // Blocked categories and apps switched off in Apps Echo hears aren't
+      // context, though they stay in the Vault.
+      final allNotifications = await withoutExcludedSources(
+        await IsarDataSource.getAllEntries(),
+      );
       print('Total notifications in Isar: ${allNotifications.length}');
 
       final ranked = smallTalk
@@ -84,8 +91,9 @@ class AskAiCubit extends Cubit<AskAiState> {
               questionEmbedding: followUp
                   ? blendEmbeddings(queryEmbedding, previous!.embedding)
                   : queryEmbedding,
-              carriedIds:
-                  followUp ? previous!.sourceIds.toSet() : const <int>{},
+              carriedIds: followUp
+                  ? previous!.sourceIds.toSet()
+                  : const <int>{},
             );
       var ragSources = ranked.map((r) => r.entry).toList();
 
@@ -93,8 +101,7 @@ class AskAiCubit extends Cubit<AskAiState> {
       // about the previous answer's notifications.
       if (ragSources.isEmpty && followUp) {
         final ids = previous!.sourceIds.toSet();
-        ragSources =
-            allNotifications.where((e) => ids.contains(e.id)).toList();
+        ragSources = allNotifications.where((e) => ids.contains(e.id)).toList();
       }
 
       print('=== RAG RESULTS (follow-up: $followUp) ===');
@@ -113,8 +120,8 @@ class AskAiCubit extends Cubit<AskAiState> {
       // Casual small talk ("hi", "thanks") never needed notification context
       // in the first place, so it still goes to the model normally.
       if (ragSources.isEmpty && !smallTalk) {
-        final name = (await SharedPreferences.getInstance())
-                .getString('user_name') ??
+        final name =
+            (await SharedPreferences.getInstance()).getString('user_name') ??
             'sir';
         final fallback = _noMatchFallback(name, allNotifications);
         _messages.add(ChatMessage(sender: 'echo', text: fallback));
@@ -139,22 +146,22 @@ class AskAiCubit extends Cubit<AskAiState> {
       final contextString = ragSources.isEmpty
           ? 'No notifications needed — this is just a casual message.'
           : ragSources
-              .map(
-                (e) => formatNotification(
-                  source: e.source,
-                  sender: e.sender,
-                  content: _clip(
-                    rewriteRelativeDays(e.content, e.timestamp, now),
-                    _maxContentChars,
+                .map(
+                  (e) => formatNotification(
+                    source: e.source,
+                    sender: e.sender,
+                    content: _clip(
+                      rewriteRelativeDays(e.content, e.timestamp, now),
+                      _maxContentChars,
+                    ),
+                    when: askTimeLabel(
+                      e,
+                      now,
+                      withArrival: isArrivalQuestion(text),
+                    ),
                   ),
-                  when: askTimeLabel(
-                    e,
-                    now,
-                    withArrival: isArrivalQuestion(text),
-                  ),
-                ),
-              )
-              .join('\n');
+                )
+                .join('\n');
       final history = followUp ? memory.historyForPrompt() : null;
 
       final echoMsgPlaceholder = ChatMessage(
@@ -187,7 +194,8 @@ class AskAiCubit extends Cubit<AskAiState> {
       // (e.g. leftover from earlier testing) could discover and call itself
       // over HTTP, which now correctly gets rejected once pairing has ever
       // happened — better to just never attempt it on desktop.
-      final preferDesktopEngine = !(Platform.isMacOS || Platform.isWindows) &&
+      final preferDesktopEngine =
+          !(Platform.isMacOS || Platform.isWindows) &&
           (prefs.getBool('prefer_desktop_engine') ?? false);
       String? desktopHost;
       if (preferDesktopEngine) {

@@ -14,6 +14,7 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'package:project_echo/features/echo/presentation/widgets/siri_waveform_visualizer.dart';
 import 'package:project_echo/features/echo/presentation/widgets/echo_mascot.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:project_echo/features/vault/presentation/widgets/source_icon.dart';
 
 class AskAiScreen extends StatelessWidget {
   /// True when rendered as a persistent desktop sidebar tab (inside
@@ -22,21 +23,25 @@ class AskAiScreen extends StatelessWidget {
   /// nothing to "back" out of, the sidebar itself is the navigation.
   final bool embedded;
 
-  const AskAiScreen({super.key, this.embedded = false});
+  /// Asked as soon as the screen opens (from the nav dock's question bar).
+  final String? initialQuestion;
+
+  const AskAiScreen({super.key, this.embedded = false, this.initialQuestion});
 
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
       create: (context) => AskAiCubit(),
-      child: _AskAiView(embedded: embedded),
+      child: _AskAiView(embedded: embedded, initialQuestion: initialQuestion),
     );
   }
 }
 
 class _AskAiView extends StatefulWidget {
   final bool embedded;
+  final String? initialQuestion;
 
-  const _AskAiView({required this.embedded});
+  const _AskAiView({required this.embedded, this.initialQuestion});
 
   @override
   State<_AskAiView> createState() => _AskAiViewState();
@@ -74,6 +79,12 @@ class _AskAiViewState extends State<_AskAiView> {
     super.initState();
     _initAudio();
     _loadUserName();
+    final question = widget.initialQuestion?.trim();
+    if (question != null && question.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) context.read<AskAiCubit>().sendMessage(question);
+      });
+    }
   }
 
   String? _userName;
@@ -359,7 +370,9 @@ class _AskAiViewState extends State<_AskAiView> {
   }
 
   Widget _buildEmptyState() {
-    final name = (_userName?.trim().isNotEmpty ?? false) ? _userName!.trim() : null;
+    final name = (_userName?.trim().isNotEmpty ?? false)
+        ? _userName!.trim()
+        : null;
     return LayoutBuilder(
       builder: (context, constraints) {
         return SingleChildScrollView(
@@ -616,8 +629,9 @@ class _AskAiViewState extends State<_AskAiView> {
                         boxShadow: live
                             ? [
                                 BoxShadow(
-                                  color: context.colors.primaryGreen
-                                      .withValues(alpha: 0.5),
+                                  color: context.colors.primaryGreen.withValues(
+                                    alpha: 0.5,
+                                  ),
                                   blurRadius: 30,
                                   spreadRadius: 2,
                                 ),
@@ -657,9 +671,8 @@ class _AskAiViewState extends State<_AskAiView> {
       mainAxisSize: MainAxisSize.min,
       children: [
         GestureDetector(
-          onTap: () => setState(
-            () => _voiceSourcesExpanded = !_voiceSourcesExpanded,
-          ),
+          onTap: () =>
+              setState(() => _voiceSourcesExpanded = !_voiceSourcesExpanded),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
@@ -717,7 +730,9 @@ class _AskAiViewState extends State<_AskAiView> {
                                 ? null
                                 : Border(
                                     top: BorderSide(
-                                      color: Colors.white.withValues(alpha: 0.06),
+                                      color: Colors.white.withValues(
+                                        alpha: 0.06,
+                                      ),
                                     ),
                                   ),
                           ),
@@ -728,7 +743,9 @@ class _AskAiViewState extends State<_AskAiView> {
                                 width: 26,
                                 height: 26,
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF7FB98C).withValues(alpha: 0.18),
+                                  color: const Color(
+                                    0xFF7FB98C,
+                                  ).withValues(alpha: 0.18),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: const Icon(
@@ -812,7 +829,10 @@ class _AskAiViewState extends State<_AskAiView> {
               ],
       ),
       child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: 8.0, vertical: _desktop ? 6 : 8),
+        padding: EdgeInsets.symmetric(
+          horizontal: 8.0,
+          vertical: _desktop ? 6 : 8,
+        ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
@@ -974,7 +994,6 @@ class _AskAiViewState extends State<_AskAiView> {
     context.read<AskAiCubit>().sendMessage(text);
   }
 }
-
 
 class _AnimatedMessage extends StatelessWidget {
   final ChatMessage message;
@@ -1318,16 +1337,20 @@ class RagSourcesWidgetState extends State<RagSourcesWidget> {
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Container(
-                                  padding: const EdgeInsets.all(6),
-                                  decoration: BoxDecoration(
-                                    color: context.colors.background,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Icon(
-                                    _getSourceIcon(src.source),
-                                    size: 12,
-                                    color: context.colors.textSecondary,
+                                SourceIcon(
+                                  source: src.source,
+                                  size: 24,
+                                  fallback: Container(
+                                    padding: const EdgeInsets.all(6),
+                                    decoration: BoxDecoration(
+                                      color: context.colors.background,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(
+                                      _getSourceIcon(src.source),
+                                      size: 12,
+                                      color: context.colors.textSecondary,
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(width: 10),

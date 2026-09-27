@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Unchecked → checked: the ring gives way to a green dot that pops in, then
+     the tick draws itself. Same beat as the app's check. -->
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt">
+    <aapt:attr name="android:drawable">
+        <vector
+            android:width="24dp"
+            android:height="24dp"
+            android:viewportWidth="24"
+            android:viewportHeight="24">
+            <path
+                android:name="ring"
+                android:pathData="M3,12a9,9 0 1,0 18,0a9,9 0 1,0 -18,0"
+                android:strokeWidth="2"
+                android:strokeColor="@color/todo_widget_check_ring" />
+            <group
+                android:name="dot"
+                android:pivotX="12"
+                android:pivotY="12"
+                android:scaleX="0"
+                android:scaleY="0">
+                <path
+                    android:fillColor="@color/todo_widget_green"
+                    android:pathData="M2,12a10,10 0 1,0 20,0a10,10 0 1,0 -20,0" />
+            </group>
+            <path
+                android:name="tick"
+                android:pathData="M7.2,12.4 L10.4,15.4 L16.8,8.8"
+                android:strokeWidth="2.4"
+                android:strokeColor="@color/todo_widget_bg"
+                android:strokeLineCap="round"
+                android:strokeLineJoin="round"
+                android:trimPathEnd="0" />
+        </vector>
+    </aapt:attr>
+    <target android:name="dot">
+        <aapt:attr name="android:animation">
+            <set>
+                <objectAnimator
+                    android:duration="260"
+                    android:interpolator="@android:anim/overshoot_interpolator"
+                    android:propertyName="scaleX"
+                    android:valueFrom="0"
+                    android:valueTo="1"
+                    android:valueType="floatType" />
+                <objectAnimator
+                    android:duration="260"
+                    android:interpolator="@android:anim/overshoot_interpolator"
+                    android:propertyName="scaleY"
+                    android:valueFrom="0"
+                    android:valueTo="1"
+                    android:valueType="floatType" />
+            </set>
+        </aapt:attr>
+    </target>
+    <target android:name="ring">
+        <aapt:attr name="android:animation">
+            <objectAnimator
+                android:duration="160"
+                android:propertyName="strokeAlpha"
+                android:valueFrom="1"
+                android:valueTo="0"
+                android:valueType="floatType" />
+        </aapt:attr>
+    </target>
+    <target android:name="tick">
+        <aapt:attr name="android:animation">
+            <objectAnimator
+                android:duration="260"
+                android:interpolator="@android:interpolator/fast_out_slow_in"
+                android:propertyName="trimPathEnd"
+                android:startOffset="160"
+                android:valueFrom="0"
+                android:valueTo="1"
+                android:valueType="floatType" />
+        </aapt:attr>
+    </target>
+</animated-vector>

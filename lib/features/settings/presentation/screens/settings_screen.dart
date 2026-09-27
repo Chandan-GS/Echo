@@ -28,6 +28,9 @@ import 'package:project_echo/features/echo/presentation/screens/streak_celebrati
 import 'package:project_echo/features/echo/presentation/screens/echo_mascot_preview.dart';
 import 'package:project_echo/core/presentation/animations/page_transitions.dart';
 import 'package:project_echo/features/profile/presentation/widgets/streak_calendar.dart';
+import 'package:project_echo/core/services/home_widgets_service.dart';
+import 'package:project_echo/features/todo/presentation/cubit/todo_cubit.dart';
+import 'package:project_echo/features/widgets/presentation/screens/widgets_screen.dart';
 import 'dart:io';
 import 'package:project_echo/core/services/offline_model_repository.dart';
 
@@ -80,10 +83,18 @@ class _ProfileViewState extends State<_ProfileView>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: context.colors.background,
+      // Scrolls behind the phone's nav dock; MediaQuery's bottom padding is
+      // the room it needs at the end (see MainScaffold).
       body: SafeArea(
+        bottom: false,
         child: SingleChildScrollView(
           physics: const BouncingScrollPhysics(),
-          padding: EdgeInsets.symmetric(horizontal: _isDesktop ? 40.0 : 24.0),
+          padding: EdgeInsets.fromLTRB(
+            _isDesktop ? 40.0 : 24.0,
+            0,
+            _isDesktop ? 40.0 : 24.0,
+            MediaQuery.paddingOf(context).bottom + 16,
+          ),
           // Desktop fills the window, so centre the content and cap it — a
           // full-bleed settings form across a wide window reads as unfinished;
           // ~1040 keeps the two columns comfortable.
@@ -96,156 +107,170 @@ class _ProfileViewState extends State<_ProfileView>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: 20),
-              FadeSlideIn(
-                child: Text(
-                  'Profile',
-                  style: GoogleFonts.oldStandardTt(
-                    fontSize: 40,
-                    fontWeight: FontWeight.w700,
-                    color: context.colors.textPrimary,
-                    height: 1.15,
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              // Streak — the default view is the calendar, not the animation.
-              FadeSlideIn(
-                child: StreakCalendar(key: _calendarKey),
-              ),
-
-              const SizedBox(height: 32),
-
-              // Desktop: a genuine two-column layout — not a narrow phone
-              // list centered in empty space. Phone: unchanged single column.
-              if (_isDesktop)
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _appearanceSection(context),
-                          const SizedBox(height: 32),
-                          _voiceSection(context),
-                        ],
+                  FadeSlideIn(
+                    child: Text(
+                      'Profile',
+                      style: GoogleFonts.oldStandardTt(
+                        fontSize: 40,
+                        fontWeight: FontWeight.w700,
+                        color: context.colors.textPrimary,
+                        height: 1.15,
                       ),
                     ),
-                    const SizedBox(width: 28),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _toneSection(context),
-                          const SizedBox(height: 32),
-                          _aiEngineSection(context),
-                          const SizedBox(height: 32),
-                          _scheduledSection(context),
-                        ],
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // Streak — the default view is the calendar, not the animation.
+                  FadeSlideIn(child: StreakCalendar(key: _calendarKey)),
+
+                  const SizedBox(height: 32),
+
+                  if (HomeWidgetsService.supported) ...[
+                    _widgetsSection(context),
+                    const SizedBox(height: 32),
+                  ],
+
+                  // Desktop: a genuine two-column layout — not a narrow phone
+                  // list centered in empty space. Phone: unchanged single column.
+                  if (_isDesktop)
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _appearanceSection(context),
+                              const SizedBox(height: 32),
+                              _voiceSection(context),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 28),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _toneSection(context),
+                              const SizedBox(height: 32),
+                              _aiEngineSection(context),
+                              const SizedBox(height: 32),
+                              _scheduledSection(context),
+                            ],
+                          ),
+                        ),
+                      ],
+                    )
+                  else ...[
+                    _appearanceSection(context),
+                    const SizedBox(height: 32),
+                    _voiceSection(context),
+                    const SizedBox(height: 32),
+                    _toneSection(context),
+                    const SizedBox(height: 32),
+                    _aiEngineSection(context),
+                    const SizedBox(height: 32),
+                    _scheduledSection(context),
+                  ],
+
+                  // Debug-only tools: exercise flows that normally require waiting
+                  // for a real scheduled time or several real days to pass.
+                  if (kDebugMode) ...[
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        onPressed: () async {
+                          final prefs = await SharedPreferences.getInstance();
+                          await prefs.setBool('onboarding_finished', false);
+                          if (!context.mounted) return;
+                          context.read<OnBoardingCubit>().startOnboarding();
+                          context.go('/');
+                        },
+                        icon: const Icon(Icons.replay_rounded, size: 18),
+                        label: const Text('Replay onboarding (debug)'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: context.colors.textSecondary,
+                        ),
+                      ),
+                    ),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        onPressed: () => _sendTestNotification(context),
+                        icon: const Icon(
+                          Icons.notifications_active_outlined,
+                          size: 18,
+                        ),
+                        label: const Text(
+                          'Send test briefing notification (debug)',
+                        ),
+                        style: TextButton.styleFrom(
+                          foregroundColor: context.colors.textSecondary,
+                        ),
+                      ),
+                    ),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        onPressed: () => _bumpStreak(context),
+                        icon: const Icon(
+                          Icons.local_fire_department_outlined,
+                          size: 18,
+                        ),
+                        label: const Text('+1 streak day (debug)'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: context.colors.textSecondary,
+                        ),
+                      ),
+                    ),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        onPressed: () => _resetStreak(context),
+                        icon: const Icon(Icons.restart_alt_rounded, size: 18),
+                        label: const Text('Reset streak (debug)'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: context.colors.textSecondary,
+                        ),
+                      ),
+                    ),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        onPressed: () => _previewStreakAnimation(context),
+                        icon: const Icon(
+                          Icons.play_circle_outline_rounded,
+                          size: 18,
+                        ),
+                        label: const Text('Preview streak animation (debug)'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: context.colors.textSecondary,
+                        ),
+                      ),
+                    ),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        onPressed: () => Navigator.of(
+                          context,
+                          rootNavigator: true,
+                        ).push(bouncyRoute(const EchoMascotPreview())),
+                        icon: const Icon(Icons.blur_on_rounded, size: 18),
+                        label: const Text('Preview Echo mascot (debug)'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: context.colors.textSecondary,
+                        ),
                       ),
                     ),
                   ],
-                )
-              else ...[
-                _appearanceSection(context),
-                const SizedBox(height: 32),
-                _voiceSection(context),
-                const SizedBox(height: 32),
-                _toneSection(context),
-                const SizedBox(height: 32),
-                _aiEngineSection(context),
-                const SizedBox(height: 32),
-                _scheduledSection(context),
-              ],
-
-              // Debug-only tools: exercise flows that normally require waiting
-              // for a real scheduled time or several real days to pass.
-              if (kDebugMode) ...[
-                const SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton.icon(
-                    onPressed: () async {
-                      final prefs = await SharedPreferences.getInstance();
-                      await prefs.setBool('onboarding_finished', false);
-                      if (!context.mounted) return;
-                      context.read<OnBoardingCubit>().startOnboarding();
-                      context.go('/');
-                    },
-                    icon: const Icon(Icons.replay_rounded, size: 18),
-                    label: const Text('Replay onboarding (debug)'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: context.colors.textSecondary,
-                    ),
-                  ),
-                ),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton.icon(
-                    onPressed: () => _sendTestNotification(context),
-                    icon: const Icon(Icons.notifications_active_outlined, size: 18),
-                    label: const Text('Send test briefing notification (debug)'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: context.colors.textSecondary,
-                    ),
-                  ),
-                ),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton.icon(
-                    onPressed: () => _bumpStreak(context),
-                    icon: const Icon(Icons.local_fire_department_outlined, size: 18),
-                    label: const Text('+1 streak day (debug)'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: context.colors.textSecondary,
-                    ),
-                  ),
-                ),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton.icon(
-                    onPressed: () => _resetStreak(context),
-                    icon: const Icon(Icons.restart_alt_rounded, size: 18),
-                    label: const Text('Reset streak (debug)'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: context.colors.textSecondary,
-                    ),
-                  ),
-                ),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton.icon(
-                    onPressed: () => _previewStreakAnimation(context),
-                    icon: const Icon(Icons.play_circle_outline_rounded, size: 18),
-                    label: const Text('Preview streak animation (debug)'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: context.colors.textSecondary,
-                    ),
-                  ),
-                ),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton.icon(
-                    onPressed: () => Navigator.of(context, rootNavigator: true)
-                        .push(bouncyRoute(const EchoMascotPreview())),
-                    icon: const Icon(Icons.blur_on_rounded, size: 18),
-                    label: const Text('Preview Echo mascot (debug)'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: context.colors.textSecondary,
-                    ),
-                  ),
-                ),
-              ],
 
                   const SizedBox(height: 32),
                   _privacySection(context),
 
                   const SizedBox(height: 32),
                   _aboutSection(context),
-
-                  const SizedBox(height: 120), // Padding for the bottom nav bar
                 ],
               ),
             ),
@@ -255,7 +280,11 @@ class _ProfileViewState extends State<_ProfileView>
     );
   }
 
-  Widget _sectionHeading(BuildContext context, String title, {String? subtitle}) {
+  Widget _sectionHeading(
+    BuildContext context,
+    String title, {
+    String? subtitle,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -271,7 +300,10 @@ class _ProfileViewState extends State<_ProfileView>
           const SizedBox(height: 4),
           Text(
             subtitle,
-            style: GoogleFonts.nunito(fontSize: 14, color: context.colors.textSecondary),
+            style: GoogleFonts.nunito(
+              fontSize: 14,
+              color: context.colors.textSecondary,
+            ),
           ),
         ],
       ],
@@ -354,7 +386,9 @@ class _ProfileViewState extends State<_ProfileView>
                     speedLabel: 'Fast',
                     isFast: true,
                     onTap: () {
-                      context.read<SettingsCubit>().setAiEngine(isOffline: true);
+                      context.read<SettingsCubit>().setAiEngine(
+                        isOffline: true,
+                      );
                     },
                   );
                 },
@@ -402,6 +436,57 @@ class _ProfileViewState extends State<_ProfileView>
       ),
     );
   }
+
+  /// Home screen widgets: a row that opens the Widgets page, saying how many
+  /// of Echo's widgets are already on the home screen.
+  Widget _widgetsSection(BuildContext context) {
+    return FadeSlideIn(
+      delay: AppMotion.staggerDelay(1),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionHeading(context, 'Home screen widgets'),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: context.colors.surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: context.colors.dividerColor),
+            ),
+            child: FutureBuilder<HomeWidgetsState?>(
+              key: ValueKey(_widgetsRefresh),
+              future: HomeWidgetsService.state(),
+              builder: (context, snap) {
+                final placed = snap.data?.kindsPlaced ?? 0;
+                return _aboutTile(
+                  context,
+                  icon: Icons.widgets_outlined,
+                  title: 'Widgets',
+                  subtitle: placed == 0
+                      ? '4 available · none on your home screen yet'
+                      : '4 available · $placed on your home screen',
+                  onTap: () async {
+                    await Navigator.of(context, rootNavigator: true).push(
+                      bouncyRoute(
+                        BlocProvider.value(
+                          value: context.read<TodoCubit>(),
+                          child: const WidgetsScreen(),
+                        ),
+                      ),
+                    );
+                    if (mounted) setState(() => _widgetsRefresh++);
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  int _widgetsRefresh = 0;
 
   Widget _aboutSection(BuildContext context) {
     return FadeSlideIn(
@@ -507,9 +592,9 @@ class _ProfileViewState extends State<_ProfileView>
       await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
     } catch (e) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Couldn't open that link: $e")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Couldn't open that link: $e")));
     }
   }
 
@@ -559,7 +644,8 @@ class _ProfileViewState extends State<_ProfileView>
     // requests — but the user may still have denied it.
     final androidPlugin = service.flutterLocalNotificationsPlugin
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>();
+          AndroidFlutterLocalNotificationsPlugin
+        >();
     final enabled = await androidPlugin?.areNotificationsEnabled() ?? true;
 
     if (context.mounted) {
@@ -569,7 +655,7 @@ class _ProfileViewState extends State<_ProfileView>
             enabled
                 ? 'Test notification sent — check your notification shade.'
                 : 'Notifications are disabled for Echo — enable them in system '
-                    'settings to see this.',
+                      'settings to see this.',
           ),
         ),
       );
@@ -581,9 +667,10 @@ class _ProfileViewState extends State<_ProfileView>
     _refreshCalendar();
     WidgetRefreshService.refresh();
     if (context.mounted) {
-      Navigator.of(context, rootNavigator: true).push(
-        bouncyRoute(StreakCelebrationScreen(days: info.current)),
-      );
+      Navigator.of(
+        context,
+        rootNavigator: true,
+      ).push(bouncyRoute(StreakCelebrationScreen(days: info.current)));
     }
   }
 
@@ -594,9 +681,10 @@ class _ProfileViewState extends State<_ProfileView>
     final info = await StreakService().current();
     final days = info.current > 0 ? info.current : 3;
     if (context.mounted) {
-      Navigator.of(context, rootNavigator: true).push(
-        bouncyRoute(StreakCelebrationScreen(days: days)),
-      );
+      Navigator.of(
+        context,
+        rootNavigator: true,
+      ).push(bouncyRoute(StreakCelebrationScreen(days: days)));
     }
   }
 
@@ -605,9 +693,9 @@ class _ProfileViewState extends State<_ProfileView>
     _refreshCalendar();
     WidgetRefreshService.refresh();
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Streak reset to 0.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Streak reset to 0.')));
     }
   }
 }

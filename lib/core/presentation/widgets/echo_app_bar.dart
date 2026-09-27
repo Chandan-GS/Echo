@@ -28,10 +28,14 @@ class EchoAppBar extends StatelessWidget implements PreferredSizeWidget {
         onPressed:
             onBackPressed ??
             () {
-              if (context.canPop()) {
+              // The nearest Navigator first: it pops pages pushed straight
+              // onto it (bouncyRoute), which go_router doesn't know about and
+              // throws on, as well as go_router's own pages.
+              final navigator = Navigator.of(context);
+              if (navigator.canPop()) {
+                navigator.pop();
+              } else if (context.canPop()) {
                 context.pop();
-              } else {
-                Navigator.of(context).pop();
               }
             },
       ),

@@ -1,11 +1,9 @@
+import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
-import 'package:project_echo/features/echo/presentation/screens/echo_home_screen.dart';
 import 'package:project_echo/features/echo/presentation/screens/ask_ai_screen.dart';
 import 'package:project_echo/features/onboarding/presentation/screens/start_screen.dart';
 import 'package:project_echo/core/presentation/screens/main_scaffold.dart';
 import 'package:project_echo/core/presentation/animations/page_transitions.dart';
-import 'package:project_echo/features/vault/presentation/screens/vault_screen.dart';
-import 'package:project_echo/features/settings/presentation/screens/settings_screen.dart';
 import 'package:project_echo/features/settings/presentation/screens/scan_desktop_screen.dart';
 
 GoRouter createRouter(bool isOnboardingFinished) => GoRouter(
@@ -18,14 +16,20 @@ GoRouter createRouter(bool isOnboardingFinished) => GoRouter(
     ),
     GoRoute(
       path: '/echo/chat',
-      pageBuilder: (context, state) =>
-          slideUpPage(key: state.pageKey, child: const AskAiScreen()),
+      pageBuilder: (context, state) => slideUpPage(
+        key: state.pageKey,
+        child: AskAiScreen(initialQuestion: state.extra as String?),
+      ),
     ),
     GoRoute(
       path: '/scan-desktop',
       pageBuilder: (context, state) =>
           slideUpPage(key: state.pageKey, child: const ScanDesktopScreen()),
     ),
+    // MainScaffold draws the three tabs itself (a FadeIndexedStack keyed
+    // off the location), so these pages are empty: they only give the shell
+    // Navigator a route per tab. That Navigator must still be mounted —
+    // go_router looks it up on every back press and pop.
     ShellRoute(
       builder: (context, state, child) {
         return MainScaffold(child: child);
@@ -34,19 +38,18 @@ GoRouter createRouter(bool isOnboardingFinished) => GoRouter(
         GoRoute(
           path: '/echo',
           pageBuilder: (context, state) =>
-              fadeThroughPage(key: state.pageKey, child: const EchoHomeScreen()),
+              NoTransitionPage(key: state.pageKey, child: const SizedBox()),
         ),
         GoRoute(
           path: '/vault',
           pageBuilder: (context, state) =>
-              fadeThroughPage(key: state.pageKey, child: const VaultScreen()),
+              NoTransitionPage(key: state.pageKey, child: const SizedBox()),
         ),
-        // The Profile tab now holds the streak calendar + all app settings,
-        // merged into one screen.
+        // The Profile tab holds the streak calendar + all app settings.
         GoRoute(
           path: '/profile',
           pageBuilder: (context, state) =>
-              fadeThroughPage(key: state.pageKey, child: const SettingsScreen()),
+              NoTransitionPage(key: state.pageKey, child: const SizedBox()),
         ),
       ],
     ),

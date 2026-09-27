@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The small widget's progress ring, drawn from colour resources so it
+     follows light / dark mode on the home screen. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@android:id/background">
+        <shape
+            android:innerRadiusRatio="2.35"
+            android:shape="ring"
+            android:thicknessRatio="15"
+            android:useLevel="false">
+            <solid android:color="@color/todo_widget_track" />
+        </shape>
+    </item>
+    <item android:id="@android:id/progress">
+        <rotate
+            android:fromDegrees="270"
+            android:pivotX="50%"
+            android:pivotY="50%"
+            android:toDegrees="270">
+            <shape
+                android:innerRadiusRatio="2.35"
+                android:shape="ring"
+                android:thicknessRatio="15"
+                android:useLevel="true">
+                <solid android:color="@color/todo_widget_green" />
+            </shape>
+        </rotate>
+    </item>
+</layer-list>

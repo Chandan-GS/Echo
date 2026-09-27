@@ -1,5 +1,6 @@
 package com.chandangs.echo
 
+import android.appwidget.AppWidgetManager
 import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
@@ -11,13 +12,25 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
+import java.util.concurrent.Executors
 
 class MainActivity : FlutterActivity() {
     private val PERMISSIONS_CHANNEL = "project_echo/permissions"
     private val NOTIFICATIONS_EVENT_CHANNEL = "project_echo/notification_stream"
     private val WIDGET_CHANNEL = "project_echo/widget"
+    private val APP_ICONS_CHANNEL = "project_echo/app_icons"
+
+    // Drawing and PNG-encoding icons stays off the main thread.
+    private val iconExecutor = Executors.newFixedThreadPool(2)
 
     private var notificationReceiver: BroadcastReceiver? = null
+
+    private val widgetKinds = mapOf(
+        "todo" to EchoTodoWidgetProvider::class.java,
+        "ring" to EchoTodoOrbWidgetProvider::class.java,
+        "brief" to EchoBriefingWidgetProvider::class.java,
+        "streak" to EchoStreakWidgetProvider::class.java,
+    )
     private var eventSink: EventChannel.EventSink? = null
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
@@ -52,11 +65,78 @@ class MainActivity : FlutterActivity() {
                 "refresh" -> {
                     EchoBriefingWidgetProvider.updateAll(this)
                     EchoStreakWidgetProvider.updateAll(this)
+                    EchoTodoWidgetProvider.updateAll(this)
+                    EchoTodoOrbWidgetProvider.updateAll(this)
                     result.success(null)
+                }
+                // For Profile → Widgets: what's placed, whether the launcher
+                // lets apps add widgets, and the data the previews show.
+                "state" -> {
+                    val manager = AppWidgetManager.getInstance(this)
+                    val prefs = WidgetData.prefs(this)
+                    result.success(
+                        mapOf(
+                            "canPin" to manager.isRequestPinAppWidgetSupported,
+                            "placed" to widgetKinds.mapValues { (_, cls) ->
+                                manager.getAppWidgetIds(ComponentName(this, cls)).size
+                            },
+                            "streak" to WidgetData.streak(prefs),
+                            "status" to WidgetData.statusText(prefs),
+                            "week" to WidgetData.weekStates(prefs).toList(),
+                        ),
+                    )
+                }
+                // Ask the launcher to add one of Echo's widgets. Android shows
+                // its own confirmation; the result only says whether the
+                // request went through, not whether the user said yes.
+                "pin" -> {
+                    val cls = widgetKinds[call.argument<String>("kind")]
+                    val manager = AppWidgetManager.getInstance(this)
+                    if (cls == null || !manager.isRequestPinAppWidgetSupported) {
+                        result.success(false)
+                    } else {
+                        result.success(manager.requestPinAppWidget(ComponentName(this, cls), null, null))
+                    }
                 }
                 else -> {
                     result.notImplemented()
                 }
+            }
+        }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, APP_ICONS_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "installedApps" -> {
+                    iconExecutor.execute {
+                        val apps = try {
+                            AppIcons.installedApps(applicationContext)
+                        } catch (e: Exception) {
+                            emptyList()
+                        }
+                        runOnUiThread { result.success(apps) }
+                    }
+                    return@setMethodCallHandler
+                }
+                "activePackages" -> {
+                    result.success(EchoNotificationListenerService.instance?.activePackages() ?: emptyList<String>())
+                    return@setMethodCallHandler
+                }
+                "icon" -> {}
+                else -> {
+                    result.notImplemented()
+                    return@setMethodCallHandler
+                }
+            }
+            val pkg = call.argument<String>("package")
+            val label = call.argument<String>("label")
+            val size = call.argument<Int>("size") ?: 144
+            iconExecutor.execute {
+                val png = try {
+                    AppIcons.png(applicationContext, pkg, label, size)
+                } catch (e: Exception) {
+                    null
+                }
+                runOnUiThread { result.success(png) }
             }
         }
 

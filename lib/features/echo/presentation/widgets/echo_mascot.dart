@@ -1,11 +1,14 @@
 import 'dart:math' as math;
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 /// The moods Echo — the "sound sprite" mascot — can express. Each maps to a
 /// real app moment: [idle] resting on the home screen, [listening] while
 /// notifications are captured, [thinking] while a briefing generates,
-/// [speaking] during playback, and [sleeping] for empty / inactive states.
-enum EchoState { idle, listening, thinking, speaking, sleeping }
+/// [speaking] during playback, [sleeping] for empty / inactive states,
+/// [focused] while it writes something for you (eyes up, a gentle sway), and
+/// [happy] when something lands or a day is done (^ ^ eyes, a little wiggle).
+enum EchoState { idle, listening, thinking, speaking, sleeping, focused, happy }
 
 /// A self-contained, animated rendering of the Echo mascot — a luminous
 /// pearlescent orb with a calm two-eye face and soft light rings that ripple
@@ -32,6 +35,26 @@ class EchoMascot extends StatefulWidget {
   /// e.g. voice mode's tap-to-speak — keeps working while Echo winks back).
   final VoidCallback? onTap;
 
+  /// Draws the soft rings around Echo. With them off, Echo itself fills more of
+  /// [size] — used for the home hero, where Echo should read large and clear.
+  final bool showRings;
+
+  /// Look towards a touch anywhere on screen, not only one close by — for a
+  /// small Echo tucked in a corner (the nav dock).
+  final bool followTouchAnywhere;
+
+  /// The soft halo behind Echo. Off where he sits on a surface of his own
+  /// (the nav dock), where it reads as a shadow.
+  final bool glow;
+
+  /// How far the eyes and head travel when he looks around. Above 1 for a
+  /// small Echo, whose normal range is too slight to see.
+  final double gazeReach;
+
+  /// Vertical travel, when it should differ from [gazeReach] — looking up
+  /// and down reads less than side to side, so a small Echo needs more.
+  final double? gazeReachY;
+
   const EchoMascot({
     super.key,
     this.state = EchoState.idle,
@@ -39,6 +62,11 @@ class EchoMascot extends StatefulWidget {
     this.isDark,
     this.voiceGlow = false,
     this.onTap,
+    this.showRings = true,
+    this.followTouchAnywhere = false,
+    this.glow = true,
+    this.gazeReach = 1,
+    this.gazeReachY,
   });
 
   @override
@@ -57,6 +85,17 @@ class _EchoMascotState extends State<EchoMascot>
   double? _winkStartMs;
   static const double _winkDurationMs = 440;
 
+  // Where the eyes look (gx, gy) and where the head leans (hx, hy), each in
+  // -1..1. The eyes chase their target quickly; the head follows a beat
+  // later, so the whole face turns into a look. [_stretch] squashes the eyes
+  // a touch while they move fast.
+  double _gx = 0, _gy = 0, _hx = 0, _hy = 0, _stretch = 0, _lastMs = 0;
+
+  // The last pointer / finger position anywhere on screen, so Echo can watch
+  // it when it's nearby.
+  Offset? _pointer;
+  double _pointerMs = -1e9;
+
   @override
   void initState() {
     super.initState();
@@ -64,12 +103,72 @@ class _EchoMascotState extends State<EchoMascot>
       vsync: this,
       duration: const Duration(milliseconds: 2800),
     )..repeat();
+    GestureBinding.instance.pointerRouter.addGlobalRoute(_onPointer);
   }
 
   @override
   void dispose() {
+    GestureBinding.instance.pointerRouter.removeGlobalRoute(_onPointer);
     _c.dispose();
     super.dispose();
+  }
+
+  void _onPointer(PointerEvent e) {
+    if (e is PointerMoveEvent ||
+        e is PointerDownEvent ||
+        e is PointerHoverEvent) {
+      _pointer = e.position;
+      _pointerMs = _clock.elapsedMilliseconds.toDouble();
+    }
+  }
+
+  /// The pointer's direction from Echo, in -1..1, when it's close and recent.
+  Offset? _pointerLook(double ms) {
+    final pointer = _pointer;
+    if (pointer == null || ms - _pointerMs > 2500) return null;
+    final box = context.findRenderObject();
+    if (box is! RenderBox || !box.hasSize || !box.attached) return null;
+    final d = pointer - box.localToGlobal(box.size.center(Offset.zero));
+    if (widget.followTouchAnywhere) {
+      // Direction only; full tilt once the touch is a thumb's width away.
+      if (d.distance < 1) return Offset.zero;
+      final reach = (d.distance / 140).clamp(0.0, 1.0);
+      return Offset(d.dx / d.distance * reach, d.dy / d.distance * reach);
+    }
+    if (d.distance > math.max(420.0, box.size.width * 3)) return null;
+    return Offset((d.dx / 220).clamp(-1.0, 1.0), (d.dy / 220).clamp(-1.0, 1.0));
+  }
+
+  void _stepGaze() {
+    final ms = _clock.elapsedMilliseconds.toDouble();
+    final dt = ((ms - _lastMs) / 1000).clamp(0.0, 0.05);
+    _lastMs = ms;
+
+    var target = Offset.zero;
+    switch (widget.state) {
+      case EchoState.focused:
+        target = Offset(0.6 + 0.12 * math.sin(ms / 300), -0.8);
+        break;
+      case EchoState.idle:
+        target = _pointerLook(ms) ?? _EchoPainter.idleGaze(ms);
+        break;
+      case EchoState.happy:
+        target = _pointerLook(ms) ?? const Offset(0, -0.15);
+        break;
+      default:
+        break; // listening / thinking / speaking / sleeping keep centred
+    }
+
+    final pgx = _gx, pgy = _gy;
+    final eye = math.min(1.0, dt * 16), head = math.min(1.0, dt * 4.5);
+    _gx += (target.dx - _gx) * eye;
+    _gy += (target.dy - _gy) * eye;
+    _hx += (_gx - _hx) * head;
+    _hy += (_gy - _hy) * head;
+    final speed = dt > 0
+        ? math.sqrt(math.pow(_gx - pgx, 2) + math.pow(_gy - pgy, 2)) / dt
+        : 0.0;
+    _stretch = math.min(0.14, speed * 0.02);
   }
 
   void _triggerWink() {
@@ -99,16 +198,26 @@ class _EchoMascotState extends State<EchoMascot>
     Widget mascot = RepaintBoundary(
       child: AnimatedBuilder(
         animation: _c,
-        builder: (context, _) => CustomPaint(
-          painter: _EchoPainter(
-            _c.value,
-            _clock.elapsedMilliseconds.toDouble(),
-            widget.state,
-            isDark,
-            widget.voiceGlow,
-            _winkAmount(),
-          ),
-        ),
+        builder: (context, _) {
+          _stepGaze();
+          return CustomPaint(
+            painter: _EchoPainter(
+              _c.value,
+              _clock.elapsedMilliseconds.toDouble(),
+              widget.state,
+              isDark,
+              widget.voiceGlow,
+              _winkAmount(),
+              gaze: Offset(_gx, _gy),
+              head: Offset(_hx, _hy),
+              stretch: _stretch,
+              showRings: widget.showRings,
+              glow: widget.glow,
+              reach: widget.gazeReach,
+              reachY: widget.gazeReachY ?? widget.gazeReach,
+            ),
+          );
+        },
       ),
     );
 
@@ -121,10 +230,7 @@ class _EchoMascotState extends State<EchoMascot>
         _triggerWink();
         widget.onTap?.call();
       },
-      child: MouseRegion(
-        onEnter: (_) => _triggerWink(),
-        child: mascot,
-      ),
+      child: MouseRegion(onEnter: (_) => _triggerWink(), child: mascot),
     );
 
     return SizedBox(width: widget.size, height: widget.size, child: mascot);
@@ -146,40 +252,102 @@ class _EchoPainter extends CustomPainter {
   final bool isDark;
   final bool voiceGlow;
   final double winkAmount; // 1.0 open; dips during a hover/tap-triggered wink
+  final Offset gaze; // where the eyes look, -1..1
+  final Offset head; // where the head leans (trails the eyes), -1..1
+  final double stretch; // eye squash while the gaze moves fast
+  final bool showRings;
+  final bool glow;
+  final double reach; // multiplies eye and head travel, side to side
+  final double reachY; // … and up and down
   _EchoPainter(
     this.t,
     this.ms,
     this.state,
     this.isDark,
     this.voiceGlow,
-    this.winkAmount,
-  );
+    this.winkAmount, {
+    required this.gaze,
+    required this.head,
+    required this.stretch,
+    required this.showRings,
+    this.glow = true,
+    this.reach = 1,
+    this.reachY = 1,
+  });
 
   static const _tau = 2 * math.pi;
 
-  double _smooth(double x) => x * x * (3 - 2 * x);
+  static double _smooth(double x) => x * x * (3 - 2 * x);
 
-  // A calm "looking around" value in [-1, 1]: Echo darts its gaze to a new
-  // spot every few seconds and holds it, rather than sweeping mechanically.
-  // Deterministic (seeded off the segment index) so it needs no stored state
-  // and stays smooth frame-to-frame. Drives both the idle head-turn and the
-  // eye glance so the eyes lead where the head leans — like the website mascot.
-  double _idleLook(double ms) {
-    const seg = 3200.0; // a new glance target roughly every ~3s
+  /// Deterministic "random" in [0, 1), so behaviour needs no stored schedule.
+  static double _seeded(int i, int salt) =>
+      (((i * 1103515245 + 12345 + salt * 2654435761) & 0x7fffffff) % 1000) /
+      1000.0;
+
+  /// Where Echo looks when left alone: it darts to a new spot every ~2.6s
+  /// (a quick move, then a hold), and every third glance comes back to look
+  /// straight at you.
+  static Offset idleGaze(double ms) {
+    const seg = 2600.0;
     final idx = (ms / seg).floor();
-    double target(int i) {
-      final r = ((i * 1103515245 + 12345) & 0x7fffffff) % 1000 / 1000.0;
-      return r * 2 - 1; // -1..1
+    Offset target(int i) => i % 3 == 0
+        ? Offset.zero
+        : Offset(_seeded(i, 1) * 2 - 1, (_seeded(i, 7) * 2 - 1) * 0.75);
+    final a = target(idx - 1), b = target(idx);
+    final f = (ms % seg) / seg;
+    final e = f < 0.22 ? _smooth(f / 0.22) : 1.0;
+    return a + (b - a) * e;
+  }
+
+  /// 1.0 open; blinks roughly every 3.4–5.4s, sometimes a quick double.
+  double _blink() {
+    const seg = 4400.0;
+    final idx = (ms / seg).floor();
+    var open = 1.0;
+    for (final i in [idx - 1, idx]) {
+      final at = i * seg + _seeded(i, 11) * 2000;
+      for (final off
+          in _seeded(i, 13) > 0.72 ? const [0.0, 260.0] : const [0.0]) {
+        final d = (ms - (at + off)) / 170;
+        if (d >= 0 && d < 1) {
+          open = math.min(open, 1 - (d < 0.5 ? d / 0.5 : (1 - d) / 0.5) * 0.9);
+        }
+      }
     }
-    final prev = target(idx - 1);
-    final cur = target(idx);
-    final f = (ms % seg) / seg; // 0..1 within the segment
-    final e = f < 0.28 ? _smooth(f / 0.28) : 1.0; // quick move, then hold
-    return prev + (cur - prev) * e;
+    return open;
+  }
+
+  /// A small idle moment every ~5.2s: a nod, a curious lean-in, or a bob.
+  /// Returns the kind and its 0→1→0 strength.
+  (String, double) _moment() {
+    if (state != EchoState.idle) return ('none', 0);
+    const seg = 5200.0;
+    final idx = (ms / seg).floor();
+    final f = (ms % seg) / seg;
+    final pick = _seeded(idx, 3);
+    final kind = pick < 0.28
+        ? 'nod'
+        : pick < 0.5
+        ? 'curious'
+        : pick < 0.66
+        ? 'bob'
+        : 'none';
+    final strength = (f < 0.55 || f > 0.82)
+        ? 0.0
+        : math.sin(math.pi * (f - 0.55) / 0.27);
+    return (kind, strength);
   }
 
   @override
   void paint(Canvas canvas, Size size) {
+    // Without rings, frame Echo tighter so the orb itself reads large.
+    if (!showRings) {
+      canvas.save();
+      canvas.translate(size.width / 2, size.height / 2);
+      canvas.scale(240 / 180);
+      canvas.translate(-size.width / 2, -size.height / 2);
+    }
+
     final k = size.width / 240; // design space is a 240×240 box
     Offset p(double x, double y) => Offset(x * k, y * k);
     double s(double v) => v * k;
@@ -193,25 +361,34 @@ class _EchoPainter extends CustomPainter {
     final glowR = s(voiceGlow ? 104 : 98);
     final glowBase = voiceGlow ? _glowGreen : _glow;
     final glowAlpha = voiceGlow ? 0.5 : (dim ? 0.5 : (isDark ? 0.5 : 0.9));
-    canvas.drawCircle(
-      glowC,
-      glowR,
-      Paint()
-        ..shader = RadialGradient(
-          colors: [
-            glowBase.withValues(alpha: glowAlpha),
-            glowBase.withValues(alpha: 0),
-          ],
-        ).createShader(Rect.fromCircle(center: glowC, radius: glowR))
-        ..maskFilter = MaskFilter.blur(BlurStyle.normal, s(voiceGlow ? 10 : 6)),
-    );
+    if (glow) {
+      canvas.drawCircle(
+        glowC,
+        glowR,
+        Paint()
+          ..shader = RadialGradient(
+            colors: [
+              glowBase.withValues(alpha: glowAlpha),
+              glowBase.withValues(alpha: 0),
+            ],
+          ).createShader(Rect.fromCircle(center: glowC, radius: glowR))
+          ..maskFilter = MaskFilter.blur(
+            BlurStyle.normal,
+            s(voiceGlow ? 10 : 6),
+          ),
+      );
+    }
 
     // ── Behind the orb: rings / orbital band back ─────────────────────────────
     switch (state) {
       case EchoState.idle:
-        _ring(canvas, orbC, s(72), 0.75, k);
-        _ring(canvas, orbC, s(88), 0.5, k);
-        _ring(canvas, orbC, s(104), 0.3, k);
+      case EchoState.focused:
+      case EchoState.happy:
+        if (showRings) {
+          _ring(canvas, orbC, s(72), 0.75, k);
+          _ring(canvas, orbC, s(88), 0.5, k);
+          _ring(canvas, orbC, s(104), 0.3, k);
+        }
         break;
       case EchoState.listening:
         _rippleRings(canvas, orbC, s(76), k, inward: true);
@@ -226,11 +403,13 @@ class _EchoPainter extends CustomPainter {
         break;
     }
 
-    // ── Orb + face (gentle float + breathe + a per-phase head tilt) ─────────
-    // The tilt/scale-per-phase is the same personality touch as the website
-    // mascot: a small perk-up while listening, a lean-in while thinking, a
-    // little pop while speaking — Echo reacting rather than just idling.
-    final floatDy = s(dim ? 3 : 4) * math.sin(t * _tau);
+    // ── Orb + face: float, breathe, and a head that follows the eyes ─────────
+    final (moment, strength) = _moment();
+    final bob = moment == 'bob' ? s(6) * strength : 0.0;
+    final floatDy =
+        s(dim ? 3 : (state == EchoState.focused ? 2.5 : 4)) *
+            math.sin(t * _tau) -
+        bob;
     final breathe = 1 + 0.03 * math.sin(t * _tau);
     double tiltDx = 0, tiltDy = 0, tiltRot = 0, tiltScale = 1.0;
     switch (state) {
@@ -250,11 +429,16 @@ class _EchoPainter extends CustomPainter {
         tiltScale = 1.015;
         break;
       case EchoState.idle:
-        // Occasional gentle head-turn — Echo glancing about while it rests,
-        // leaning slightly toward wherever it just looked.
-        final look = _idleLook(ms);
-        tiltDx = s(3.0) * look;
-        tiltRot = 0.05 * look;
+      case EchoState.focused:
+      case EchoState.happy:
+        // The head leans toward wherever the eyes just looked.
+        tiltDx = s(4) * reach * head.dx;
+        tiltDy =
+            s(3) * reachY * head.dy + (moment == 'nod' ? s(4.5) * strength : 0);
+        tiltRot = 0.105 * head.dx;
+        if (moment == 'curious') tiltScale = 1 + 0.05 * strength;
+        if (state == EchoState.focused) tiltRot += 0.052 * math.sin(ms / 420);
+        if (state == EchoState.happy) tiltRot += 0.087 * math.sin(ms / 240);
         break;
       case EchoState.sleeping:
         break;
@@ -268,23 +452,21 @@ class _EchoPainter extends CustomPainter {
     canvas.scale(tiltScale);
     canvas.translate(-orbC.dx, -orbC.dy);
     _orb(canvas, orbC, orbR, dim);
-    _eyes(canvas, p, s);
+    _eyes(canvas, p, s, moment == 'curious' ? 1 + 0.18 * strength : 1.0);
     canvas.restore();
 
     // ── In front of the orb ─────────────────────────────────────────────────
     if (state == EchoState.thinking) _band(canvas, orbC, k, front: true);
     if (state == EchoState.sleeping) _zzz(canvas, p, s);
+
+    if (!showRings) canvas.restore();
   }
 
   // The glossy pearlescent sphere.
   void _orb(Canvas canvas, Offset c, double r, bool dim) {
     final rect = Rect.fromCircle(center: c, radius: r);
     final body = dim
-        ? const [
-            Color(0xFFF1F2EC),
-            Color(0xFFD6E0D4),
-            Color(0xFFAAC0AE),
-          ]
+        ? const [Color(0xFFF1F2EC), Color(0xFFD6E0D4), Color(0xFFAAC0AE)]
         : const [
             Color(0xFFFFFFFF),
             Color(0xFFF4F9F0),
@@ -292,7 +474,9 @@ class _EchoPainter extends CustomPainter {
             Color(0xFFB4D1BA),
             Color(0xFF9EC0A6),
           ];
-    final stops = dim ? const [0.0, 0.55, 1.0] : const [0.0, 0.30, 0.60, 0.84, 1.0];
+    final stops = dim
+        ? const [0.0, 0.55, 1.0]
+        : const [0.0, 0.30, 0.60, 0.84, 1.0];
     canvas.drawCircle(
       c,
       r,
@@ -312,7 +496,11 @@ class _EchoPainter extends CustomPainter {
         ..shader = RadialGradient(
           center: const Alignment(0, 0.6),
           radius: 0.62,
-          colors: [_botShade.withValues(alpha: 0), _botShade.withValues(alpha: 0), _botShade.withValues(alpha: 0.30)],
+          colors: [
+            _botShade.withValues(alpha: 0),
+            _botShade.withValues(alpha: 0),
+            _botShade.withValues(alpha: 0.30),
+          ],
           stops: const [0.0, 0.72, 1.0],
         ).createShader(rect),
     );
@@ -321,12 +509,19 @@ class _EchoPainter extends CustomPainter {
     canvas.save();
     canvas.translate(specC.dx, specC.dy);
     canvas.rotate(-0.42);
-    final specRect = Rect.fromCenter(center: Offset.zero, width: r * 0.86, height: r * 0.54);
+    final specRect = Rect.fromCenter(
+      center: Offset.zero,
+      width: r * 0.86,
+      height: r * 0.54,
+    );
     canvas.drawOval(
       specRect,
       Paint()
         ..shader = RadialGradient(
-          colors: [Colors.white.withValues(alpha: 0.95), Colors.white.withValues(alpha: 0)],
+          colors: [
+            Colors.white.withValues(alpha: 0.95),
+            Colors.white.withValues(alpha: 0),
+          ],
         ).createShader(specRect)
         ..maskFilter = MaskFilter.blur(BlurStyle.normal, r * 0.06),
     );
@@ -340,50 +535,81 @@ class _EchoPainter extends CustomPainter {
     );
   }
 
-  // Periodic pulse: 1.0 most of the time, briefly dipping toward `min` once
-  // per `periodMs`, at `phaseMs` into the cycle. Used for both the full blink
-  // (both eyes) and the solo wink (left eye only, its own period/phase so it
-  // never coincides with the blink).
-  double _pulse(double ms, double periodMs, double phaseMs, double min) {
-    final ph = ((ms + phaseMs) % periodMs) / periodMs;
-    if (ph < 0.9) return 1.0;
-    // 0.9..1.0 of the cycle: dip down and back up (a quick close-open).
-    final d = (ph - 0.9) / 0.1; // 0..1
-    final close = d < 0.5 ? d / 0.5 : (1 - d) / 0.5;
-    return 1.0 - close * (1.0 - min);
-  }
+  void _eyes(
+    Canvas canvas,
+    Offset Function(double, double) p,
+    double Function(double) s,
+    double widen,
+  ) {
+    final ink = Paint()..color = _eye;
 
-  void _eyes(Canvas canvas, Offset Function(double, double) p, double Function(double) s) {
-    final open = state == EchoState.idle || state == EchoState.listening;
+    if (state == EchoState.happy) {
+      // ^ ^ — happy, eyes smiling shut.
+      final arc = Paint()
+        ..color = _eye
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = s(3.4)
+        ..strokeCap = StrokeCap.round;
+      canvas.save();
+      canvas.translate(s(6) * reach * gaze.dx, s(4.2) * reachY * gaze.dy);
+      for (final cx in const [108.0, 132.0]) {
+        canvas.drawPath(
+          Path()
+            ..moveTo(p(cx - 7, 123).dx, p(cx - 7, 123).dy)
+            ..quadraticBezierTo(
+              p(cx, 112).dx,
+              p(cx, 112).dy,
+              p(cx + 7, 123).dx,
+              p(cx + 7, 123).dy,
+            ),
+          arc,
+        );
+      }
+      canvas.restore();
+      return;
+    }
+
+    final open =
+        state == EchoState.idle ||
+        state == EchoState.listening ||
+        state == EchoState.focused;
     if (open) {
       final listening = state == EchoState.listening;
-      // A little wider and taller when listening — Echo perking up to hear —
-      // matching the "surprised" eyes on the website mascot.
+      // A little wider and taller when listening — Echo perking up to hear.
       final w = listening ? s(12.5) : s(11);
       final h = listening ? s(19) : s(17);
-      final blink = _pulse(ms, 4600, 0, 0.12);
-      final paint = Paint()..color = _eye;
+      final blink = _blink();
+      final sy = blink * widen * (1 - stretch);
+      final sx = (1 + stretch * 0.7) * (1 + (widen - 1) * 0.5);
+      final glint = Paint()..color = Colors.white.withValues(alpha: 0.95);
 
-      void eye(double cx, double cy, double scaleY) {
+      void eye(double cx, double extraY) {
+        final c = p(cx, 120);
         canvas.save();
-        canvas.translate(p(cx, cy).dx, p(cx, cy).dy);
-        canvas.scale(1, scaleY);
+        canvas.translate(c.dx, c.dy);
+        canvas.scale(sx, sy * extraY);
         canvas.drawOval(
           Rect.fromCenter(center: Offset.zero, width: w, height: h),
-          paint,
+          ink,
         );
         canvas.restore();
+        // A sparkle that stays put as the eye moves, so the eye reads round.
+        if (sy * extraY > 0.5) {
+          canvas.drawCircle(
+            Offset(
+              c.dx + s(2) - s(1.6) * reach * gaze.dx,
+              c.dy - s(3.6) - s(1.3) * reachY * gaze.dy,
+            ),
+            s(2),
+            glint,
+          );
+        }
       }
 
-      // Eyes follow the idle head-turn (leading it slightly) so the gaze tracks
-      // where Echo is looking; held fixed/alert while listening. The wink is no
-      // longer automatic — it only plays on hover/tap, applied to the left eye.
-      final look = listening ? 0.0 : _idleLook(ms);
-      final glance = s(4.2) * look;
       canvas.save();
-      canvas.translate(glance, 0);
-      eye(108, 120, blink * winkAmount); // left eye: blink + interactive wink
-      eye(132, 120, blink); // right eye: blink only
+      canvas.translate(s(6) * reach * gaze.dx, s(4.2) * reachY * gaze.dy);
+      eye(108, winkAmount); // left eye: blink + interactive wink
+      eye(132, 1); // right eye: blink only
       canvas.restore();
     } else {
       final paint = Paint()
@@ -393,10 +619,20 @@ class _EchoPainter extends CustomPainter {
         ..strokeCap = StrokeCap.round;
       final l = Path()
         ..moveTo(p(101, 119).dx, p(101, 119).dy)
-        ..quadraticBezierTo(p(108, 127).dx, p(108, 127).dy, p(115, 119).dx, p(115, 119).dy);
+        ..quadraticBezierTo(
+          p(108, 127).dx,
+          p(108, 127).dy,
+          p(115, 119).dx,
+          p(115, 119).dy,
+        );
       final r = Path()
         ..moveTo(p(125, 119).dx, p(125, 119).dy)
-        ..quadraticBezierTo(p(132, 127).dx, p(132, 127).dy, p(139, 119).dx, p(139, 119).dy);
+        ..quadraticBezierTo(
+          p(132, 127).dx,
+          p(132, 127).dy,
+          p(139, 119).dx,
+          p(139, 119).dy,
+        );
       canvas.drawPath(l, paint);
       canvas.drawPath(r, paint);
     }
@@ -416,7 +652,9 @@ class _EchoPainter extends CustomPainter {
         Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = 6.5 * k
-          ..color = _ringGreen.withValues(alpha: (opacity * 0.85).clamp(0.0, 1.0))
+          ..color = _ringGreen.withValues(
+            alpha: (opacity * 0.85).clamp(0.0, 1.0),
+          )
           ..maskFilter = MaskFilter.blur(BlurStyle.normal, 4.5 * k),
       );
       return;
@@ -447,14 +685,22 @@ class _EchoPainter extends CustomPainter {
   }
 
   // Three staggered rings rippling inward (listening) or outward (speaking).
-  void _rippleRings(Canvas canvas, Offset c, double base, double k, {required bool inward}) {
+  void _rippleRings(
+    Canvas canvas,
+    Offset c,
+    double base,
+    double k, {
+    required bool inward,
+  }) {
     for (int i = 0; i < 3; i++) {
       final ph = (t + i / 3) % 1.0;
       final double scale;
       final double op;
       if (inward) {
         scale = _lerp(1.35, 0.55, ph);
-        op = ph < 0.42 ? _lerp(0, 0.9, ph / 0.42) : _lerp(0.9, 0, (ph - 0.42) / 0.58);
+        op = ph < 0.42
+            ? _lerp(0, 0.9, ph / 0.42)
+            : _lerp(0.9, 0, (ph - 0.42) / 0.58);
       } else {
         scale = _lerp(0.62, 1.35, ph);
         op = _lerp(0.9, 0, ph);
@@ -469,7 +715,11 @@ class _EchoPainter extends CustomPainter {
     canvas.save();
     canvas.translate(c.dx, c.dy);
     canvas.rotate(-0.32 + math.sin(t * _tau) * 0.05);
-    final rect = Rect.fromCenter(center: Offset.zero, width: 164 * k, height: 66 * k);
+    final rect = Rect.fromCenter(
+      center: Offset.zero,
+      width: 164 * k,
+      height: 66 * k,
+    );
     final Paint paint;
     if (voiceGlow) {
       paint = Paint()
@@ -503,7 +753,11 @@ class _EchoPainter extends CustomPainter {
     canvas.restore();
   }
 
-  void _zzz(Canvas canvas, Offset Function(double, double) p, double Function(double) s) {
+  void _zzz(
+    Canvas canvas,
+    Offset Function(double, double) p,
+    double Function(double) s,
+  ) {
     final paint = Paint()
       ..color = const Color(0xFF5A6B5C)
       ..style = PaintingStyle.stroke
@@ -515,12 +769,17 @@ class _EchoPainter extends CustomPainter {
       final op = ph < 0.3 ? ph / 0.3 : (1 - (ph - 0.3) / 0.7);
       final rise = -ph * s(16);
       final dx = ph * s(8);
-      paint.color = const Color(0xFF5A6B5C).withValues(alpha: op.clamp(0.0, 1.0));
+      paint.color = const Color(
+        0xFF5A6B5C,
+      ).withValues(alpha: op.clamp(0.0, 1.0));
       final path = Path()
         ..moveTo(p(x, y).dx + dx, p(x, y).dy + rise)
         ..lineTo(p(x + w, y).dx + dx, p(x + w, y).dy + rise)
         ..lineTo(p(x, y + w * 1.1).dx + dx, p(x, y + w * 1.1).dy + rise)
-        ..lineTo(p(x + w, y + w * 1.1).dx + dx, p(x + w, y + w * 1.1).dy + rise);
+        ..lineTo(
+          p(x + w, y + w * 1.1).dx + dx,
+          p(x + w, y + w * 1.1).dy + rise,
+        );
       canvas.drawPath(path, paint);
     }
 
@@ -537,5 +796,12 @@ class _EchoPainter extends CustomPainter {
       old.state != state ||
       old.isDark != isDark ||
       old.voiceGlow != voiceGlow ||
-      old.winkAmount != winkAmount;
+      old.winkAmount != winkAmount ||
+      old.gaze != gaze ||
+      old.head != head ||
+      old.stretch != stretch ||
+      old.showRings != showRings ||
+      old.glow != glow ||
+      old.reach != reach ||
+      old.reachY != reachY;
 }

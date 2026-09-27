@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:go_router/go_router.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:project_echo/features/echo/presentation/cubit/briefing_cubit.dart';
@@ -12,31 +11,28 @@ import 'package:project_echo/features/echo/presentation/screens/daily_briefing_s
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:project_echo/features/echo/presentation/widgets/timer/next_briefing_timer.dart';
+import 'package:project_echo/features/todo/presentation/cubit/todo_cubit.dart';
+import 'package:project_echo/features/todo/presentation/widgets/todo_card.dart';
 import 'package:project_echo/features/echo/presentation/widgets/generating_view.dart';
 import 'package:project_echo/core/presentation/animations/page_transitions.dart';
 import 'package:project_echo/features/echo/presentation/widgets/echo_mascot.dart';
 import 'package:project_echo/core/presentation/animations/app_motion.dart';
 import 'package:project_echo/core/presentation/animations/fade_slide_in.dart';
 
+/// The phone's Today tab. Ask Echo lives in the nav dock (see NavDock).
 class EchoHomeScreen extends StatelessWidget {
-  /// Desktop only — switches the shell to the persistent Ask Echo sidebar tab
-  /// instead of pushing the phone's full-screen `/echo/chat` route. Null on
-  /// phone, where the "Ask Echo" cards push the route as before.
-  final VoidCallback? onAskEcho;
-
-  const EchoHomeScreen({super.key, this.onAskEcho});
+  const EchoHomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     // BriefingCubit is provided by MainScaffold (app-scoped) so a briefing
     // keeps generating across tab switches; this screen just renders the view.
-    return _EchoView(onAskEcho: onAskEcho);
+    return const _EchoView();
   }
 }
 
 class _EchoView extends StatefulWidget {
-  final VoidCallback? onAskEcho;
-  const _EchoView({this.onAskEcho});
+  const _EchoView();
 
   @override
   State<_EchoView> createState() => _EchoViewState();
@@ -90,6 +86,7 @@ class _EchoViewState extends State<_EchoView> with WidgetsBindingObserver {
                   rawText: state.rawText,
                   ttsText: state.ttsText,
                   autoPlay: autoPlay,
+                  todoCubit: context.read<TodoCubit>(),
                   onReset: () {
                     context.read<BriefingCubit>().goBack();
                   },
@@ -103,7 +100,6 @@ class _EchoViewState extends State<_EchoView> with WidgetsBindingObserver {
             return _InitialView(
               onGenerate: () =>
                   context.read<BriefingCubit>().generateBriefing(),
-              onAskEcho: widget.onAskEcho,
             );
           }
 
@@ -116,7 +112,6 @@ class _EchoViewState extends State<_EchoView> with WidgetsBindingObserver {
                   context.read<BriefingCubit>().playCachedBriefing(rawText),
               onRegenerate: () =>
                   context.read<BriefingCubit>().generateBriefing(),
-              onAskEcho: widget.onAskEcho,
             );
           }
 
@@ -143,26 +138,19 @@ class _EchoViewState extends State<_EchoView> with WidgetsBindingObserver {
 // ---------------------------------------------------------------------------
 class _InitialView extends StatelessWidget {
   final VoidCallback onGenerate;
-  final VoidCallback? onAskEcho;
-  const _InitialView({required this.onGenerate, this.onAskEcho});
+  const _InitialView({required this.onGenerate});
 
   @override
   Widget build(BuildContext context) {
     return _HomeShell(
       subtitle: "Generate today's briefing to get started.",
+      hasBriefing: false,
       primary: _ActionCard(
         title: 'Generate Briefing',
         subtitle: "Synthesize today's intelligence",
         icon: Icons.auto_awesome_rounded,
         onTap: onGenerate,
         isPrimary: true,
-      ),
-      secondary: _ActionCard(
-        title: 'Ask Echo',
-        subtitle: 'Chat with your secure assistant',
-        icon: Icons.chat_bubble_outline_rounded,
-        onTap: onAskEcho ?? () => context.push('/echo/chat'),
-        isPrimary: false,
       ),
     );
   }
@@ -174,17 +162,13 @@ class _InitialView extends StatelessWidget {
 class _CachedView extends StatelessWidget {
   final VoidCallback onPlay;
   final VoidCallback onRegenerate;
-  final VoidCallback? onAskEcho;
-  const _CachedView({
-    required this.onPlay,
-    required this.onRegenerate,
-    this.onAskEcho,
-  });
+  const _CachedView({required this.onPlay, required this.onRegenerate});
 
   @override
   Widget build(BuildContext context) {
     return _HomeShell(
       subtitle: 'Your briefing is ready.',
+      hasBriefing: true,
       primary: _ActionCard(
         title: "Play Today's Briefing",
         subtitle: 'Listen to the cached summary',
@@ -192,31 +176,7 @@ class _CachedView extends StatelessWidget {
         onTap: onPlay,
         isPrimary: true,
       ),
-      secondary: Row(
-        children: [
-          Expanded(
-            child: _ActionCard(
-              title: 'Ask Echo',
-              subtitle: 'Chat',
-              icon: Icons.chat_bubble_outline_rounded,
-              onTap: onAskEcho ?? () => context.push('/echo/chat'),
-              isPrimary: false,
-              isSmall: true,
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: _ActionCard(
-              title: 'Regenerate',
-              subtitle: 'Update summary',
-              icon: Icons.auto_awesome_rounded,
-              onTap: onRegenerate,
-              isPrimary: false,
-              isSmall: true,
-            ),
-          ),
-        ],
-      ),
+      secondary: _RegenerateRow(onTap: onRegenerate),
     );
   }
 }
@@ -233,6 +193,7 @@ class _ErrorView extends StatelessWidget {
   Widget build(BuildContext context) {
     return _HomeShell(
       subtitle: "We couldn't generate your briefing.",
+      hasBriefing: false,
       primary: _ActionCard(
         title: 'Try Again',
         subtitle: 'Attempt generation again',
@@ -266,16 +227,19 @@ class _HomeShell extends StatefulWidget {
   /// Optional secondary actions (already laid out — a row or a single card).
   final Widget? secondary;
 
+  /// Whether today's briefing exists (the to-do list is made from it).
+  final bool hasBriefing;
+
   const _HomeShell({
     required this.subtitle,
     required this.primary,
+    required this.hasBriefing,
     this.secondary,
   });
 
   @override
   State<_HomeShell> createState() => _HomeShellState();
 }
-
 
 class _HomeShellState extends State<_HomeShell> {
   String? _userName;
@@ -319,18 +283,20 @@ class _HomeShellState extends State<_HomeShell> {
       bottom: false,
       child: SingleChildScrollView(
         physics: const BouncingScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(24, 12, 24, 128),
+        // Clears the nav dock (MainScaffold sets the bottom padding).
+        padding: EdgeInsets.fromLTRB(
+          24,
+          12,
+          24,
+          MediaQuery.paddingOf(context).bottom + 16,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const SizedBox(height: 8),
 
             // ── Hero: Echo, a calm luminous presence ──────────────────────
-            const FadeSlideIn(
-              child: Center(
-                child: EchoMascot(state: EchoState.idle, size: 190),
-              ),
-            ),
+            const FadeSlideIn(child: Center(child: _HeroEcho())),
             const SizedBox(height: 16),
             FadeSlideIn(
               delay: AppMotion.staggerDelay(1),
@@ -366,28 +332,35 @@ class _HomeShellState extends State<_HomeShell> {
               child: widget.primary,
             ),
 
+            // ── Secondary action, right under the primary one ─────────────
+            if (widget.secondary != null) ...[
+              const SizedBox(height: 12),
+              FadeSlideIn(
+                delay: AppMotion.staggerDelay(3),
+                child: widget.secondary!,
+              ),
+            ],
+
+            // ── Today's to-dos ────────────────────────────────────────────
+            const SizedBox(height: 16),
+            FadeSlideIn(
+              delay: AppMotion.staggerDelay(4),
+              child: TodoCard(hasBriefing: widget.hasBriefing),
+            ),
+
             const SizedBox(height: 26),
 
             // ── Next briefing countdown (self-labelled dial) ──────────────
             FadeSlideIn(
-              delay: AppMotion.staggerDelay(3),
+              delay: AppMotion.staggerDelay(5),
               child: const NextBriefingTimer(),
             ),
-
-            // ── Secondary actions ─────────────────────────────────────────
-            if (widget.secondary != null) ...[
-              const SizedBox(height: 22),
-              FadeSlideIn(
-                delay: AppMotion.staggerDelay(4),
-                child: widget.secondary!,
-              ),
-            ],
 
             const SizedBox(height: 18),
 
             // ── Ambient stat ──────────────────────────────────────────────
             FadeSlideIn(
-              delay: AppMotion.staggerDelay(5),
+              delay: AppMotion.staggerDelay(6),
               child: FutureBuilder<List<RawData>>(
                 future: IsarDataSource.getAllEntries(),
                 builder: (context, snapshot) {
@@ -403,16 +376,166 @@ class _HomeShellState extends State<_HomeShell> {
   }
 }
 
+/// The home hero: Echo, large and without rings. It focuses while a to-do list
+/// is being written, and gives a happy hop when one lands.
+class _HeroEcho extends StatefulWidget {
+  const _HeroEcho();
+
+  @override
+  State<_HeroEcho> createState() => _HeroEchoState();
+}
+
+class _HeroEchoState extends State<_HeroEcho>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _hop = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 700),
+  );
+  late final Animation<double> _lift = TweenSequence<double>([
+    TweenSequenceItem(
+      tween: Tween(
+        begin: 0.0,
+        end: -14.0,
+      ).chain(CurveTween(curve: Curves.easeOut)),
+      weight: 30,
+    ),
+    TweenSequenceItem(
+      tween: Tween(
+        begin: -14.0,
+        end: 0.0,
+      ).chain(CurveTween(curve: Curves.easeIn)),
+      weight: 30,
+    ),
+    TweenSequenceItem(tween: ConstantTween(0.0), weight: 40),
+  ]).animate(_hop);
+  bool _celebrating = false;
+
+  @override
+  void dispose() {
+    _hop.dispose();
+    super.dispose();
+  }
+
+  void _onArrival() {
+    _hop.forward(from: 0);
+    setState(() => _celebrating = true);
+    Future.delayed(const Duration(milliseconds: 1900), () {
+      if (mounted) setState(() => _celebrating = false);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocConsumer<TodoCubit, TodoState>(
+      listenWhen: (a, b) =>
+          a.arrival != b.arrival ||
+          (a.phase == TodoPhase.updating && b.phase == TodoPhase.idle),
+      listener: (_, _) => _onArrival(),
+      buildWhen: (a, b) => a.phase != b.phase,
+      builder: (context, todo) {
+        final mood = todo.phase != TodoPhase.idle
+            ? EchoState.focused
+            : _celebrating
+            ? EchoState.happy
+            : EchoState.idle;
+        return AnimatedBuilder(
+          animation: _lift,
+          builder: (context, child) =>
+              Transform.translate(offset: Offset(0, _lift.value), child: child),
+          child: EchoMascot(state: mood, size: 180, showRings: false),
+        );
+      },
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Massive Action Card
 // ---------------------------------------------------------------------------
+/// Regenerate, as a slim row under Play: when today's briefing was made.
+class _RegenerateRow extends StatefulWidget {
+  final VoidCallback onTap;
+  const _RegenerateRow({required this.onTap});
+
+  @override
+  State<_RegenerateRow> createState() => _RegenerateRowState();
+}
+
+class _RegenerateRowState extends State<_RegenerateRow> {
+  DateTime? _madeAt;
+
+  @override
+  void initState() {
+    super.initState();
+    SharedPreferences.getInstance().then((prefs) {
+      final raw = prefs.getString('cached_briefing_time');
+      final at = raw == null ? null : DateTime.tryParse(raw);
+      final now = DateTime.now();
+      final today =
+          at != null &&
+          at.year == now.year &&
+          at.month == now.month &&
+          at.day == now.day;
+      if (mounted && today) setState(() => _madeAt = at);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final at = _madeAt;
+    return Material(
+      color: c.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: c.dividerColor.withValues(alpha: 0.6)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: widget.onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
+          child: Row(
+            children: [
+              Icon(Icons.refresh_rounded, size: 20, color: c.textSecondary),
+              const SizedBox(width: 12),
+              Text(
+                'Regenerate',
+                style: GoogleFonts.nunito(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: c.textPrimary,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                at == null ? 'Update summary' : 'Made at ${_clock(at)}',
+                style: GoogleFonts.nunito(
+                  fontSize: 12.5,
+                  color: c.textSecondary,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  static String _clock(DateTime t) {
+    final h = t.hour % 12 == 0 ? 12 : t.hour % 12;
+    final m = t.minute.toString().padLeft(2, '0');
+    return '$h:$m ${t.hour < 12 ? 'AM' : 'PM'}';
+  }
+}
+
 class _ActionCard extends StatefulWidget {
   final String title;
   final String subtitle;
   final IconData icon;
   final VoidCallback onTap;
   final bool isPrimary;
-  final bool isSmall;
 
   const _ActionCard({
     required this.title,
@@ -420,7 +543,6 @@ class _ActionCard extends StatefulWidget {
     required this.icon,
     required this.onTap,
     required this.isPrimary,
-    this.isSmall = false,
   });
 
   @override
@@ -471,7 +593,7 @@ class _ActionCardState extends State<_ActionCard>
       child: ScaleTransition(
         scale: _scaleAnimation,
         child: Container(
-          padding: EdgeInsets.all(widget.isSmall ? 16 : 24),
+          padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
             color: bgColor,
             borderRadius: BorderRadius.circular(24),
@@ -490,64 +612,37 @@ class _ActionCardState extends State<_ActionCard>
               ),
             ],
           ),
-          child: widget.isSmall
-              ? Column(
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(widget.icon, color: fgColor, size: 24),
-                    const SizedBox(height: 24),
                     Text(
                       widget.title,
                       style: GoogleFonts.nunito(
-                        fontSize: 18,
+                        fontSize: 24,
                         fontWeight: FontWeight.bold,
                         color: fgColor,
+                        letterSpacing: -0.5,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 6),
                     Text(
                       widget.subtitle,
                       style: GoogleFonts.nunito(
-                        fontSize: 12,
-                        fontWeight: FontWeight.normal,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
                         color: fgColor.withValues(alpha: 0.7),
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
-                  ],
-                )
-              : Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            widget.title,
-                            style: GoogleFonts.nunito(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              color: fgColor,
-                              letterSpacing: -0.5,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            widget.subtitle,
-                            style: GoogleFonts.nunito(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: fgColor.withValues(alpha: 0.7),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Icon(widget.icon, color: fgColor, size: 32),
                   ],
                 ),
+              ),
+              const SizedBox(width: 16),
+              Icon(widget.icon, color: fgColor, size: 32),
+            ],
+          ),
         ),
       ),
     );
