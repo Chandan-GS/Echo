@@ -9,6 +9,9 @@ import 'package:project_echo/features/echo/presentation/widgets/echo_mascot.dart
 import 'package:project_echo/features/vault/presentation/cubit/vault_cubit.dart';
 import 'package:project_echo/features/vault/presentation/widgets/pie_chart_geometry.dart';
 import 'package:project_echo/features/vault/presentation/widgets/vault_utils.dart';
+import 'package:project_echo/features/vault/presentation/widgets/source_icon.dart';
+import 'package:project_echo/features/vault/presentation/widgets/vault_day_heading.dart';
+import 'package:project_echo/features/vault/presentation/widgets/week_card.dart';
 
 /// A tonal ramp of category colours derived from the app's own theme green —
 /// so it's always literally the app's palette (and adapts with light/dark
@@ -25,7 +28,11 @@ List<Color> _categoryPalette(BuildContext context) {
   ];
 }
 
-Color _colorForCategory(List<Color> palette, List<String> categories, String category) {
+Color _colorForCategory(
+  List<Color> palette,
+  List<String> categories,
+  String category,
+) {
   final idx = categories.indexOf(category);
   return idx >= 0 ? palette[idx % palette.length] : palette.last;
 }
@@ -105,79 +112,93 @@ class _Loaded extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final total = state.categoryCounts['All'] ?? 0;
     final categories = state.categories.where((c) => c != 'All').toList();
     final palette = _categoryPalette(context);
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(40, 32, 32, 28),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    final lower = Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          width: 300,
+          child: _DonutCard(
+            state: state,
+            categories: categories,
+            palette: palette,
+          ),
+        ),
+        const SizedBox(width: 24),
+        Expanded(
+          child: _VaultList(
+            items: state.displayedItems,
+            categories: categories,
+            palette: palette,
+            categoryAliases: state.categoryAliases,
+          ),
+        ),
+      ],
+    );
+
+    return LayoutBuilder(
+      builder: (context, box) {
+        // Tall windows: the donut and list fill what's left. Short ones: the
+        // page scrolls and they keep a usable height.
+        final tall = box.maxHeight >= 880;
+        final page = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ..._top(context, colors, categories),
+            if (tall)
+              Expanded(child: lower)
+            else
+              SizedBox(height: 480, child: lower),
+          ],
+        );
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(40, 32, 32, 28),
+          child: tall ? page : SingleChildScrollView(child: page),
+        );
+      },
+    );
+  }
+
+  List<Widget> _top(
+    BuildContext context,
+    AppColors colors,
+    List<String> categories,
+  ) {
+    return [
+      Text(
+        'The Vault',
+        style: GoogleFonts.oldStandardTt(
+          fontSize: 40,
+          fontWeight: FontWeight.w700,
+          color: colors.textPrimary,
+          height: 1.15,
+        ),
+      ),
+      const SizedBox(height: 20),
+      // The phone's week card, laid out across the window.
+      const WeekCard(wide: true),
+      const SizedBox(height: 20),
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
         children: [
-          Text(
-            'The Vault',
-            style: GoogleFonts.oldStandardTt(
-              fontSize: 40,
-              fontWeight: FontWeight.w700,
-              color: colors.textPrimary,
-              height: 1.15,
+          _FilterChip(
+            label: 'All',
+            selected: state.selectedCategory == 'All',
+            onTap: () => context.read<VaultCubit>().selectCategory('All'),
+          ),
+          for (final c in categories)
+            _FilterChip(
+              label: c,
+              selected: state.selectedCategory == c,
+              onTap: () => context.read<VaultCubit>().selectCategory(c),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '$total notifications captured today · kept on your device',
-            style: GoogleFonts.nunito(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: colors.textSecondary,
-            ),
-          ),
-          const SizedBox(height: 20),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _FilterChip(
-                label: 'All',
-                selected: state.selectedCategory == 'All',
-                onTap: () => context.read<VaultCubit>().selectCategory('All'),
-              ),
-              for (final c in categories)
-                _FilterChip(
-                  label: c,
-                  selected: state.selectedCategory == c,
-                  onTap: () => context.read<VaultCubit>().selectCategory(c),
-                ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Expanded(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                SizedBox(
-                  width: 300,
-                  child: _DonutCard(
-                    state: state,
-                    categories: categories,
-                    palette: palette,
-                  ),
-                ),
-                const SizedBox(width: 24),
-                Expanded(
-                  child: _VaultList(
-                    items: state.displayedItems,
-                    categories: categories,
-                    palette: palette,
-                    categoryAliases: state.categoryAliases,
-                  ),
-                ),
-              ],
-            ),
-          ),
         ],
       ),
-    );
+      const SizedBox(height: 20),
+    ];
   }
 }
 
@@ -534,8 +555,10 @@ class _InteractiveDonutState extends State<_InteractiveDonut>
                             color: colors.textPrimary,
                           ),
                         ),
+                        // Everything in the Vault, not just today's —
+                        // today's count is on the week card above.
                         Text(
-                          'TODAY',
+                          'IN THE VAULT',
                           style: GoogleFonts.nunito(
                             fontSize: 10.5,
                             letterSpacing: 2,
@@ -644,11 +667,25 @@ class _VaultList extends StatelessWidget {
         ),
       );
     }
+    // Newest first, under a heading per day (as on the phone).
+    final rows = <Object>[];
+    final perDay = <DateTime, int>{};
+    for (final item in items) {
+      final t = item.timestamp;
+      final day = DateTime(t.year, t.month, t.day);
+      if (!perDay.containsKey(day)) rows.add(day);
+      perDay[day] = (perDay[day] ?? 0) + 1;
+      rows.add(item);
+    }
     return ListView.builder(
       physics: const BouncingScrollPhysics(),
-      itemCount: items.length,
+      itemCount: rows.length,
       itemBuilder: (context, i) {
-        final item = items[i];
+        final row = rows[i];
+        if (row is DateTime) {
+          return VaultDayHeading(day: row, count: perDay[row]!, first: i == 0);
+        }
+        final item = row as RawData;
         final cat = _displaySourceFor(item, categoryAliases);
         return Padding(
           padding: const EdgeInsets.only(bottom: 8),
@@ -680,14 +717,19 @@ class _VaultRow extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.16),
-              borderRadius: BorderRadius.circular(11),
+          // The app's real icon, synced from the phone.
+          SourceIcon(
+            source: item.source,
+            size: 34,
+            fallback: Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.16),
+                borderRadius: BorderRadius.circular(11),
+              ),
+              child: Icon(getSourceIcon(item.source), size: 18, color: color),
             ),
-            child: Icon(getSourceIcon(item.source), size: 18, color: color),
           ),
           const SizedBox(width: 13),
           Expanded(

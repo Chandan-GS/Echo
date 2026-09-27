@@ -16,6 +16,9 @@ import 'offline_model_repository.dart';
 import 'system_info_service.dart';
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
+import 'package:project_echo/core/services/app_icon_service.dart';
+import 'package:project_echo/features/todo/data/todo_store.dart';
+import 'package:project_echo/features/vault/data/daily_stats.dart';
 
 /// A phone that has paired with this computer's engine via QR — kept only for
 /// display in Settings ("Paired devices").
@@ -24,14 +27,16 @@ class PairedDevice {
   final DateTime pairedAt;
   const PairedDevice({required this.name, required this.pairedAt});
 
-  Map<String, dynamic> toJson() =>
-      {'name': name, 'pairedAt': pairedAt.toIso8601String()};
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    'pairedAt': pairedAt.toIso8601String(),
+  };
 
   static PairedDevice fromJson(Map<String, dynamic> m) => PairedDevice(
-        name: (m['name'] ?? '').toString(),
-        pairedAt: DateTime.tryParse((m['pairedAt'] ?? '').toString()) ??
-            DateTime.now(),
-      );
+    name: (m['name'] ?? '').toString(),
+    pairedAt:
+        DateTime.tryParse((m['pairedAt'] ?? '').toString()) ?? DateTime.now(),
+  );
 }
 
 /// The desktop half of the optional "Echo Engine": a larger local model
@@ -83,8 +88,10 @@ class EchoServerService {
     final existing = prefs.getString(_tokenKey);
     if (existing != null && existing.isNotEmpty) return existing;
     final random = Random.secure();
-    final token =
-        List.generate(32, (_) => random.nextInt(16).toRadixString(16)).join();
+    final token = List.generate(
+      32,
+      (_) => random.nextInt(16).toRadixString(16),
+    ).join();
     await prefs.setString(_tokenKey, token);
     return token;
   }
@@ -166,7 +173,9 @@ class EchoServerService {
       if (path == '/health' || path == '/pair') return innerHandler(request);
 
       final prefs = await SharedPreferences.getInstance();
-      if (!(prefs.getBool(_hasPairedKey) ?? false)) return innerHandler(request);
+      if (!(prefs.getBool(_hasPairedKey) ?? false)) {
+        return innerHandler(request);
+      }
 
       final expected = await pairingToken();
       final provided = request.headers['x-echo-token'];
@@ -188,10 +197,15 @@ class EchoServerService {
       final deviceName = (body['deviceName'] as String?)?.trim();
       final expected = await pairingToken();
 
-      if (incomingToken != expected || deviceName == null || deviceName.isEmpty) {
+      if (incomingToken != expected ||
+          deviceName == null ||
+          deviceName.isEmpty) {
         return Response(
           400,
-          body: jsonEncode({'status': 'error', 'message': 'invalid pairing request'}),
+          body: jsonEncode({
+            'status': 'error',
+            'message': 'invalid pairing request',
+          }),
           headers: _jsonHeaders,
         );
       }
@@ -247,7 +261,9 @@ class EchoServerService {
       InternetAddress.anyIPv4,
       httpPort,
     );
-    debugPrint('Echo Engine listening on ${_httpServer!.address.address}:$httpPort');
+    debugPrint(
+      'Echo Engine listening on ${_httpServer!.address.address}:$httpPort',
+    );
 
     await _startDiscoveryResponder();
   }
@@ -297,6 +313,28 @@ class EchoServerService {
         await StreakService().importSnapshot(streak.cast<String, dynamic>());
       }
 
+      // The phone's to-do list and the Vault's week, mirrored as-is.
+      final todos = body['todos'];
+      if (todos is Map) {
+        for (final (field, key) in [
+          ('items', TodoStore.itemsKey),
+          ('meta', TodoStore.metaKey),
+        ]) {
+          final value = todos[field];
+          if (value is String) await prefs.setString(key, value);
+        }
+      }
+      final stats = body['stats'];
+      if (stats is String) await prefs.setString(DailyStats.key, stats);
+      final briefingTime = body['briefingTime'];
+      if (briefingTime is String) {
+        await prefs.setString('cached_briefing_time', briefingTime);
+      }
+      final icons = body['icons'];
+      if (icons is Map && icons.isNotEmpty) {
+        await AppIconService.storeSynced(icons.cast<String, dynamic>());
+      }
+
       syncTick.value++;
       return Response.ok(jsonEncode({'status': 'ok'}), headers: _jsonHeaders);
     } catch (e) {
@@ -342,7 +380,8 @@ class EchoServerService {
           return;
         }
 
-        final modelPath = await createOfflineModelRepository().downloadedPathOrNull();
+        final modelPath = await createOfflineModelRepository()
+            .downloadedPathOrNull();
         if (modelPath == null) {
           await controller.close();
           return;

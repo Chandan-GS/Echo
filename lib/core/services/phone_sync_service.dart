@@ -6,7 +6,10 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:project_echo/core/services/app_icon_service.dart';
 import 'package:project_echo/core/services/desktop_engine_client.dart';
+import 'package:project_echo/features/todo/data/todo_store.dart';
+import 'package:project_echo/features/vault/data/daily_stats.dart';
 import 'package:project_echo/core/services/streak_service.dart';
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
 
@@ -25,6 +28,10 @@ class PhoneSyncService {
   final Dio _dio = Dio();
   Timer? _timer;
   bool _syncing = false;
+
+  /// Categories whose app icon this session has already sent; icons rarely
+  /// change, so each goes across once.
+  final Set<String> _sentIcons = {};
 
   bool get _isDesktop => Platform.isMacOS || Platform.isWindows;
 
@@ -55,15 +62,31 @@ class PhoneSyncService {
       if (host == null) return;
       await prefs.setString('desktop_engine_host', host);
 
-      final notifications =
-          (await IsarDataSource.getAllEntries()).map((e) => e.toSyncMap()).toList();
+      final entries = await IsarDataSource.getAllEntries();
+      final notifications = entries.map((e) => e.toSyncMap()).toList();
 
       final date = prefs.getString('cached_briefing_date');
       final text = prefs.getString('cached_briefing_text');
-      final briefing =
-          (date != null && text != null) ? {'date': date, 'text': text} : null;
+      final briefing = (date != null && text != null)
+          ? {'date': date, 'text': text}
+          : null;
 
       final streak = await StreakService().exportSnapshot();
+
+      // What the phone's newer views show, so the computer can show them too:
+      // the to-do list, the Vault's week of numbers, when the briefing was
+      // made, and each category's real app icon (desktop can't read those).
+      await prefs.reload();
+      final todos = {
+        'items': prefs.getString(TodoStore.itemsKey),
+        'meta': prefs.getString(TodoStore.metaKey),
+      };
+      final icons = <String, String>{};
+      for (final source in entries.map((e) => e.source).toSet()) {
+        if (_sentIcons.contains(source)) continue;
+        final png = await AppIconService.iconFor(source);
+        if (png != null) icons[source] = base64Encode(png);
+      }
 
       await _dio.post(
         'http://$host/sync',
@@ -71,6 +94,10 @@ class PhoneSyncService {
           'notifications': notifications,
           'briefing': briefing,
           'streak': streak,
+          'todos': todos,
+          'stats': prefs.getString(DailyStats.key),
+          'briefingTime': prefs.getString('cached_briefing_time'),
+          'icons': icons,
         }),
         options: Options(
           headers: {
@@ -81,7 +108,10 @@ class PhoneSyncService {
           receiveTimeout: const Duration(seconds: 15),
         ),
       );
-      debugPrint('Phone sync: pushed ${notifications.length} notifications to $host');
+      _sentIcons.addAll(icons.keys);
+      debugPrint(
+        'Phone sync: pushed ${notifications.length} notifications to $host',
+      );
     } catch (e) {
       debugPrint('Phone sync failed: $e');
     } finally {

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -20,9 +21,13 @@ import 'package:project_echo/features/echo/presentation/widgets/rich_transcript.
 import 'package:project_echo/features/echo/presentation/widgets/generating_view.dart';
 import 'package:project_echo/core/utils/time_utils.dart';
 import 'dart:async';
-import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
 import 'package:project_echo/features/settings/presentation/cubit/settings_cubit.dart';
 import 'package:project_echo/features/settings/presentation/cubit/settings_state.dart';
+import 'package:project_echo/features/todo/presentation/cubit/todo_cubit.dart';
+import 'package:project_echo/features/todo/presentation/widgets/todo_card.dart';
+import 'package:project_echo/features/echo/presentation/widgets/home_glance.dart';
+import 'package:project_echo/features/echo/presentation/widgets/home_masthead.dart';
+import 'package:project_echo/demo/demo_mode.dart';
 
 /// The desktop Today screen — a genuine three-pane workspace rather than a
 /// centered phone column. The sidebar is supplied by [DesktopShell]; this
@@ -60,7 +65,6 @@ class DesktopHomeScreen extends StatefulWidget {
 class _DesktopHomeScreenState extends State<DesktopHomeScreen>
     with WidgetsBindingObserver {
   String? _userName;
-  int _captured = 0;
   StreakInfo _streak = StreakInfo.zero;
 
   @override
@@ -85,6 +89,8 @@ class _DesktopHomeScreenState extends State<DesktopHomeScreen>
     // The synced briefing/notifications just landed in local storage — pull
     // the cached briefing into the cubit so Today updates without a reload.
     context.read<BriefingCubit>().loadCachedBriefing();
+    // …and the phone's to-do list, mirrored alongside.
+    context.read<TodoCubit>().load();
   }
 
   @override
@@ -99,12 +105,10 @@ class _DesktopHomeScreenState extends State<DesktopHomeScreen>
   Future<void> _load() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final entries = await IsarDataSource.getAllEntries();
       final streak = await StreakService().current();
       if (!mounted) return;
       setState(() {
         _userName = prefs.getString('user_name');
-        _captured = entries.length;
         _streak = streak;
       });
     } catch (_) {}
@@ -118,21 +122,19 @@ class _DesktopHomeScreenState extends State<DesktopHomeScreen>
     return 'Good night';
   }
 
-  String _today() {
-    const months = [
-      'January', 'February', 'March', 'April', 'May', 'June', 'July',
-      'August', 'September', 'October', 'November', 'December'
-    ];
-    const weekdays = [
-      'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'
-    ];
-    final n = DateTime.now();
-    return '${weekdays[n.weekday - 1]}, ${n.day} ${months[n.month - 1]}';
-  }
+  /// Shown under the greeting until there's a to-do list.
+  static String _status(BriefingState state) => switch (state) {
+    BriefingCached() || BriefingReady() => 'Your briefing is ready.',
+    BriefingGenerating() => 'Writing your briefing…',
+    BriefingError() => "Today's briefing couldn't be written.",
+    _ => "Generate today's briefing to get started.",
+  };
 
   @override
   Widget build(BuildContext context) {
-    final name = (_userName?.trim().isNotEmpty ?? false) ? _userName!.trim() : null;
+    final name = (_userName?.trim().isNotEmpty ?? false)
+        ? _userName!.trim()
+        : null;
 
     // Calm cross-fade between the full briefing workspace (with rail) and the
     // focused chat. Each branch is a complete, independently-valid layout, so
@@ -176,44 +178,21 @@ class _DesktopHomeScreenState extends State<DesktopHomeScreen>
   }
 
   Widget _briefingCenter(BuildContext context, String? name) {
-    final colors = context.colors;
     return Padding(
       padding: const EdgeInsets.fromLTRB(40, 32, 32, 28),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // The same masthead as the phone's Home: the day, the greeting,
+          // and one line about the to-do list.
           FadeSlideIn(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        name != null ? '${_greeting()},\n$name' : _greeting(),
-                        style: GoogleFonts.oldStandardTt(
-                          fontSize: 40,
-                          fontWeight: FontWeight.w700,
-                          height: 1.08,
-                          color: colors.textPrimary,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _today(),
-                        style: GoogleFonts.nunito(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: colors.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 20),
-                _CapturedPill(count: _captured),
-              ],
+            child: BlocBuilder<BriefingCubit, BriefingState>(
+              buildWhen: (a, b) => a.runtimeType != b.runtimeType,
+              builder: (context, state) => HomeMasthead(
+                greeting: _greeting(),
+                name: name ?? '',
+                fallback: _status(state),
+              ),
             ),
           ),
           const SizedBox(height: 24),
@@ -251,6 +230,16 @@ class _DesktopHomeScreenState extends State<DesktopHomeScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // The phone's Home sections, stacked for a wide window.
+            BlocBuilder<BriefingCubit, BriefingState>(
+              buildWhen: (a, b) => a.runtimeType != b.runtimeType,
+              builder: (context, state) => TodoCard(
+                hasBriefing: state is BriefingCached || state is BriefingReady,
+              ),
+            ),
+            const SizedBox(height: 16),
+            const _RailCard(child: SizedBox(height: 200, child: DayLine())),
+            const SizedBox(height: 16),
             const _NextBriefingRailCard(),
             const SizedBox(height: 16),
             _StreakCard(streak: _streak),
@@ -514,7 +503,11 @@ class _RegenerateButton extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.refresh_rounded, size: 16, color: colors.textSecondary),
+              Icon(
+                Icons.refresh_rounded,
+                size: 16,
+                color: colors.textSecondary,
+              ),
               const SizedBox(width: 7),
               Text(
                 'Regenerate',
@@ -576,7 +569,9 @@ class _CenteredMessage extends StatelessWidget {
                   subtitle,
                   textAlign: TextAlign.center,
                   style: GoogleFonts.nunito(
-                      fontSize: 14, color: colors.textSecondary),
+                    fontSize: 14,
+                    color: colors.textSecondary,
+                  ),
                 ),
                 const SizedBox(height: 24),
                 ElevatedButton(
@@ -584,16 +579,21 @@ class _CenteredMessage extends StatelessWidget {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: colors.textPrimary,
                     foregroundColor: colors.textInverse,
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 26, vertical: 15),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 26,
+                      vertical: 15,
+                    ),
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14)),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
                     elevation: 0,
                   ),
                   child: Text(
                     actionLabel,
                     style: GoogleFonts.nunito(
-                        fontSize: 15, fontWeight: FontWeight.w800),
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
               ],
@@ -625,7 +625,11 @@ class _ChatPane extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(40, 28, 40, 4),
           child: Row(
             children: [
-              Icon(Icons.chat_bubble_rounded, size: 17, color: colors.primaryGreen),
+              Icon(
+                Icons.chat_bubble_rounded,
+                size: 17,
+                color: colors.primaryGreen,
+              ),
               const SizedBox(width: 7),
               Text(
                 'Ask Echo',
@@ -643,12 +647,18 @@ class _ChatPane extends StatelessWidget {
                 child: InkWell(
                   onTap: onClose,
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 7,
+                    ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.arrow_back_rounded,
-                            size: 15, color: colors.textSecondary),
+                        Icon(
+                          Icons.arrow_back_rounded,
+                          size: 15,
+                          color: colors.textSecondary,
+                        ),
                         const SizedBox(width: 6),
                         Text(
                           'Back to briefing',
@@ -668,60 +678,20 @@ class _ChatPane extends StatelessWidget {
         ),
         // The embedded chat renders its own message list + input bar, full
         // bleed on the shell's background — same treatment as the phone app.
-        const Expanded(child: AskAiScreen(embedded: true)),
+        Expanded(
+          child: AskAiScreen(
+            embedded: true,
+            // The filming build asks its question on its own.
+            initialQuestion: kEchoDemo
+                ? Platform.environment['ECHO_ASK']
+                : null,
+          ),
+        ),
       ],
     );
   }
 }
 
-class _CapturedPill extends StatelessWidget {
-  final int count;
-  const _CapturedPill({required this.count});
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.colors;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: colors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: colors.dividerColor.withValues(alpha: 0.6)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.inbox_rounded, size: 18, color: colors.primaryGreen),
-          const SizedBox(width: 10),
-          RichText(
-            text: TextSpan(
-              style: GoogleFonts.nunito(fontSize: 13, height: 1.3),
-              children: [
-                TextSpan(
-                  text: '$count\n',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: colors.primaryGreen,
-                  ),
-                ),
-                TextSpan(
-                  text: 'captured today',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: colors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// The bottom "Ask Echo" bar — a faux input that opens the Ask Echo tab.
 class _AskEchoBar extends StatelessWidget {
   final VoidCallback onTap;
   const _AskEchoBar({required this.onTap});
@@ -739,11 +709,17 @@ class _AskEchoBar extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(30),
-            border: Border.all(color: colors.dividerColor.withValues(alpha: 0.6)),
+            border: Border.all(
+              color: colors.dividerColor.withValues(alpha: 0.6),
+            ),
           ),
           child: Row(
             children: [
-              Icon(Icons.auto_awesome_rounded, size: 18, color: colors.primaryGreen),
+              Icon(
+                Icons.auto_awesome_rounded,
+                size: 18,
+                color: colors.primaryGreen,
+              ),
               const SizedBox(width: 12),
               Text(
                 'Ask Echo',
@@ -826,8 +802,10 @@ class _NextBriefingRailCardState extends State<_NextBriefingRailCard> {
           : DateTime(_now.year, _now.month, _now.day + 1, 7);
     }
     instances.sort();
-    return instances.firstWhere((dt) => dt.isAfter(_now),
-        orElse: () => _now.add(const Duration(hours: 24)));
+    return instances.firstWhere(
+      (dt) => dt.isAfter(_now),
+      orElse: () => _now.add(const Duration(hours: 24)),
+    );
   }
 
   String _fmtRemaining(Duration d) {
@@ -848,8 +826,9 @@ class _NextBriefingRailCardState extends State<_NextBriefingRailCard> {
     final colors = context.colors;
     return BlocBuilder<SettingsCubit, SettingsState>(
       builder: (context, state) {
-        final times =
-            state.briefingTimes.isEmpty ? const ['07:00'] : state.briefingTimes;
+        final times = state.briefingTimes.isEmpty
+            ? const ['07:00']
+            : state.briefingTimes;
         final next = _nextBriefing(times);
         final remaining = next.difference(_now);
         return _RailCard(
@@ -983,7 +962,10 @@ class _EngineRailCard extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
                     decoration: BoxDecoration(
                       color: colors.background,
                       borderRadius: BorderRadius.circular(8),
@@ -1008,7 +990,9 @@ class _EngineRailCard extends StatelessWidget {
                     height: 8,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: running ? colors.primaryGreen : colors.textSecondary,
+                      color: running
+                          ? colors.primaryGreen
+                          : colors.textSecondary,
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -1026,7 +1010,10 @@ class _EngineRailCard extends StatelessWidget {
               Text(
                 'Use this computer as Echo\'s brain to run a larger local model. '
                 'Your phone stays the default.',
-                style: GoogleFonts.nunito(fontSize: 12.5, color: colors.textSecondary),
+                style: GoogleFonts.nunito(
+                  fontSize: 12.5,
+                  color: colors.textSecondary,
+                ),
               ),
               const SizedBox(height: 12),
               GestureDetector(
