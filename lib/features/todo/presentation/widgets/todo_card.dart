@@ -63,10 +63,30 @@ Future<void> showTodoSheet(BuildContext context, {bool tomorrow = false}) {
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
     ),
-    builder: (_) => BlocProvider.value(
-      value: cubit,
-      child: _TodoSheet(startAtTomorrow: tomorrow),
-    ),
+    builder: (context) {
+      // Sized to what's on the list, up to most of the screen. The list
+      // drives the sheet: dragged down from its top, the sheet follows the
+      // finger and either closes or springs back.
+      final s = cubit.state;
+      final rows = s.today.length + s.tomorrow.length;
+      final estimate = 64 + rows * 74 + (s.tomorrow.isEmpty ? 0 : 48) + 40;
+      final size = (estimate / MediaQuery.sizeOf(context).height).clamp(
+        0.3,
+        0.86,
+      );
+      return BlocProvider.value(
+        value: cubit,
+        child: DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: size,
+          maxChildSize: size,
+          minChildSize: 0,
+          snap: true,
+          builder: (context, scroll) =>
+              _TodoSheet(startAtTomorrow: tomorrow, scroll: scroll),
+        ),
+      );
+    },
   );
 }
 
@@ -905,7 +925,8 @@ class _LinkRow extends StatelessWidget {
 
 class _TodoSheet extends StatefulWidget {
   final bool startAtTomorrow;
-  const _TodoSheet({required this.startAtTomorrow});
+  final ScrollController scroll;
+  const _TodoSheet({required this.startAtTomorrow, required this.scroll});
 
   @override
   State<_TodoSheet> createState() => _TodoSheetState();
@@ -918,14 +939,21 @@ class _TodoSheetState extends State<_TodoSheet> {
   /// Rows fade and rise in one after another as the sheet arrives. [index]
   /// counts from the first row on screen; null means "not on screen at
   /// first" (today's rows when the sheet opens at Tomorrow), shown without
-  /// waiting.
-  Widget _cascade(int? index, Widget child) => index == null
-      ? child
-      : FadeSlideIn(
-          delay: Duration(milliseconds: 60 + 35 * math.min(index, 8)),
-          offsetY: 16,
-          child: child,
-        );
+  /// waiting. The wrapper depends only on the row's place, never on time, so
+  /// a rebuild (ticking, expanding) keeps each row's state and animations —
+  /// the entrance itself plays once.
+  Widget _cascade(int? index, Widget child) {
+    if (index == null || index > 10) {
+      return RepaintBoundary(child: child);
+    }
+    return RepaintBoundary(
+      child: FadeSlideIn(
+        delay: Duration(milliseconds: 60 + 35 * math.min(index, 8)),
+        offsetY: 16,
+        child: child,
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -962,98 +990,125 @@ class _TodoSheetState extends State<_TodoSheet> {
           }),
         );
         final left = today.length - s.doneToday;
-        return ConstrainedBox(
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.82,
-          ),
-          child: SafeArea(
-            top: false,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Center(
-                  child: Container(
-                    width: 38,
-                    height: 4,
-                    margin: const EdgeInsets.only(top: 10, bottom: 6),
-                    decoration: BoxDecoration(
-                      color: c.dividerColor,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(22, 8, 22, 6),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    textBaseline: TextBaseline.alphabetic,
+        return SafeArea(
+          top: false,
+          child: CustomScrollView(
+            controller: widget.scroll,
+            slivers: [
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: _SheetHeader(
+                  color: c.surface,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Expanded(
-                        child: Text(
-                          'Today',
-                          style: GoogleFonts.oldStandardTt(
-                            fontSize: 26,
-                            fontWeight: FontWeight.w700,
-                            color: c.textPrimary,
+                      Center(
+                        child: Container(
+                          width: 38,
+                          height: 4,
+                          margin: const EdgeInsets.only(top: 10, bottom: 6),
+                          decoration: BoxDecoration(
+                            color: c.dividerColor,
+                            borderRadius: BorderRadius.circular(4),
                           ),
                         ),
                       ),
-                      Text(
-                        today.isEmpty
-                            ? 'Nothing for today'
-                            : (left == 0
-                                  ? 'All done'
-                                  : '$left of ${today.length} left'),
-                        style: GoogleFonts.nunito(
-                          fontSize: 13.5,
-                          color: c.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Flexible(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        for (var i = 0; i < today.length; i++)
-                          _cascade(atTomorrow ? null : i, row(today[i], i)),
-                        if (tomorrow.isNotEmpty) ...[
-                          _cascade(
-                            atTomorrow ? 0 : today.length,
-                            Padding(
-                              key: _tomorrowKey,
-                              padding: const EdgeInsets.fromLTRB(2, 20, 2, 4),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(22, 8, 22, 6),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.baseline,
+                          textBaseline: TextBaseline.alphabetic,
+                          children: [
+                            Expanded(
                               child: Text(
-                                'Tomorrow',
+                                'Today',
                                 style: GoogleFonts.oldStandardTt(
-                                  fontSize: 20,
+                                  fontSize: 26,
                                   fontWeight: FontWeight.w700,
                                   color: c.textPrimary,
                                 ),
                               ),
                             ),
-                          ),
-                          for (var i = 0; i < tomorrow.length; i++)
-                            _cascade(
-                              (atTomorrow ? 1 : today.length + 1) + i,
-                              row(tomorrow[i], i),
+                            Text(
+                              today.isEmpty
+                                  ? 'Nothing for today'
+                                  : (left == 0
+                                        ? 'All done'
+                                        : '$left of ${today.length} left'),
+                              style: GoogleFonts.nunito(
+                                fontSize: 13.5,
+                                color: c.textSecondary,
+                              ),
                             ),
-                        ],
-                      ],
-                    ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
+              ),
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                sliver: SliverToBoxAdapter(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (var i = 0; i < today.length; i++)
+                        _cascade(atTomorrow ? null : i, row(today[i], i)),
+                      if (tomorrow.isNotEmpty) ...[
+                        _cascade(
+                          atTomorrow ? 0 : today.length,
+                          Padding(
+                            key: _tomorrowKey,
+                            padding: const EdgeInsets.fromLTRB(2, 20, 2, 4),
+                            child: Text(
+                              'Tomorrow',
+                              style: GoogleFonts.oldStandardTt(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w700,
+                                color: c.textPrimary,
+                              ),
+                            ),
+                          ),
+                        ),
+                        for (var i = 0; i < tomorrow.length; i++)
+                          _cascade(
+                            (atTomorrow ? 1 : today.length + 1) + i,
+                            row(tomorrow[i], i),
+                          ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
         );
       },
     );
   }
+}
+
+/// The sheet's handle and "Today" line, pinned while the list scrolls.
+class _SheetHeader extends SliverPersistentHeaderDelegate {
+  final Color color;
+  final Widget child;
+  const _SheetHeader({required this.color, required this.child});
+
+  static const _height = 72.0;
+
+  @override
+  double get minExtent => _height;
+  @override
+  double get maxExtent => _height;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlaps) =>
+      ColoredBox(color: color, child: child);
+
+  @override
+  bool shouldRebuild(covariant _SheetHeader old) =>
+      old.color != color || old.child != child;
 }
 
 class _TodoRow extends StatelessWidget {
@@ -1144,9 +1199,10 @@ class _TodoRow extends StatelessWidget {
                           decoration: item.done
                               ? TextDecoration.lineThrough
                               : null,
-                          decorationColor: c.textPrimary.withValues(
-                            alpha: 0.45,
-                          ),
+                          // Full strength and thick: the row is already
+                          // faded, so a light line would barely show.
+                          decorationColor: c.textPrimary,
+                          decorationThickness: 2.4,
                         ),
                       ),
                     ),
@@ -1173,7 +1229,8 @@ class _TodoRow extends StatelessWidget {
                   onPressed: onExpand,
                   icon: AnimatedRotation(
                     turns: expanded ? 0.5 : 0,
-                    duration: const Duration(milliseconds: 200),
+                    duration: _Reveal.duration,
+                    curve: _Reveal.curve,
                     child: Icon(
                       Icons.expand_more_rounded,
                       size: 22,
@@ -1184,45 +1241,93 @@ class _TodoRow extends StatelessWidget {
               ),
             ],
           ),
-          AnimatedSize(
-            duration: const Duration(milliseconds: 220),
-            curve: Curves.easeOutCubic,
-            alignment: Alignment.topCenter,
-            child: expanded
-                ? Container(
-                    margin: const EdgeInsets.only(left: 38, top: 8),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Color.lerp(c.background, c.surface, 0.2),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Text.rich(
-                      TextSpan(
-                        children: [
-                          TextSpan(
-                            text: '${item.sender}: ',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w800,
-                              color: c.textPrimary,
-                            ),
-                          ),
-                          TextSpan(text: '“${item.sourceText}”'),
-                        ],
-                      ),
-                      style: GoogleFonts.nunito(
-                        fontSize: 13,
-                        color: c.textSecondary,
-                        height: 1.4,
+          _Reveal(
+            open: expanded,
+            child: Container(
+              margin: const EdgeInsets.only(left: 38, top: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: Color.lerp(c.background, c.surface, 0.2),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(
+                      text: '${item.sender}: ',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        color: c.textPrimary,
                       ),
                     ),
-                  )
-                : const SizedBox(width: double.infinity),
+                    TextSpan(text: '“${item.sourceText}”'),
+                  ],
+                ),
+                style: GoogleFonts.nunito(
+                  fontSize: 13,
+                  color: c.textSecondary,
+                  height: 1.4,
+                ),
+              ),
+            ),
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Opens and closes [child] by growing and fading it together. The child
+/// stays built while closed, so it never pops in mid-animation.
+class _Reveal extends StatefulWidget {
+  static const duration = Duration(milliseconds: 260);
+  static const curve = Curves.easeOutCubic;
+
+  final bool open;
+  final Widget child;
+  const _Reveal({required this.open, required this.child});
+
+  @override
+  State<_Reveal> createState() => _RevealState();
+}
+
+class _RevealState extends State<_Reveal> with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: _Reveal.duration,
+    value: widget.open ? 1 : 0,
+  );
+  late final Animation<double> _size = CurvedAnimation(
+    parent: _c,
+    curve: _Reveal.curve,
+    reverseCurve: Curves.easeInCubic,
+  );
+  late final Animation<double> _fade = CurvedAnimation(
+    parent: _c,
+    curve: const Interval(0.25, 1, curve: Curves.easeOut),
+    reverseCurve: const Interval(0.4, 1, curve: Curves.easeIn),
+  );
+
+  @override
+  void didUpdateWidget(covariant _Reveal oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.open != oldWidget.open) {
+      widget.open ? _c.forward() : _c.reverse();
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizeTransition(
+      sizeFactor: _size,
+      alignment: Alignment.topCenter,
+      child: FadeTransition(opacity: _fade, child: widget.child),
     );
   }
 }
