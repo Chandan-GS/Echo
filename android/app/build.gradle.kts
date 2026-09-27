@@ -38,8 +38,14 @@ android {
         jvmTarget = "17"
     }
 
+    // ECHO_DEMO=1 (with --dart-define=ECHO_DEMO=true) builds "Echo Demo" for
+    // filming: its own app id, so it installs beside the real app without
+    // touching its data.
+    val demo = System.getenv("ECHO_DEMO") == "1"
+
     defaultConfig {
-        applicationId = "com.chandangs.echo"
+        applicationId = if (demo) "com.chandangs.echo.demo" else "com.chandangs.echo"
+        manifestPlaceholders["appLabel"] = if (demo) "Echo Demo" else "Echo"
         minSdk = 26
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

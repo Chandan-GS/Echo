@@ -15,6 +15,7 @@ import 'package:project_echo/core/services/gemini_service.dart';
 import 'package:project_echo/core/services/desktop_engine_client.dart';
 import 'package:project_echo/core/services/offline_model_repository.dart';
 import 'package:project_echo/features/vault/data/app_access.dart';
+import 'package:project_echo/demo/demo_mode.dart';
 
 part 'ask_ai_state.dart';
 
@@ -23,6 +24,34 @@ class AskAiCubit extends Cubit<AskAiState> {
   int? _activeRequestId;
 
   AskAiCubit() : super(AskAiInitial());
+
+  /// The filming build: a scripted answer, found and streamed in the same
+  /// rhythm as a real one.
+  Future<void> _demoAnswer(String question) async {
+    final (answer, sources) = await DemoAsk.answer(question);
+    await Future<void>.delayed(const Duration(milliseconds: 900));
+    if (isClosed) return;
+    _messages.add(
+      ChatMessage(
+        sender: 'echo',
+        text: '',
+        isGenerating: true,
+        ragSources: sources,
+      ),
+    );
+    final index = _messages.length - 1;
+    emit(AskAiMessageReceived(messages: List.from(_messages)));
+    var shown = '';
+    for (final word in answer.split(' ')) {
+      await Future<void>.delayed(const Duration(milliseconds: 45));
+      if (isClosed) return;
+      shown = shown.isEmpty ? word : '$shown $word';
+      _messages[index] = _messages[index].copyWith(text: shown);
+      emit(AskAiMessageReceived(messages: List.from(_messages)));
+    }
+    _messages[index] = _messages[index].copyWith(isGenerating: false);
+    emit(AskAiMessageReceived(messages: List.from(_messages)));
+  }
 
   Future<void> sendMessage(String text) async {
     if (text.trim().isEmpty) return;
@@ -35,6 +64,8 @@ class AskAiCubit extends Cubit<AskAiState> {
     emit(
       AskAiMessageReceived(messages: List.from(_messages), isSearching: true),
     );
+
+    if (kEchoDemo) return _demoAnswer(text);
 
     // Index of the echo placeholder for THIS request. Captured once so that
     // streaming callbacks always write to their own message even if the list

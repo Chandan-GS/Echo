@@ -14,6 +14,7 @@ import 'package:project_echo/features/echo/presentation/screens/echo_home_screen
 import 'package:project_echo/features/echo/presentation/screens/desktop_home_screen.dart';
 import 'package:project_echo/features/vault/presentation/screens/vault_screen.dart';
 import 'package:project_echo/features/settings/presentation/screens/settings_screen.dart';
+import 'package:project_echo/demo/demo_mode.dart';
 
 class MainScaffold extends StatefulWidget {
   final Widget child;
@@ -31,7 +32,9 @@ class _MainScaffoldState extends State<MainScaffold> {
   // showing. Deliberately not route-driven (unlike _selectedIndex): Ask Echo
   // has no route of its own here, so route-based auto-sync would never
   // select it and would stomp it back off on the next rebuild.
-  bool _desktopAskEchoActive = false;
+  // The filming build can open on Ask Echo (ECHO_ASK="a question").
+  bool _desktopAskEchoActive =
+      kEchoDemo && Platform.environment['ECHO_ASK'] != null;
 
   // Phone only — the nav dock is the Ask Echo bar.
   bool _asking = false;

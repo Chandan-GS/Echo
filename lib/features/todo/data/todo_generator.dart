@@ -11,6 +11,7 @@ import 'package:project_echo/features/todo/data/todo_planner.dart';
 import 'package:project_echo/features/todo/data/todo_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:project_echo/features/vault/data/app_access.dart';
+import 'package:project_echo/demo/demo_mode.dart';
 
 /// Makes and updates the to-do list. Only on request — a briefing never does
 /// this by itself.
@@ -50,6 +51,11 @@ class TodoGenerator {
   }
 
   Future<void> make(DateTime now) async {
+    if (kEchoDemo) {
+      // The filming build writes its scripted list, after a believable pause.
+      await Future<void>.delayed(const Duration(milliseconds: 2600));
+      return DemoSeed.writeTodoList();
+    }
     final (items, meta) = await store.load();
     final picked = await candidates(now);
 
@@ -83,6 +89,7 @@ class TodoGenerator {
 
   /// Returns how many items were added or changed.
   Future<int> update(DateTime now) async {
+    if (kEchoDemo) return 0;
     final (items, meta) = await store.load();
     final fresh = await candidates(now, since: meta.updatedAt ?? meta.madeAt);
     if (fresh.isEmpty) {

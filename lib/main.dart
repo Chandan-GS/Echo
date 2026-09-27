@@ -18,14 +18,19 @@ import 'package:project_echo/core/services/analytics_service.dart';
 import 'package:project_echo/core/services/remote_config_service.dart';
 import 'package:aptabase_flutter/aptabase_flutter.dart';
 import 'dart:async';
+import 'package:project_echo/demo/demo_mode.dart';
 
 void main() async {
   GoogleFonts.config.allowRuntimeFetching = false;
   WidgetsFlutterBinding.ensureInitialized();
 
+  // The filming build starts on its scripted day every launch.
+  await DemoSeed.seed();
+
   // Anonymous, opt-out usage analytics — no account, no PII, no user content.
   // Only counts how often features are used (see Analytics / analytics_service).
-  await Aptabase.init('A-US-1016715353');
+  // Never from the demo build.
+  if (!kEchoDemo) await Aptabase.init('A-US-1016715353');
   await Analytics.load();
 
   // Fetch the remote Gemini model name in the background — never blocks launch;
@@ -69,11 +74,15 @@ void main() async {
   // handled in-feature: the briefing and Ask Echo prompt the user to download
   // it or switch to the cloud engine.
 
-  await NotificationService.instance.initialize();
+  // The demo neither listens to the device's notifications nor schedules
+  // briefings: its day is scripted.
+  if (!kEchoDemo) {
+    await NotificationService.instance.initialize();
 
-  await ScheduleService.initialize();
-  final briefingTimes = prefs.getStringList('briefing_times') ?? ['07:00'];
-  await ScheduleService.updateSchedules(briefingTimes);
+    await ScheduleService.initialize();
+    final briefingTimes = prefs.getStringList('briefing_times') ?? ['07:00'];
+    await ScheduleService.updateSchedules(briefingTimes);
+  }
 
   // Desktop-only, off by default: resume the Echo Engine service on launch if
   // the user previously turned it on for this machine. Starts regardless of
@@ -87,7 +96,35 @@ void main() async {
     }
   }
 
-  runApp(Echo(isOnboardingFinished: isOnboardingFinished));
+  final app = Echo(isOnboardingFinished: isOnboardingFinished);
+  // Filming on a computer: a moment of plain ground first, so the window is
+  // up before Echo draws, and its entrance can be recorded from the start.
+  final curtain = kEchoDemo && (Platform.isMacOS || Platform.isWindows);
+  runApp(curtain ? _Curtain(child: app) : app);
+}
+
+class _Curtain extends StatefulWidget {
+  final Widget child;
+  const _Curtain({required this.child});
+
+  @override
+  State<_Curtain> createState() => _CurtainState();
+}
+
+class _CurtainState extends State<_Curtain> {
+  bool _up = true;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(const Duration(milliseconds: 2200), () {
+      if (mounted) setState(() => _up = false);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      _up ? const ColoredBox(color: Color(0xFF1A1A1A)) : widget.child;
 }
 
 class Echo extends StatelessWidget {

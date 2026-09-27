@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter/widgets.dart';
+import 'package:project_echo/demo/demo_mode.dart';
 import 'package:go_router/go_router.dart';
 import 'package:project_echo/features/echo/presentation/screens/ask_ai_screen.dart';
 import 'package:project_echo/features/onboarding/presentation/screens/start_screen.dart';
@@ -7,7 +10,10 @@ import 'package:project_echo/core/presentation/animations/page_transitions.dart'
 import 'package:project_echo/features/settings/presentation/screens/scan_desktop_screen.dart';
 
 GoRouter createRouter(bool isOnboardingFinished) => GoRouter(
-  initialLocation: isOnboardingFinished ? '/echo' : '/',
+  // The filming build can open on a given tab (ECHO_START=/vault).
+  initialLocation: kEchoDemo && Platform.environment['ECHO_START'] != null
+      ? Platform.environment['ECHO_START']!
+      : (isOnboardingFinished ? '/echo' : '/'),
   routes: [
     GoRoute(
       path: '/',
