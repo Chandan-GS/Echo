@@ -22,7 +22,7 @@
         tools:node="remove" />
 
     <application
-        android:label="Echo"
+        android:label="${appLabel}"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="true"

@@ -4,6 +4,7 @@ import 'package:echo_native/echo_native.dart';
 import 'package:flutter/foundation.dart';
 import 'package:isar/isar.dart';
 import 'package:project_echo/core/services/app_icon_service.dart';
+import 'package:project_echo/features/vault/data/daily_stats.dart';
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
 import 'package:project_echo/features/echo/data/datasources/tflite_embedding_service.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
@@ -114,6 +115,9 @@ class NotificationIngest {
       });
 
       debugPrint('Saved notification from $source to Isar.');
+      // The Vault's week keeps only these numbers, past the Vault's own
+      // 24-hour life of a notification.
+      await DailyStats.count(source, rawData.timestamp);
       // Note: old-notification cleanup runs on launch and on app resume, not
       // per-write — running a full-collection delete after every single save
       // was O(n) per notification and raced with concurrent buffer drains.

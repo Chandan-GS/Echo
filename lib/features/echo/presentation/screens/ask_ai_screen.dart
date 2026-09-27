@@ -15,6 +15,7 @@ import 'package:project_echo/features/echo/presentation/widgets/siri_waveform_vi
 import 'package:project_echo/features/echo/presentation/widgets/echo_mascot.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:project_echo/features/vault/presentation/widgets/source_icon.dart';
+import 'package:project_echo/demo/demo_mode.dart';
 
 class AskAiScreen extends StatelessWidget {
   /// True when rendered as a persistent desktop sidebar tab (inside
@@ -81,7 +82,8 @@ class _AskAiViewState extends State<_AskAiView> {
     _loadUserName();
     final question = widget.initialQuestion?.trim();
     if (question != null && question.isNotEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      // A beat's pause in the filming build, so the empty chat is seen first.
+      Future<void>.delayed(Duration(milliseconds: kEchoDemo ? 1200 : 0), () {
         if (mounted) context.read<AskAiCubit>().sendMessage(question);
       });
     }

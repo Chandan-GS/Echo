@@ -8,14 +8,12 @@ import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/services/widget_refresh_service.dart';
 import 'package:project_echo/core/services/phone_sync_service.dart';
 import 'package:project_echo/features/echo/presentation/screens/daily_briefing_screen.dart';
-import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
-import 'package:project_echo/features/echo/data/models/raw_data.dart';
-import 'package:project_echo/features/echo/presentation/widgets/timer/next_briefing_timer.dart';
 import 'package:project_echo/features/todo/presentation/cubit/todo_cubit.dart';
 import 'package:project_echo/features/todo/presentation/widgets/todo_card.dart';
+import 'package:project_echo/features/echo/presentation/widgets/home_glance.dart';
+import 'package:project_echo/features/echo/presentation/widgets/home_masthead.dart';
 import 'package:project_echo/features/echo/presentation/widgets/generating_view.dart';
 import 'package:project_echo/core/presentation/animations/page_transitions.dart';
-import 'package:project_echo/features/echo/presentation/widgets/echo_mascot.dart';
 import 'package:project_echo/core/presentation/animations/app_motion.dart';
 import 'package:project_echo/core/presentation/animations/fade_slide_in.dart';
 
@@ -285,9 +283,9 @@ class _HomeShellState extends State<_HomeShell> {
         physics: const BouncingScrollPhysics(),
         // Clears the nav dock (MainScaffold sets the bottom padding).
         padding: EdgeInsets.fromLTRB(
-          24,
+          0,
           12,
-          24,
+          0,
           MediaQuery.paddingOf(context).bottom + 16,
         ),
         child: Column(
@@ -295,78 +293,47 @@ class _HomeShellState extends State<_HomeShell> {
           children: [
             const SizedBox(height: 8),
 
-            // ── Hero: Echo, a calm luminous presence ──────────────────────
-            const FadeSlideIn(child: Center(child: _HeroEcho())),
-            const SizedBox(height: 16),
+            // ── Sections to swipe through (full width, so they don't clip
+            // at the page margins mid-swipe) ────────────────────────────────
             FadeSlideIn(
-              delay: AppMotion.staggerDelay(1),
-              child: Text(
-                '$greeting,\n$name',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.oldStandardTt(
-                  fontSize: 34,
-                  fontWeight: FontWeight.w700,
-                  color: context.colors.textPrimary,
-                  height: 1.12,
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            FadeSlideIn(
-              delay: AppMotion.staggerDelay(1),
-              child: Text(
-                widget.subtitle,
-                textAlign: TextAlign.center,
-                style: GoogleFonts.nunito(
-                  fontSize: 15,
-                  color: context.colors.textSecondary,
+              child: HomeGlance(
+                masthead: HomeMasthead(
+                  greeting: greeting,
+                  name: name,
+                  fallback: widget.subtitle,
                 ),
               ),
             ),
 
-            const SizedBox(height: 30),
+            const SizedBox(height: 20),
 
-            // ── Primary action ────────────────────────────────────────────
-            FadeSlideIn(
-              delay: AppMotion.staggerDelay(2),
-              child: widget.primary,
-            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // ── Primary action ──────────────────────────────────────
+                  FadeSlideIn(
+                    delay: AppMotion.staggerDelay(2),
+                    child: widget.primary,
+                  ),
 
-            // ── Secondary action, right under the primary one ─────────────
-            if (widget.secondary != null) ...[
-              const SizedBox(height: 12),
-              FadeSlideIn(
-                delay: AppMotion.staggerDelay(3),
-                child: widget.secondary!,
-              ),
-            ],
+                  // ── Secondary action, right under the primary one ───────
+                  if (widget.secondary != null) ...[
+                    const SizedBox(height: 12),
+                    FadeSlideIn(
+                      delay: AppMotion.staggerDelay(3),
+                      child: widget.secondary!,
+                    ),
+                  ],
 
-            // ── Today's to-dos ────────────────────────────────────────────
-            const SizedBox(height: 16),
-            FadeSlideIn(
-              delay: AppMotion.staggerDelay(4),
-              child: TodoCard(hasBriefing: widget.hasBriefing),
-            ),
-
-            const SizedBox(height: 26),
-
-            // ── Next briefing countdown (self-labelled dial) ──────────────
-            FadeSlideIn(
-              delay: AppMotion.staggerDelay(5),
-              child: const NextBriefingTimer(),
-            ),
-
-            const SizedBox(height: 18),
-
-            // ── Ambient stat ──────────────────────────────────────────────
-            FadeSlideIn(
-              delay: AppMotion.staggerDelay(6),
-              child: FutureBuilder<List<RawData>>(
-                future: IsarDataSource.getAllEntries(),
-                builder: (context, snapshot) {
-                  final count = snapshot.data?.length ?? 0;
-                  return _SignalCard(signalCount: count);
-                },
+                  // ── Today's to-dos ──────────────────────────────────────
+                  const SizedBox(height: 16),
+                  FadeSlideIn(
+                    delay: AppMotion.staggerDelay(4),
+                    child: TodoCard(hasBriefing: widget.hasBriefing),
+                  ),
+                ],
               ),
             ),
           ],
@@ -376,83 +343,6 @@ class _HomeShellState extends State<_HomeShell> {
   }
 }
 
-/// The home hero: Echo, large and without rings. It focuses while a to-do list
-/// is being written, and gives a happy hop when one lands.
-class _HeroEcho extends StatefulWidget {
-  const _HeroEcho();
-
-  @override
-  State<_HeroEcho> createState() => _HeroEchoState();
-}
-
-class _HeroEchoState extends State<_HeroEcho>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _hop = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 700),
-  );
-  late final Animation<double> _lift = TweenSequence<double>([
-    TweenSequenceItem(
-      tween: Tween(
-        begin: 0.0,
-        end: -14.0,
-      ).chain(CurveTween(curve: Curves.easeOut)),
-      weight: 30,
-    ),
-    TweenSequenceItem(
-      tween: Tween(
-        begin: -14.0,
-        end: 0.0,
-      ).chain(CurveTween(curve: Curves.easeIn)),
-      weight: 30,
-    ),
-    TweenSequenceItem(tween: ConstantTween(0.0), weight: 40),
-  ]).animate(_hop);
-  bool _celebrating = false;
-
-  @override
-  void dispose() {
-    _hop.dispose();
-    super.dispose();
-  }
-
-  void _onArrival() {
-    _hop.forward(from: 0);
-    setState(() => _celebrating = true);
-    Future.delayed(const Duration(milliseconds: 1900), () {
-      if (mounted) setState(() => _celebrating = false);
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return BlocConsumer<TodoCubit, TodoState>(
-      listenWhen: (a, b) =>
-          a.arrival != b.arrival ||
-          (a.phase == TodoPhase.updating && b.phase == TodoPhase.idle),
-      listener: (_, _) => _onArrival(),
-      buildWhen: (a, b) => a.phase != b.phase,
-      builder: (context, todo) {
-        final mood = todo.phase != TodoPhase.idle
-            ? EchoState.focused
-            : _celebrating
-            ? EchoState.happy
-            : EchoState.idle;
-        return AnimatedBuilder(
-          animation: _lift,
-          builder: (context, child) =>
-              Transform.translate(offset: Offset(0, _lift.value), child: child),
-          child: EchoMascot(state: mood, size: 180, showRings: false),
-        );
-      },
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Massive Action Card
-// ---------------------------------------------------------------------------
-/// Regenerate, as a slim row under Play: when today's briefing was made.
 class _RegenerateRow extends StatefulWidget {
   final VoidCallback onTap;
   const _RegenerateRow({required this.onTap});
@@ -644,65 +534,6 @@ class _ActionCardState extends State<_ActionCard>
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Summary Card (Signals Captured)
-// ---------------------------------------------------------------------------
-class _SignalCard extends StatelessWidget {
-  final int signalCount;
-  const _SignalCard({required this.signalCount});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: context.colors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: context.colors.dividerColor.withValues(alpha: 0.5),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 8,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Icon(
-            Icons.inbox_outlined,
-            color: context.colors.primaryGreen,
-            size: 20,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: RichText(
-              text: TextSpan(
-                style: GoogleFonts.nunito(
-                  fontSize: 15,
-                  color: context.colors.textSecondary,
-                ),
-                children: [
-                  TextSpan(
-                    text: '$signalCount notifications ',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w800,
-                      color: context.colors.primaryGreen,
-                    ),
-                  ),
-                  const TextSpan(text: 'captured today'),
-                ],
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
