@@ -13,6 +13,9 @@ import 'package:project_echo/features/echo/presentation/widgets/echo_mascot.dart
 import 'package:project_echo/features/vault/presentation/screens/desktop_vault_screen.dart';
 import 'package:project_echo/features/vault/presentation/screens/app_access_screen.dart';
 import 'package:project_echo/core/presentation/animations/page_transitions.dart';
+import 'package:project_echo/features/echo/data/models/raw_data.dart';
+import 'package:project_echo/features/vault/presentation/widgets/week_card.dart';
+import 'package:project_echo/features/vault/presentation/widgets/vault_day_heading.dart';
 
 class VaultScreen extends StatelessWidget {
   const VaultScreen({super.key});
@@ -196,30 +199,24 @@ class _VaultViewState extends State<_VaultView> {
                         );
                       }
 
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Custom sliding tab bar
-                          _buildTabBar(),
-                          const SizedBox(height: 24),
-
-                          // Content View
-                          Expanded(
-                            child: AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 200),
-                              transitionBuilder:
-                                  (Widget child, Animation<double> animation) {
-                                    return FadeTransition(
-                                      opacity: animation,
-                                      child: child,
-                                    );
-                                  },
-                              child: _selectedTabIndex == 0
-                                  ? _buildAllView(state)
-                                  : _buildCategoriesView(state, context),
-                            ),
-                          ),
-                        ],
+                      return _SnappingVault(
+                        // Categories gets the whole screen for the wheel.
+                        collapsed: _selectedTabIndex == 1,
+                        header: const WeekCard(),
+                        tabs: _buildTabBar(),
+                        body: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 200),
+                          transitionBuilder:
+                              (Widget child, Animation<double> animation) {
+                                return FadeTransition(
+                                  opacity: animation,
+                                  child: child,
+                                );
+                              },
+                          child: _selectedTabIndex == 0
+                              ? _buildAllView(state)
+                              : _buildCategoriesView(state, context),
+                        ),
                       );
                     }
 
@@ -270,36 +267,46 @@ class _VaultViewState extends State<_VaultView> {
     );
   }
 
+  /// Newest first, under a heading per day with that day's count.
   Widget _buildAllView(VaultLoaded state) {
-    return Column(
+    final items = state.displayedItems;
+    final rows = <Object>[]; // a DateTime starts a day, then its notifications
+    final perDay = <DateTime, int>{};
+    for (final item in items) {
+      final t = item.timestamp;
+      final day = DateTime(t.year, t.month, t.day);
+      if (rows.isEmpty || !perDay.containsKey(day)) rows.add(day);
+      perDay[day] = (perDay[day] ?? 0) + 1;
+      rows.add(item);
+    }
+    var cards = 0;
+    return ListView.builder(
       key: const ValueKey('all_view'),
-      children: [
-        Expanded(
-          child: ListView.builder(
-            physics: const BouncingScrollPhysics(),
-            padding: EdgeInsets.fromLTRB(
-              0,
-              8,
-              0,
-              MediaQuery.paddingOf(context).bottom + 8,
-            ),
-            itemCount: state.displayedItems.length,
-            itemBuilder: (context, index) {
-              // Cascade the first screenful on load; items scrolled into view
-              // later just fade up immediately (no stale long delay).
-              return FadeSlideIn(
-                delay: index < 8
-                    ? AppMotion.staggerDelay(index)
-                    : Duration.zero,
-                offsetY: 12,
-                child: NotificationCardWidget(
-                  notification: state.displayedItems[index],
-                ),
-              );
-            },
-          ),
-        ),
-      ],
+      padding: EdgeInsets.fromLTRB(
+        0,
+        0,
+        0,
+        MediaQuery.paddingOf(context).bottom + 8,
+      ),
+      itemCount: rows.length,
+      itemBuilder: (context, index) {
+        final row = rows[index];
+        if (row is DateTime) {
+          return VaultDayHeading(
+            day: row,
+            count: perDay[row]!,
+            first: index == 0,
+          );
+        }
+        // Cascade the first screenful on load; items scrolled into view
+        // later just fade up immediately (no stale long delay).
+        final n = cards++;
+        return FadeSlideIn(
+          delay: n < 8 ? AppMotion.staggerDelay(n) : Duration.zero,
+          offsetY: 12,
+          child: NotificationCardWidget(notification: row as RawData),
+        );
+      },
     );
   }
 
@@ -310,7 +317,7 @@ class _VaultViewState extends State<_VaultView> {
       child: Column(
         children: [
           Expanded(
-            child: Container(
+            child: SizedBox(
               width: double.infinity,
               child: CategoryPieChart(
                 categoryCounts: state.categoryCounts,
@@ -494,4 +501,137 @@ class _VaultViewState extends State<_VaultView> {
       },
     );
   }
+}
+
+/// The week card over the tabs and what they show. The scroll never rests
+/// in between: released part-way, it settles on whichever is nearer — the
+/// full card, or the tabs pinned at the top with the list below.
+class _SnappingVault extends StatefulWidget {
+  final Widget header;
+  final Widget tabs;
+  final Widget body;
+
+  /// Slides the card away (and back, if that's what hid it).
+  final bool collapsed;
+
+  const _SnappingVault({
+    required this.header,
+    required this.tabs,
+    required this.body,
+    this.collapsed = false,
+  });
+
+  @override
+  State<_SnappingVault> createState() => _SnappingVaultState();
+}
+
+class _SnappingVaultState extends State<_SnappingVault> {
+  final _outer = ScrollController();
+  bool _snapping = false;
+
+  /// Whether [collapsed] hid the card, so turning it off brings it back
+  /// rather than undoing a scroll the user made.
+  bool _hidByTab = false;
+
+  @override
+  void didUpdateWidget(covariant _SnappingVault oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.collapsed == oldWidget.collapsed || !_outer.hasClients) return;
+    final max = _outer.position.maxScrollExtent;
+    if (widget.collapsed) {
+      _hidByTab = _outer.offset < max;
+      if (_hidByTab) _slideTo(max);
+    } else if (_hidByTab) {
+      _hidByTab = false;
+      _slideTo(0);
+    }
+  }
+
+  Future<void> _slideTo(double offset) async {
+    _snapping = true;
+    await _outer.animateTo(
+      offset,
+      duration: const Duration(milliseconds: 380),
+      curve: Curves.easeInOutCubic,
+    );
+    _snapping = false;
+  }
+
+  @override
+  void dispose() {
+    _outer.dispose();
+    super.dispose();
+  }
+
+  bool _onEnd(ScrollEndNotification _) {
+    if (_snapping || !_outer.hasClients) return false;
+    final p = _outer.position;
+    if (p.pixels <= 0 || p.pixels >= p.maxScrollExtent) return false;
+    final target = p.pixels < p.maxScrollExtent / 2 ? 0.0 : p.maxScrollExtent;
+    _snapping = true;
+    // After this frame: the scroll that just ended has fully let go.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!_outer.hasClients) return;
+      await _outer.animateTo(
+        target,
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOutCubic,
+      );
+      _snapping = false;
+    });
+    return false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return NotificationListener<ScrollEndNotification>(
+      onNotification: _onEnd,
+      child: NestedScrollView(
+        controller: _outer,
+        headerSliverBuilder: (context, _) => [
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 18),
+              child: widget.header,
+            ),
+          ),
+          SliverPersistentHeader(
+            pinned: true,
+            delegate: _TabsHeader(
+              color: context.colors.background,
+              child: widget.tabs,
+            ),
+          ),
+        ],
+        body: widget.body,
+      ),
+    );
+  }
+}
+
+class _TabsHeader extends SliverPersistentHeaderDelegate {
+  final Color color;
+  final Widget child;
+  const _TabsHeader({required this.color, required this.child});
+
+  static const _height = 68.0 + 18;
+
+  @override
+  double get minExtent => _height;
+  @override
+  double get maxExtent => _height;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlaps) =>
+      ColoredBox(
+        color: color,
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 18),
+          child: child,
+        ),
+      );
+
+  @override
+  bool shouldRebuild(covariant _TabsHeader old) =>
+      old.color != color || old.child != child;
 }

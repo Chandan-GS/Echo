@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
@@ -55,7 +56,8 @@ class _CategoryPieChartState extends State<CategoryPieChart>
     reverseCurve: Curves.easeInCubic,
   );
   int? _hoveredIndex;
-  List<_PieSlice> _slices = [];
+  bool _scrubbing = false;
+  final List<_PieSlice> _slices = [];
 
   // Used to interpolate hover states smoothly
   final Map<int, double> _hoverValues = {};
@@ -158,7 +160,9 @@ class _CategoryPieChartState extends State<CategoryPieChart>
       final s = _slices[i];
       // Normalize start angle
       double sStart = s.startAngle;
-      while (sStart < 0) sStart += 2 * math.pi;
+      while (sStart < 0) {
+        sStart += 2 * math.pi;
+      }
       sStart = sStart % (2 * math.pi);
 
       double sEnd = (sStart + s.sweepAngle) % (2 * math.pi);
@@ -238,105 +242,129 @@ class _CategoryPieChartState extends State<CategoryPieChart>
       builder: (context, constraints) {
         final size = math.min(constraints.maxWidth, constraints.maxHeight) - 80;
 
-        return GestureDetector(
-          onPanDown: (details) {
-            _iconsController.forward();
-            _updateHover(
-              details.localPosition,
-              Size(constraints.maxWidth, constraints.maxHeight),
-            );
+        final box = Size(constraints.maxWidth, constraints.maxHeight);
+        // A touch that starts on the ring is the ring's (so the Vault around
+        // it doesn't scroll away mid-scrub); one that starts elsewhere still
+        // scrolls the page.
+        bool onRing(Offset local) {
+          final d = (local - box.center(Offset.zero)).distance;
+          return d >= 20 && d <= box.width / 2 + 40;
+        }
+
+        return RawGestureDetector(
+          gestures: {
+            _RingGrab: GestureRecognizerFactoryWithHandlers<_RingGrab>(
+              () => _RingGrab(),
+              (r) => r.accepts = (global) {
+                final ro = context.findRenderObject();
+                return ro is RenderBox && onRing(ro.globalToLocal(global));
+              },
+            ),
           },
-          onPanUpdate: (details) => _updateHover(
-            details.localPosition,
-            Size(constraints.maxWidth, constraints.maxHeight),
-          ),
-          onPanEnd: (details) => _handlePanEnd(),
-          onPanCancel: () {
-            _iconsController.reverse();
-            _hoveredIndex = null;
-            _startAnimation();
-          },
-          child: Container(
-            color: Colors.transparent, // Capture gestures
-            width: double.infinity,
-            height: double.infinity,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                SizedBox(
-                  width: size,
-                  height: size,
-                  child: RepaintBoundary(
-                    child: CustomPaint(
-                      painter: _PieChartPainter(
-                        slices: _slices,
-                        hoverValues: _hoverValues,
-                        surfaceColor: context.colors.surface,
+          child: Listener(
+            onPointerDown: (e) {
+              if (!onRing(e.localPosition)) return;
+              _scrubbing = true;
+              _iconsController.forward();
+              _updateHover(e.localPosition, box);
+            },
+            onPointerMove: (e) {
+              if (_scrubbing) _updateHover(e.localPosition, box);
+            },
+            onPointerUp: (_) {
+              if (!_scrubbing) return;
+              _scrubbing = false;
+              _handlePanEnd();
+            },
+            onPointerCancel: (_) {
+              if (!_scrubbing) return;
+              _scrubbing = false;
+              _iconsController.reverse();
+              _hoveredIndex = null;
+              _startAnimation();
+            },
+            child: Container(
+              color: Colors.transparent, // Capture gestures
+              width: double.infinity,
+              height: double.infinity,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  SizedBox(
+                    width: size,
+                    height: size,
+                    child: RepaintBoundary(
+                      child: CustomPaint(
+                        painter: _PieChartPainter(
+                          slices: _slices,
+                          hoverValues: _hoverValues,
+                          surfaceColor: context.colors.surface,
+                        ),
                       ),
                     ),
                   ),
-                ),
-                IgnorePointer(child: _sliceIcons(size)),
-                // Center text for hovered item
-                if (_hoveredIndex != null &&
-                    _hoveredIndex! >= 0 &&
-                    _hoveredIndex! < _slices.length)
-                  IgnorePointer(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          _slices[_hoveredIndex!].category,
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.nunito(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: context.colors.textPrimary,
+                  IgnorePointer(child: _sliceIcons(size)),
+                  // Center text for hovered item
+                  if (_hoveredIndex != null &&
+                      _hoveredIndex! >= 0 &&
+                      _hoveredIndex! < _slices.length)
+                    IgnorePointer(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _slices[_hoveredIndex!].category,
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.nunito(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: context.colors.textPrimary,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${_slices[_hoveredIndex!].count} signals',
-                          style: GoogleFonts.nunito(
-                            fontSize: 14,
+                          const SizedBox(height: 4),
+                          Text(
+                            '${_slices[_hoveredIndex!].count} signals',
+                            style: GoogleFonts.nunito(
+                              fontSize: 14,
+                              color: context.colors.textSecondary,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Release to open',
+                            style: GoogleFonts.nunito(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: context.colors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    IgnorePointer(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.touch_app_rounded,
                             color: context.colors.textSecondary,
+                            size: 32,
                           ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Release to open',
-                          style: GoogleFonts.nunito(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: context.colors.textSecondary,
+                          const SizedBox(height: 8),
+                          Text(
+                            'Scrub to explore',
+                            style: GoogleFonts.nunito(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: context.colors.textSecondary,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  )
-                else
-                  IgnorePointer(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.touch_app_rounded,
-                          color: context.colors.textSecondary,
-                          size: 32,
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Scrub to explore',
-                          style: GoogleFonts.nunito(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: context.colors.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         );
@@ -495,4 +523,30 @@ class _PieChartPainter extends CustomPainter {
   bool shouldRepaint(covariant _PieChartPainter oldDelegate) {
     return true;
   }
+}
+
+/// Wins the gesture arena at once for a touch that starts on the ring, so a
+/// scroll view around the chart never takes it; other touches are ignored.
+class _RingGrab extends OneSequenceGestureRecognizer {
+  bool Function(Offset global) accepts = (_) => false;
+
+  @override
+  void addAllowedPointer(PointerDownEvent event) {
+    if (!accepts(event.position)) return;
+    super.addAllowedPointer(event);
+    resolve(GestureDisposition.accepted);
+  }
+
+  @override
+  void handleEvent(PointerEvent event) {
+    if (event is PointerUpEvent || event is PointerCancelEvent) {
+      stopTrackingPointer(event.pointer);
+    }
+  }
+
+  @override
+  void didStopTrackingLastPointer(int pointer) {}
+
+  @override
+  String get debugDescription => 'ring grab';
 }
