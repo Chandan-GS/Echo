@@ -8,12 +8,10 @@ final class OnBoardingInitial extends OnBoardingState {}
 final class PermissionsStep extends OnBoardingState {
   final bool notificationGranted;
   final bool calendarGranted;
-  final bool smsGranted;
 
   PermissionsStep({
     required this.notificationGranted,
     required this.calendarGranted,
-    required this.smsGranted,
   });
 
   bool get canContinue => notificationGranted && calendarGranted;
