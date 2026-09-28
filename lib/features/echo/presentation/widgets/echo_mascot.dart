@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:project_echo/features/echo/presentation/widgets/echo_dizzy.dart';
 
 /// The moods Echo — the "sound sprite" mascot — can express. Each maps to a
 /// real app moment: [idle] resting on the home screen, [listening] while
@@ -55,6 +56,10 @@ class EchoMascot extends StatefulWidget {
   /// and down reads less than side to side, so a small Echo needs more.
   final double? gazeReachY;
 
+  /// Where he looks (-1..1 each way), overriding his own glances, for
+  /// scripted moments such as the welcome screen.
+  final Offset? lookAt;
+
   const EchoMascot({
     super.key,
     this.state = EchoState.idle,
@@ -67,6 +72,7 @@ class EchoMascot extends StatefulWidget {
     this.glow = true,
     this.gazeReach = 1,
     this.gazeReachY,
+    this.lookAt,
   });
 
   @override
@@ -159,6 +165,13 @@ class _EchoMascotState extends State<EchoMascot>
         break; // listening / thinking / speaking / sleeping keep centred
     }
 
+    final lookAt = widget.lookAt;
+    if (lookAt != null) target = lookAt;
+
+    // While dizzy, his eyes stop following anything.
+    final dizzy = EchoDizzy.instance.level(DateTime.now());
+    target = target * (1 - (dizzy * 2.2).clamp(0.0, 1.0));
+
     final pgx = _gx, pgy = _gy;
     final eye = math.min(1.0, dt * 16), head = math.min(1.0, dt * 4.5);
     _gx += (target.dx - _gx) * eye;
@@ -200,6 +213,8 @@ class _EchoMascotState extends State<EchoMascot>
         animation: _c,
         builder: (context, _) {
           _stepGaze();
+          final now = DateTime.now();
+          final recovery = EchoDizzy.instance.recovery(now);
           return CustomPaint(
             painter: _EchoPainter(
               _c.value,
@@ -215,6 +230,9 @@ class _EchoMascotState extends State<EchoMascot>
               glow: widget.glow,
               reach: widget.gazeReach,
               reachY: widget.gazeReachY ?? widget.gazeReach,
+              dizzy: EchoDizzy.instance.level(now),
+              recoveryBlink: recovery.blink,
+              recoveryShake: recovery.shake,
             ),
           );
         },
@@ -259,6 +277,9 @@ class _EchoPainter extends CustomPainter {
   final bool glow;
   final double reach; // multiplies eye and head travel, side to side
   final double reachY; // … and up and down
+  final double dizzy; // 0..~0.5, see EchoDizzy
+  final double recoveryBlink; // 1 open; dips twice as he comes round
+  final double recoveryShake; // -1..1, the head-shake at the end
   _EchoPainter(
     this.t,
     this.ms,
@@ -273,6 +294,9 @@ class _EchoPainter extends CustomPainter {
     this.glow = true,
     this.reach = 1,
     this.reachY = 1,
+    this.dizzy = 0,
+    this.recoveryBlink = 1,
+    this.recoveryShake = 0,
   });
 
   static const _tau = 2 * math.pi;
@@ -443,13 +467,26 @@ class _EchoPainter extends CustomPainter {
       case EchoState.sleeping:
         break;
     }
+    // Dizzy: a wobble, a squash-and-stretch like shaken jelly, and at the
+    // end a quick shake of the head.
+    final secs = ms / 1000;
+    final jiggle = dizzy * 0.13 * math.sin(secs * 17);
+    final wobX = dizzy * s(3) * math.sin(secs * 5.2) + recoveryShake * s(5);
+    final wobY = dizzy * s(1.25) * math.cos(secs * 8.4);
+    final wobRot =
+        dizzy *
+            0.5 *
+            (0.22 * math.sin(secs * 7.5) + 0.08 * math.sin(secs * 13)) +
+        recoveryShake * 0.12;
+
     canvas.save();
-    canvas.translate(0, floatDy);
+    canvas.translate(wobX, floatDy + wobY);
     canvas.translate(orbC.dx, orbC.dy);
     canvas.scale(breathe);
     canvas.translate(tiltDx, tiltDy);
-    canvas.rotate(tiltRot);
+    canvas.rotate(tiltRot + wobRot);
     canvas.scale(tiltScale);
+    canvas.scale(1 + jiggle, 1 - jiggle);
     canvas.translate(-orbC.dx, -orbC.dy);
     _orb(canvas, orbC, orbR, dim);
     _eyes(canvas, p, s, moment == 'curious' ? 1 + 0.18 * strength : 1.0);
@@ -457,6 +494,7 @@ class _EchoPainter extends CustomPainter {
 
     // ── In front of the orb ─────────────────────────────────────────────────
     if (state == EchoState.thinking) _band(canvas, orbC, k, front: true);
+    if (dizzy > 0.02) _stars(canvas, p, s, secs, floatDy + wobY, wobX);
     if (state == EchoState.sleeping) _zzz(canvas, p, s);
 
     if (!showRings) canvas.restore();
@@ -578,7 +616,10 @@ class _EchoPainter extends CustomPainter {
       // A little wider and taller when listening — Echo perking up to hear.
       final w = listening ? s(12.5) : s(11);
       final h = listening ? s(19) : s(17);
-      final blink = _blink();
+      final flutter = dizzy > 0.12
+          ? 0.2 + 0.8 * math.sin(ms / 1000 * 11).abs()
+          : 1.0;
+      final blink = _blink() * recoveryBlink * flutter;
       final sy = blink * widen * (1 - stretch);
       final sx = (1 + stretch * 0.7) * (1 + (widen - 1) * 0.5);
       final glint = Paint()..color = Colors.white.withValues(alpha: 0.95);
@@ -787,6 +828,41 @@ class _EchoPainter extends CustomPainter {
     z(176, 54, 8, 0.5);
   }
 
+  /// Three little stars circling above his head while he's dizzy, on a
+  /// tilted orbit so they pass in front and behind.
+  void _stars(
+    Canvas canvas,
+    Offset Function(double, double) p,
+    double Function(double) s,
+    double secs,
+    double dy,
+    double dx,
+  ) {
+    final on = ((dizzy - 0.03) / 0.2).clamp(0.0, 1.0);
+    for (var i = 0; i < 3; i++) {
+      final a = secs * 4.2 + i / 3 * _tau;
+      final front = math.sin(a) > -0.2;
+      final c = p(120 + math.cos(a) * 44, 64 + math.sin(a) * 11);
+      final color = i == 1 ? const Color(0xFFD1E6D3) : const Color(0xFFF3E3A6);
+      final r = s(front ? 7 : 5.5);
+      final path = Path();
+      for (var j = 0; j < 8; j++) {
+        final rr = j.isOdd ? r * 0.42 : r;
+        final ang = j / 8 * _tau + secs * 3 + i;
+        final pt = Offset(
+          c.dx + dx + math.cos(ang) * rr,
+          c.dy + dy + math.sin(ang) * rr,
+        );
+        j == 0 ? path.moveTo(pt.dx, pt.dy) : path.lineTo(pt.dx, pt.dy);
+      }
+      path.close();
+      canvas.drawPath(
+        path,
+        Paint()..color = color.withValues(alpha: on * (front ? 1 : 0.45)),
+      );
+    }
+  }
+
   double _lerp(double a, double b, double t) => a + (b - a) * t.clamp(0.0, 1.0);
 
   @override
@@ -803,5 +879,8 @@ class _EchoPainter extends CustomPainter {
       old.showRings != showRings ||
       old.glow != glow ||
       old.reach != reach ||
-      old.reachY != reachY;
+      old.reachY != reachY ||
+      old.dizzy != dizzy ||
+      old.recoveryBlink != recoveryBlink ||
+      old.recoveryShake != recoveryShake;
 }

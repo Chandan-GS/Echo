@@ -15,7 +15,6 @@ import 'package:project_echo/features/todo/presentation/cubit/todo_cubit.dart';
 import 'package:project_echo/features/todo/presentation/widgets/todo_card.dart';
 import 'package:project_echo/features/echo/presentation/widgets/home_glance.dart';
 import 'package:project_echo/features/echo/presentation/widgets/home_masthead.dart';
-import 'package:project_echo/features/echo/presentation/widgets/generating_view.dart';
 import 'package:project_echo/core/presentation/animations/page_transitions.dart';
 import 'package:project_echo/core/presentation/animations/app_motion.dart';
 import 'package:project_echo/core/presentation/animations/fade_slide_in.dart';
@@ -40,6 +39,10 @@ class _EchoView extends StatefulWidget {
 }
 
 class _EchoViewState extends State<_EchoView> with WidgetsBindingObserver {
+  /// What Home showed before a briefing started being written. While Echo
+  /// writes, Home keeps showing it; his bubble says what he's doing.
+  BriefingState? _settled;
+
   @override
   void initState() {
     super.initState();
@@ -96,12 +99,17 @@ class _EchoViewState extends State<_EchoView> with WidgetsBindingObserver {
             );
           }
         },
-        builder: (context, state) {
+        builder: (context, bloc) {
+          final writing = bloc is BriefingGenerating;
+          if (!writing) _settled = bloc;
+          final state = writing ? (_settled ?? BriefingInitial()) : bloc;
+          // A second tap while writing would only restart it.
+          void generate() {
+            if (!writing) context.read<BriefingCubit>().generateBriefing();
+          }
+
           if (state is BriefingInitial) {
-            return _InitialView(
-              onGenerate: () =>
-                  context.read<BriefingCubit>().generateBriefing(),
-            );
+            return _InitialView(onGenerate: generate);
           }
 
           if (state is BriefingCached || state is BriefingReady) {
@@ -111,20 +119,15 @@ class _EchoViewState extends State<_EchoView> with WidgetsBindingObserver {
             return _CachedView(
               onPlay: () =>
                   context.read<BriefingCubit>().playCachedBriefing(rawText),
-              onRegenerate: () =>
-                  context.read<BriefingCubit>().generateBriefing(),
+              onRegenerate: generate,
             );
-          }
-
-          if (state is BriefingGenerating) {
-            return GeneratingView(partial: state.partial);
           }
 
           if (state is BriefingError) {
             return _ErrorView(
               message: state.message,
               limitReached: state.limitReached,
-              onRetry: () => context.read<BriefingCubit>().generateBriefing(),
+              onRetry: generate,
             );
           }
 
