@@ -4,6 +4,8 @@ import 'package:echo_native/echo_native.dart';
 import 'package:flutter/foundation.dart';
 import 'package:isar/isar.dart';
 import 'package:project_echo/core/services/app_icon_service.dart';
+import 'package:project_echo/features/echo/data/context/addressed.dart';
+import 'package:project_echo/features/echo/data/context/chat_context_store.dart';
 import 'package:project_echo/features/vault/data/daily_stats.dart';
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
 import 'package:project_echo/features/echo/data/datasources/tflite_embedding_service.dart';
@@ -70,6 +72,38 @@ class NotificationIngest {
   /// Embeds one captured notification and writes it to Isar.
   static Future<void> process(Map<String, dynamic> json) async {
     try {
+      final thread = json['thread'] as String?;
+      final timestampMs =
+          json['timestamp'] as int? ?? DateTime.now().millisecondsSinceEpoch;
+      final at = DateTime.fromMillisecondsSinceEpoch(timestampMs);
+
+      // A tap or a swipe on a notification: a signal, not a notification.
+      if (json['kind'] == 'engagement') {
+        if (thread != null) {
+          await ChatContextStore.recordEngagement(
+            thread,
+            json['action'] as String? ?? '',
+            at,
+          );
+        }
+        return;
+      }
+
+      final selfName = json['selfName'] as String?;
+      if (selfName != null) await ChatContextStore.learnSelfName(selfName);
+
+      // The owner's own message only marks when they last spoke there.
+      if (json['fromMe'] == true) {
+        if (thread != null) {
+          await ChatContextStore.recordMyTurn(
+            thread,
+            at,
+            json['content'] as String? ?? '',
+          );
+        }
+        return;
+      }
+
       final rawSource = json['source'] as String? ?? 'Unknown';
 
       // Load aliases to automatically remap source for RAG & Vault
@@ -90,10 +124,30 @@ class NotificationIngest {
 
       final sender = json['sender'] as String? ?? '';
       final content = json['content'] as String? ?? '';
-      final timestampMs =
-          json['timestamp'] as int? ?? DateTime.now().millisecondsSinceEpoch;
+      // Only chats say whether they're a group.
+      final isChat = json.containsKey('isGroup');
+      final isGroup = json['isGroup'] == true;
+      final addressed = isChat
+          ? await _addressed(
+              thread: thread,
+              isGroup: isGroup,
+              content: content,
+              at: at,
+              userName: prefs.getString('user_name'),
+            )
+          : null;
 
-      final textToEmbed = '$sender $content'.trim();
+      final rawData = RawData()
+        ..source = source
+        ..sender = sender
+        ..content = content
+        ..timestamp = at
+        ..thread = thread
+        ..threadTitle = json['threadTitle'] as String?
+        ..isGroup = isGroup
+        ..addressed = addressed?.name;
+
+      final textToEmbed = '${rawData.who} $content'.trim();
       List<double>? embedding;
 
       if (textToEmbed.isNotEmpty) {
@@ -102,12 +156,7 @@ class NotificationIngest {
         );
       }
 
-      final rawData = RawData()
-        ..source = source
-        ..sender = sender
-        ..content = content
-        ..timestamp = DateTime.fromMillisecondsSinceEpoch(timestampMs)
-        ..embedding = embedding;
+      rawData.embedding = embedding;
 
       final isar = await IsarDataSource.instance;
       await isar.writeTxn(() async {
@@ -124,5 +173,33 @@ class NotificationIngest {
     } catch (e) {
       debugPrint('Error processing notification: $e');
     }
+  }
+
+  static Future<Addressed> _addressed({
+    required String? thread,
+    required bool isGroup,
+    required String content,
+    required DateTime at,
+    required String? userName,
+  }) async {
+    final myNames = ownerNames(userName, await ChatContextStore.selfNames());
+    final spoke = (await ChatContextStore.loadMyTurns()).lastBefore(thread, at);
+    var since = 0;
+    if (isGroup && spoke != null && thread != null) {
+      final isar = await IsarDataSource.instance;
+      since = await isar.rawDatas
+          .filter()
+          .threadEqualTo(thread)
+          .timestampGreaterThan(spoke.at)
+          .count();
+    }
+    return addressedFor(
+      isGroup: isGroup,
+      content: content,
+      at: at,
+      myNames: myNames,
+      mySpokeAt: spoke?.at,
+      messagesSince: since,
+    );
   }
 }

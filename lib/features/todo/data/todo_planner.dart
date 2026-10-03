@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:project_echo/features/echo/data/context/chat_context_store.dart';
 import 'package:project_echo/features/echo/data/datasources/briefing_prompt.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:project_echo/features/echo/data/relevance/briefing_selection.dart';
@@ -12,6 +13,11 @@ import 'package:project_echo/features/todo/data/todo_item.dart';
 /// source are worked out here from that notification, so the reply stays a
 /// few dozen tokens and times can't be misread.
 
+/// Notification lines say who a chat message was for (see formatEntry).
+const _groupRule =
+    'Group chat marked "not addressed to you" becomes a to-do only when it '
+    'asks something of everyone in the group.';
+
 const makeInstruction =
     'You turn a person\'s notifications into a short to-do list. Each numbered '
     'line is one notification, starting with a label in square brackets saying '
@@ -21,7 +27,8 @@ const makeInstruction =
     'client demo". "s" is the number of the notification it comes from. '
     'Include only things the person needs to do, attend or remember. Skip '
     'promotions, OTPs, delivery updates, receipts and general news. One item '
-    'per real task: merge notifications about the same thing. At most '
+    'per real task: merge notifications about the same thing. $_groupRule '
+    'At most '
     '$maxListItems items, the most important first. Never invent anything.';
 
 const updateInstruction =
@@ -32,7 +39,8 @@ const updateInstruction =
     'number, "s": number}]}. Use "change" when a new notification is about an '
     'open item (for example its time moved), naming the item\'s id and the '
     'notification number. Use "add" only for genuinely new things, with "t" '
-    'at most 8 words starting with a verb where it reads naturally. Skip '
+    'at most 8 words starting with a verb where it reads naturally. '
+    '$_groupRule Skip '
     'promotions, OTPs, delivery updates, receipts and general news. Never '
     'remove anything and never invent anything. Reply {"add": [], "change": '
     '[]} if nothing applies.';
@@ -56,13 +64,24 @@ List<int> localPicks(List<BriefingItem> candidates) {
 }
 
 /// "1. [Today (Sat 26 Sep), 6:30 PM] Neha (Slack): Client demo is today…"
-String numberedLines(List<BriefingItem> items, DateTime now) {
+String numberedLines(
+  List<BriefingItem> items,
+  DateTime now, {
+  MyTurns? myTurns,
+}) {
   final lines = <String>[];
   for (var i = 0; i < items.length; i++) {
     final e = items[i].entry;
-    lines.add(
-      '${i + 1}. ${formatNotification(source: e.source, sender: e.sender, content: _clip(rewriteRelativeDays(e.content, e.timestamp, now), _maxSourceChars), when: describeEntry(e, items[i].window, now))}',
+    final line = formatEntry(
+      e,
+      content: _clip(
+        rewriteRelativeDays(e.content, e.timestamp, now),
+        _maxSourceChars,
+      ),
+      when: describeEntry(e, items[i].window, now),
+      myTurns: myTurns,
     );
+    lines.add('${i + 1}. $line');
   }
   return lines.join('\n');
 }
@@ -152,7 +171,7 @@ TodoItem itemFrom(BriefingItem candidate, String title, int id, DateTime now) {
     sort: w.explicit && w.hasTime
         ? w.start.hour * 60 + w.start.minute
         : TodoItem.noTimeSort,
-    sender: e.sender,
+    sender: e.who,
     app: displaySource(e.source, const {}),
     sourceText: _clip(rewriteRelativeDays(e.content, e.timestamp, now), 240),
     sourceKey: sourceKeyOf(e),
