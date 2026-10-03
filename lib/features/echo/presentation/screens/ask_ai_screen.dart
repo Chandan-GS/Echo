@@ -270,6 +270,7 @@ class _AskAiViewState extends State<_AskAiView> {
         draft: m.draft!,
         onSend: () => cubit.sendDraft(i),
         onEdit: (text) => cubit.editDraft(i, text),
+        onQuickReply: (emoji) => cubit.quickReply(i, emoji),
       ),
     };
   }

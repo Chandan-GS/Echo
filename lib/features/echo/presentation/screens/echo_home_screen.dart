@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
+import 'package:project_echo/features/echo/data/home/group_summaries.dart';
 import 'package:project_echo/features/echo/data/home/home_feed.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:project_echo/features/echo/presentation/widgets/home_sections.dart';
@@ -59,12 +60,37 @@ class _EchoViewState extends State<_EchoView> with WidgetsBindingObserver {
   StreamSubscription<void>? _isarWatch;
   Timer? _reload;
 
+  /// One line per busy group, by name (see GroupSummaries).
+  Map<String, String> _summaries = const {};
+  bool _summarising = false;
+
   Future<void> _loadFeed() async {
     try {
-      final feed = await HomeFeed.load(DateTime.now());
-      if (mounted) setState(() => _feed = feed);
+      final now = DateTime.now();
+      final feed = await HomeFeed.load(now);
+      final kept = await GroupSummaries.cached();
+      if (!mounted) return;
+      setState(() {
+        _feed = feed;
+        _summaries = kept;
+      });
+      unawaited(_summarise(feed, now));
     } catch (_) {
       // Home still shows the briefing and the list.
+    }
+  }
+
+  /// Sums up the busy groups that have moved on, one call at a time.
+  Future<void> _summarise(HomeFeed feed, DateTime now) async {
+    if (_summarising || feed.busyGroups.isEmpty) return;
+    _summarising = true;
+    try {
+      final lines = await GroupSummaries.refresh(feed.busyGroups, now);
+      if (mounted) setState(() => _summaries = lines);
+    } catch (_) {
+      // The latest message stands in.
+    } finally {
+      _summarising = false;
     }
   }
 
@@ -118,6 +144,7 @@ class _EchoViewState extends State<_EchoView> with WidgetsBindingObserver {
       backgroundColor: context.colors.background,
       body: _FeedScope(
         feed: _feed,
+        summaries: _summaries,
         reload: _loadFeed,
         child: BlocConsumer<BriefingCubit, BriefingState>(
           listener: (context, state) async {
@@ -188,10 +215,12 @@ class _EchoViewState extends State<_EchoView> with WidgetsBindingObserver {
 /// Hands Home's feed down to whichever briefing state is showing.
 class _FeedScope extends InheritedWidget {
   final HomeFeed feed;
+  final Map<String, String> summaries;
   final Future<void> Function() reload;
 
   const _FeedScope({
     required this.feed,
+    required this.summaries,
     required this.reload,
     required super.child,
   });
@@ -200,7 +229,8 @@ class _FeedScope extends InheritedWidget {
       context.dependOnInheritedWidgetOfExactType<_FeedScope>()!;
 
   @override
-  bool updateShouldNotify(_FeedScope old) => feed != old.feed;
+  bool updateShouldNotify(_FeedScope old) =>
+      feed != old.feed || summaries != old.summaries;
 }
 
 // ---------------------------------------------------------------------------
@@ -568,6 +598,7 @@ class _HomeShellState extends State<_HomeShell> {
                     delay: AppMotion.staggerDelay(7),
                     child: BusyGroupsSection(
                       groups: feed.busyGroups,
+                      summaries: _FeedScope.of(context).summaries,
                       onCatchUp: (group) => _ask('Catch me up on $group'),
                     ),
                   ),

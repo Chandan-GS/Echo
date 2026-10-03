@@ -129,7 +129,7 @@ class HomeFeed {
         [
           for (final MapEntry(key: name, value: list) in groups.entries)
             if (list.length >= busyAt)
-              BusyGroup(name: name, count: list.length, latest: list.first),
+              BusyGroup(name: name, count: list.length, messages: list),
         ]..sort((a, b) {
           final byCount = b.count.compareTo(a.count);
           return byCount != 0
@@ -183,12 +183,14 @@ class BusyGroup {
   final String name;
   final int count;
 
-  /// Its newest message.
-  final RawData latest;
+  /// Today's messages in it, newest first.
+  final List<RawData> messages;
 
   const BusyGroup({
     required this.name,
     required this.count,
-    required this.latest,
+    required this.messages,
   });
+
+  RawData get latest => messages.first;
 }

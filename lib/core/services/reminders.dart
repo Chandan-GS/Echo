@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:project_echo/core/services/reminder_settings.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:project_echo/features/echo/data/relevance/temporal_relevance.dart';
 import 'package:project_echo/features/todo/data/todo_item.dart';
@@ -138,14 +139,17 @@ DateTime? reminderTimeFor(RawData e, DateTime now) {
   return at.isAfter(now.add(const Duration(minutes: 5))) ? at : null;
 }
 
-/// How long before a to-do's time Echo suggests reminding.
-const reminderLead = Duration(minutes: 20);
+/// How long before a time Echo suggests reminding (Settings → Reminders).
+Duration get reminderLead => ReminderSettings.lead.value;
 
 /// Echo's suggested reminder for [item]: [reminderLead] before its time, if
-/// that's still more than five minutes away. Null when it names no time.
+/// that's still more than five minutes away. Null when it names no time, or
+/// the owner turned suggestions off.
 DateTime? suggestedReminder(TodoItem item, DateTime now) {
   final start = item.startsAt;
-  if (item.done || start == null) return null;
+  if (item.done || start == null || !ReminderSettings.suggest.value) {
+    return null;
+  }
   final at = start.subtract(reminderLead);
   return at.isAfter(now.add(const Duration(minutes: 5))) ? at : null;
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:project_echo/core/presentation/animations/app_motion.dart';
+import 'package:project_echo/core/services/reminder_settings.dart';
 import 'package:project_echo/core/services/reminders.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
@@ -130,7 +131,7 @@ class _ReminderSheetState extends State<_ReminderSheet> {
         _Option(
           'echo',
           suggested,
-          'Echo suggests · ${reminderLead.inMinutes} minutes before '
+          'Echo suggests · ${ReminderSettings.label(reminderLead)} before '
               '${clockLabel(item.startsAt!).replaceFirst(':00', '')}',
         ),
       );

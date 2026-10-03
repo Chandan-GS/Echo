@@ -178,19 +178,10 @@ class _NavDockState extends State<NavDock> {
                   padding: const EdgeInsets.all(_pillPadding),
                   child: Stack(
                     children: [
-                      AnimatedPositioned(
-                        duration: const Duration(milliseconds: 300),
-                        curve: const Cubic(0.34, 1.4, 0.64, 1),
-                        left: widget.selectedIndex * tabWidth,
-                        top: 0,
-                        bottom: 0,
-                        width: tabWidth,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: c.primaryGreen,
-                            borderRadius: BorderRadius.circular(22),
-                          ),
-                        ),
+                      _StretchPill(
+                        index: widget.selectedIndex,
+                        tabWidth: tabWidth,
+                        color: c.primaryGreen,
                       ),
                       Row(
                         children: [
@@ -209,7 +200,7 @@ class _NavDockState extends State<NavDock> {
                                     width: tabWidth,
                                     height: kNavDockHeight - _pillPadding * 2,
                                     child: Center(
-                                      child: BounceInIcon(
+                                      child: SquashInIcon(
                                         isSelected: widget.selectedIndex == i,
                                         selectedIcon: on,
                                         unselectedIcon: off,
@@ -362,22 +353,24 @@ class _NavDockState extends State<NavDock> {
                               child: GestureDetector(
                                 onTap: _submit,
                                 child: Container(
-                                  width: 40,
-                                  height: 40,
+                                  width: 44,
+                                  height: 44,
                                   decoration: BoxDecoration(
                                     color: c.primaryGreen,
                                     shape: BoxShape.circle,
                                   ),
-                                  child: const Icon(
+                                  child: Icon(
                                     Symbols.arrow_upward_rounded,
-                                    size: 20,
-                                    color: Colors.white,
+                                    size: 24,
+                                    color: context.isDarkMode
+                                        ? c.textInverse
+                                        : Colors.white,
                                   ),
                                 ),
                               ),
                             ),
                           ),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 6),
                         ],
                       ],
                     ),
@@ -444,6 +437,68 @@ class AskSuggestionChips extends StatelessWidget {
                   ),
                 ),
               ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The green pill under the chosen tab. Moving to another tab it stretches:
+/// the edge on the way leaves first and the other catches up, like a drop
+/// of liquid, then it settles to one tab wide.
+class _StretchPill extends StatefulWidget {
+  final int index;
+  final double tabWidth;
+  final Color color;
+
+  const _StretchPill({
+    required this.index,
+    required this.tabWidth,
+    required this.color,
+  });
+
+  @override
+  State<_StretchPill> createState() => _StretchPillState();
+}
+
+class _StretchPillState extends State<_StretchPill> {
+  static const _lead = Duration(milliseconds: 240);
+  static const _trail = Duration(milliseconds: 420);
+  static const _curve = Cubic(0.3, 1.2, 0.4, 1);
+
+  /// Which way it last moved: right (to a later tab) or left.
+  bool _right = true;
+
+  @override
+  void didUpdateWidget(_StretchPill old) {
+    super.didUpdateWidget(old);
+    if (widget.index != old.index) _right = widget.index > old.index;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final left = widget.index * widget.tabWidth;
+    final right = left + widget.tabWidth;
+    return TweenAnimationBuilder<double>(
+      tween: Tween(end: left),
+      duration: _right ? _trail : _lead,
+      curve: _curve,
+      builder: (context, l, _) => TweenAnimationBuilder<double>(
+        tween: Tween(end: right),
+        duration: _right ? _lead : _trail,
+        curve: _curve,
+        builder: (context, r, _) => Positioned(
+          left: l,
+          top: 0,
+          bottom: 0,
+          // The overshoot can briefly cross the edges; never inside out.
+          width: (r - l).clamp(widget.tabWidth * 0.6, double.infinity),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: widget.color,
+              borderRadius: BorderRadius.circular(22),
             ),
           ),
         ),

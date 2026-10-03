@@ -473,6 +473,12 @@ class AskAiCubit extends Cubit<AskAiState> {
   void dismissDraft(int index) =>
       _updateDraft(index, (d) => d.copyWith(status: DraftStatus.dismissed));
 
+  /// Sends [emoji] instead of the drafted words.
+  Future<void> quickReply(int index, String emoji) async {
+    editDraft(index, emoji);
+    await sendDraft(index);
+  }
+
   Future<void> sendDraft(int index) async {
     final draft = _messages[index].draft;
     if (draft == null || !draft.open || draft.text.trim().isEmpty) return;

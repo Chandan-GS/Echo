@@ -17,6 +17,7 @@ import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:project_echo/features/vault/presentation/widgets/week_card.dart';
 import 'package:project_echo/features/vault/presentation/widgets/vault_day_heading.dart';
 import 'package:material_symbols_icons/symbols.dart';
+import 'package:project_echo/core/presentation/widgets/header_icon_button.dart';
 
 class VaultScreen extends StatelessWidget {
   const VaultScreen({super.key});
@@ -235,36 +236,17 @@ class _VaultViewState extends State<_VaultView> {
   /// Opens Apps Echo hears; on return the Vault picks up any change to
   /// blocked categories made there.
   Widget _appAccessButton(BuildContext context) {
-    return Tooltip(
-      message: 'Apps Echo hears',
-      child: Material(
-        color: context.colors.surface,
-        shape: CircleBorder(
-          side: BorderSide(
-            color: context.colors.dividerColor.withValues(alpha: 0.7),
-          ),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: () async {
-            final vault = context.read<VaultCubit>();
-            await Navigator.of(
-              context,
-              rootNavigator: true,
-            ).push(bouncyRoute(const AppAccessScreen()));
-            vault.reloadSettings();
-          },
-          child: SizedBox(
-            width: 48,
-            height: 48,
-            child: Icon(
-              Symbols.tune_rounded,
-              size: 22,
-              color: context.colors.textPrimary,
-            ),
-          ),
-        ),
-      ),
+    return HeaderIconButton(
+      icon: Symbols.tune_rounded,
+      label: 'Apps Echo hears',
+      onTap: () async {
+        final vault = context.read<VaultCubit>();
+        await Navigator.of(
+          context,
+          rootNavigator: true,
+        ).push(bouncyRoute(const AppAccessScreen()));
+        vault.reloadSettings();
+      },
     );
   }
 

@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:project_echo/core/presentation/animations/app_motion.dart';
 import 'package:project_echo/core/presentation/animations/fade_slide_in.dart';
+import 'package:project_echo/core/services/reminder_settings.dart';
 import 'package:project_echo/core/services/reminders.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
@@ -61,6 +62,9 @@ class _TodoScreenState extends State<TodoScreen> {
     super.initState();
     _loadReminders();
     Reminders.changed.addListener(_loadReminders);
+    // Settings → Reminders changes Echo's suggestions.
+    ReminderSettings.lead.addListener(_settingsChanged);
+    ReminderSettings.suggest.addListener(_settingsChanged);
     SharedPreferences.getInstance().then((prefs) {
       if (mounted) {
         setState(
@@ -74,8 +78,12 @@ class _TodoScreenState extends State<TodoScreen> {
   @override
   void dispose() {
     Reminders.changed.removeListener(_loadReminders);
+    ReminderSettings.lead.removeListener(_settingsChanged);
+    ReminderSettings.suggest.removeListener(_settingsChanged);
     super.dispose();
   }
+
+  void _settingsChanged() => setState(() {});
 
   Future<void> _loadReminders() async {
     final all = await Reminders.all();
@@ -702,11 +710,11 @@ class _AddFieldState extends State<_AddField> {
     final c = context.colors;
     final typed = _controller.text.trim().isNotEmpty;
     return Container(
-      height: 54,
+      height: 58,
       padding: const EdgeInsets.only(left: 16, right: 7),
       decoration: BoxDecoration(
         color: c.surface,
-        borderRadius: BorderRadius.circular(27),
+        borderRadius: BorderRadius.circular(29),
         border: Border.all(color: c.dividerColor.withValues(alpha: 0.5)),
         boxShadow: context.isDarkMode
             ? null
@@ -760,8 +768,8 @@ class _AddFieldState extends State<_AddField> {
               child: GestureDetector(
                 onTap: _submit,
                 child: Container(
-                  width: 40,
-                  height: 40,
+                  width: 44,
+                  height: 44,
                   decoration: BoxDecoration(
                     color: c.primaryGreen,
                     shape: BoxShape.circle,

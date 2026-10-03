@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:project_echo/features/echo/data/context/addressed.dart';
 import 'package:project_echo/features/echo/data/context/chat_context_store.dart';
+import 'package:project_echo/features/echo/data/home/group_summaries.dart';
 import 'package:project_echo/features/echo/data/home/home_feed.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
 
@@ -195,5 +196,47 @@ void main() {
         expect(feed.busyGroups.first.latest.content, 'meme 6');
       },
     );
+  });
+
+  group('group summaries', () {
+    final at10 = at(10).millisecondsSinceEpoch;
+
+    test('summed up again only once the group has moved on', () {
+      expect(GroupSummaries.needsSummary(null, 6, now), isTrue);
+      final kept = {'x': 'Friday is on', 'n': 6, 't': at10};
+      // Nothing new, or a little new and recent: keep the line.
+      expect(GroupSummaries.needsSummary(kept, 6, at(16)), isFalse);
+      expect(GroupSummaries.needsSummary(kept, 8, at(10, 30)), isFalse);
+      // Five more messages, or anything new after 45 minutes.
+      expect(GroupSummaries.needsSummary(kept, 11, at(10, 30)), isTrue);
+      expect(GroupSummaries.needsSummary(kept, 7, at(11)), isTrue);
+      // A line from yesterday.
+      expect(
+        GroupSummaries.needsSummary(kept, 6, DateTime(2026, 10, 4, 9)),
+        isTrue,
+      );
+    });
+
+    test('reads the model’s lines, fenced or not', () {
+      expect(
+        GroupSummaries.parseReply(
+          '```json\n{"College gang": " Friday at 7, Rahul drives ", "X": 3}\n```',
+        ),
+        {'College gang': 'Friday at 7, Rahul drives'},
+      );
+      expect(GroupSummaries.parseReply('not json'), isEmpty);
+      expect(GroupSummaries.parseReply(null), isEmpty);
+    });
+
+    test('the prompt gives each group’s messages oldest first', () {
+      final feed = HomeFeed.summarise(
+        [for (var i = 0; i < 5; i++) gang('Sneha', 'line $i', at(15, i))],
+        noTurns,
+        now,
+      );
+      final prompt = GroupSummaries.prompt(feed.busyGroups);
+      expect(prompt, startsWith('## College gang\nSneha: line 0'));
+      expect(prompt, endsWith('Sneha: line 4'));
+    });
   });
 }

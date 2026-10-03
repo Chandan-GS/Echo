@@ -101,12 +101,16 @@ class DraftCard extends StatefulWidget {
   /// "Not now", offered in voice mode where there's no other way to say no.
   final VoidCallback? onDismiss;
 
+  /// Sends an emoji instead of the words.
+  final ValueChanged<String>? onQuickReply;
+
   const DraftCard({
     super.key,
     required this.draft,
     required this.onSend,
     required this.onEdit,
     this.onDismiss,
+    this.onQuickReply,
   });
 
   @override
@@ -256,47 +260,57 @@ class _DraftCardState extends State<DraftCard> {
     );
     return switch (d.status) {
       DraftStatus.writing => const SizedBox.shrink(),
-      DraftStatus.ready => Wrap(
-        spacing: 8,
-        runSpacing: 8,
+      DraftStatus.ready => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          AskPill(
-            label: _sendLabel,
-            icon: Symbols.send_rounded,
-            filled: true,
-            onTap: d.text.trim().isEmpty && !_editing
-                ? null
-                : () {
-                    if (_editing) _toggleEdit();
-                    widget.onSend();
-                  },
-          ),
-          AskPill(
-            label: _editing ? 'Done' : 'Edit',
-            icon: _editing ? Symbols.check_rounded : Symbols.edit_rounded,
-            onTap: _toggleEdit,
-          ),
-          if (widget.onDismiss != null)
-            AskPill(label: 'Not now', onTap: widget.onDismiss),
-          // The copy buttons already copy; the others get a copy of their own.
-          if (!_editing &&
-              d.text.trim().isNotEmpty &&
-              d.route != ReplyRoute.copy)
-            IconButton(
-              tooltip: 'Copy',
-              visualDensity: VisualDensity.compact,
-              icon: Icon(
-                Symbols.content_copy_rounded,
-                size: 19,
-                color: colors.textSecondary,
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              AskPill(
+                label: _sendLabel,
+                icon: Symbols.send_rounded,
+                filled: true,
+                onTap: d.text.trim().isEmpty && !_editing
+                    ? null
+                    : () {
+                        if (_editing) _toggleEdit();
+                        widget.onSend();
+                      },
               ),
-              onPressed: () {
-                Clipboard.setData(ClipboardData(text: d.text));
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(const SnackBar(content: Text('Copied')));
-              },
-            ),
+              AskPill(
+                label: _editing ? 'Done' : 'Edit',
+                icon: _editing ? Symbols.check_rounded : Symbols.edit_rounded,
+                onTap: _toggleEdit,
+              ),
+              if (widget.onDismiss != null)
+                AskPill(label: 'Not now', onTap: widget.onDismiss),
+              // The copy buttons already copy; the others get a copy of their own.
+              if (!_editing &&
+                  d.text.trim().isNotEmpty &&
+                  d.route != ReplyRoute.copy)
+                IconButton(
+                  tooltip: 'Copy',
+                  visualDensity: VisualDensity.compact,
+                  icon: Icon(
+                    Symbols.content_copy_rounded,
+                    size: 19,
+                    color: colors.textSecondary,
+                  ),
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: d.text));
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(const SnackBar(content: Text('Copied')));
+                  },
+                ),
+            ],
+          ),
+          // Or just an emoji, in one tap.
+          if (widget.onQuickReply != null && !_editing) ...[
+            const SizedBox(height: 12),
+            QuickReactions(onPick: widget.onQuickReply!),
+          ],
         ],
       ),
       DraftStatus.sending => note(Symbols.schedule_rounded, 'Sending…'),

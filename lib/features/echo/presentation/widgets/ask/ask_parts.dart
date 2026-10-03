@@ -419,3 +419,47 @@ String whenLabel(DateTime t, DateTime now) {
   ];
   return 'on ${t.day} ${months[t.month - 1]} $at';
 }
+
+/// The emoji a reply can be, in one tap.
+const quickReactions = ['👍', '❤️', '😂', '🙏'];
+
+/// [quickReactions] as round buttons; [onPick] gets the one tapped.
+class QuickReactions extends StatelessWidget {
+  final ValueChanged<String> onPick;
+  const QuickReactions({super.key, required this.onPick});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final (i, emoji) in quickReactions.indexed) ...[
+          if (i > 0) const SizedBox(width: 8),
+          Semantics(
+            button: true,
+            label: 'Send $emoji',
+            child: Pressable(
+              scale: 0.85,
+              child: Material(
+                color: c.surface,
+                shape: CircleBorder(side: BorderSide(color: c.dividerColor)),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: () => onPick(emoji),
+                  child: SizedBox(
+                    width: 40,
+                    height: 40,
+                    child: Center(
+                      child: Text(emoji, style: const TextStyle(fontSize: 19)),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}

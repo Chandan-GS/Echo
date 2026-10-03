@@ -468,12 +468,16 @@ class _PromiseCard extends StatelessWidget {
 /// Each busy group in one line, opening a catch-up in Ask Echo.
 class BusyGroupsSection extends StatelessWidget {
   final List<BusyGroup> groups;
+
+  /// Echo's line for each group, by name; its latest message otherwise.
+  final Map<String, String> summaries;
   final void Function(String group) onCatchUp;
 
   const BusyGroupsSection({
     super.key,
     required this.groups,
     required this.onCatchUp,
+    this.summaries = const {},
   });
 
   @override
@@ -485,7 +489,11 @@ class BusyGroupsSection extends StatelessWidget {
         const HomeSectionHeader('Busy groups', note: 'not for you'),
         for (final (i, g) in groups.indexed) ...[
           if (i > 0) const SizedBox(height: 10),
-          _GroupRow(group: g, onTap: () => onCatchUp(g.name)),
+          _GroupRow(
+            group: g,
+            summary: summaries[g.name],
+            onTap: () => onCatchUp(g.name),
+          ),
         ],
       ],
     );
@@ -494,16 +502,23 @@ class BusyGroupsSection extends StatelessWidget {
 
 class _GroupRow extends StatelessWidget {
   final BusyGroup group;
+  final String? summary;
   final VoidCallback onTap;
-  const _GroupRow({required this.group, required this.onTap});
+  const _GroupRow({
+    required this.group,
+    required this.summary,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
     final latest = group.latest;
-    final line = latest.sender.isEmpty
-        ? latest.content
-        : '${latest.sender}: ${latest.content}';
+    final line =
+        summary ??
+        (latest.sender.isEmpty
+            ? latest.content
+            : '${latest.sender}: ${latest.content}');
     return Pressable(
       scale: 0.98,
       child: Material(
@@ -547,13 +562,23 @@ class _GroupRow extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 2),
-                      Text(
-                        line,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.nunito(
-                          fontSize: 12.5,
-                          color: c.textSecondary,
+                      // Echo's line can take two; a raw message, one.
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 250),
+                        layoutBuilder: (current, previous) => Stack(
+                          alignment: Alignment.topLeft,
+                          children: [...previous, ?current],
+                        ),
+                        child: Text(
+                          line,
+                          key: ValueKey(line),
+                          maxLines: summary == null ? 1 : 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.nunito(
+                            fontSize: 12.5,
+                            height: 1.35,
+                            color: c.textSecondary,
+                          ),
                         ),
                       ),
                     ],

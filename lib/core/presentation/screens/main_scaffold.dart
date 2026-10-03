@@ -13,6 +13,7 @@ import 'package:project_echo/features/echo/presentation/screens/echo_home_screen
 import 'package:project_echo/features/echo/presentation/screens/desktop_home_screen.dart';
 import 'package:project_echo/features/todo/presentation/screens/todo_screen.dart';
 import 'package:project_echo/features/vault/presentation/screens/vault_screen.dart';
+import 'package:project_echo/features/profile/presentation/screens/profile_screen.dart';
 import 'package:project_echo/features/settings/presentation/screens/settings_screen.dart';
 import 'package:project_echo/demo/demo_mode.dart';
 import 'package:project_echo/core/presentation/widgets/echo_bubble.dart';
@@ -220,7 +221,7 @@ class _MainScaffoldState extends State<MainScaffold> {
                       EchoHomeScreen(),
                       TodoScreen(),
                       VaultScreen(),
-                      SettingsScreen(),
+                      ProfileScreen(),
                     ],
                   ),
                 ),

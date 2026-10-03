@@ -19,6 +19,7 @@ import 'package:project_echo/core/services/remote_config_service.dart';
 import 'package:aptabase_flutter/aptabase_flutter.dart';
 import 'dart:async';
 import 'package:project_echo/demo/demo_mode.dart';
+import 'package:project_echo/core/services/reminder_settings.dart';
 
 void main() async {
   GoogleFonts.config.allowRuntimeFetching = false;
@@ -43,6 +44,7 @@ void main() async {
     DeviceOrientation.portraitDown,
   ]);
   final prefs = await SharedPreferences.getInstance();
+  await ReminderSettings.load();
   final isOnboardingFinished = prefs.getBool('onboarding_finished') ?? false;
 
   // Stamp the first-ever launch so the Profile screen can show "Member for N

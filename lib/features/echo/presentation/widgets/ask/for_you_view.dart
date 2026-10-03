@@ -5,6 +5,7 @@ import 'package:project_echo/core/services/reminders.dart';
 import 'package:project_echo/features/echo/data/ask/for_you.dart';
 import 'package:project_echo/features/echo/data/context/addressed.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
+import 'package:project_echo/features/echo/data/reply/reply_sender.dart';
 import 'package:project_echo/features/echo/presentation/widgets/ask/ask_parts.dart';
 import 'package:project_echo/features/echo/presentation/widgets/echo_mascot.dart';
 import 'package:project_echo/features/todo/data/todo_generator.dart';
@@ -129,6 +130,12 @@ class _ForYouCardState extends State<ForYouCard> {
   /// Whether the message is on the to-do list already.
   bool _onList = false;
 
+  /// The emoji choices are showing instead of the buttons.
+  bool _reacting = false;
+
+  /// An emoji reply that went out, and how.
+  (String, ReplyOutcome)? _reacted;
+
   @override
   void initState() {
     super.initState();
@@ -140,6 +147,12 @@ class _ForYouCardState extends State<ForYouCard> {
   void dispose() {
     TodoStore.changed.removeListener(_checkList);
     super.dispose();
+  }
+
+  Future<void> _react(String emoji) async {
+    setState(() => _reacting = false);
+    final outcome = await ReplySender.send(widget.entry, emoji);
+    if (mounted) setState(() => _reacted = (emoji, outcome));
   }
 
   Future<void> _checkList() async {
@@ -179,33 +192,169 @@ class _ForYouCardState extends State<ForYouCard> {
             ),
           ),
           const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              if (entry.thread != null)
-                AskPill(
-                  label: 'Reply',
-                  icon: Symbols.reply_rounded,
-                  filled: true,
-                  onTap: () => widget.onReply(entry),
-                ),
-              if (_remindAt != null)
-                RemindPill(entry: entry, at: _remindAt)
-              // A reminder already brings it back at the right time, so Add
-              // is offered only for messages without one.
-              else if (_onList)
-                const AskPill(
-                  label: 'On your list',
-                  icon: Symbols.check_rounded,
-                )
-              else if (looksActionable(entry))
-                AskPill(
-                  label: 'Add to my list',
-                  icon: Symbols.checklist_rounded,
-                  onTap: () => widget.onAdd(entry),
-                ),
-            ],
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 220),
+            layoutBuilder: (current, previous) => Stack(
+              alignment: Alignment.topLeft,
+              children: [...previous, ?current],
+            ),
+            child: _reacted != null
+                ? _ReactedLine(
+                    key: const ValueKey('reacted'),
+                    emoji: _reacted!.$1,
+                    outcome: _reacted!.$2,
+                    to:
+                        entry.isGroup &&
+                            (entry.threadTitle?.isNotEmpty ?? false)
+                        ? entry.threadTitle!
+                        : entry.sender,
+                  )
+                : _reacting
+                ? Row(
+                    key: const ValueKey('reacting'),
+                    children: [
+                      _RoundPill(
+                        icon: Symbols.close_rounded,
+                        label: 'Close',
+                        onTap: () => setState(() => _reacting = false),
+                      ),
+                      const SizedBox(width: 10),
+                      QuickReactions(onPick: _react),
+                    ],
+                  )
+                : KeyedSubtree(
+                    key: const ValueKey('actions'),
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        if (entry.thread != null)
+                          AskPill(
+                            label: 'Reply',
+                            icon: Symbols.reply_rounded,
+                            filled: true,
+                            onTap: () => widget.onReply(entry),
+                          ),
+                        if (entry.thread != null)
+                          _RoundPill(
+                            icon: Symbols.add_reaction_rounded,
+                            label: 'Reply with an emoji',
+                            onTap: () => setState(() => _reacting = true),
+                          ),
+                        if (_remindAt != null)
+                          RemindPill(entry: entry, at: _remindAt)
+                        // A reminder already brings it back at the right time, so Add
+                        // is offered only for messages without one.
+                        else if (_onList)
+                          const AskPill(
+                            label: 'On your list',
+                            icon: Symbols.check_rounded,
+                          )
+                        else if (looksActionable(entry))
+                          AskPill(
+                            label: 'Add to my list',
+                            icon: Symbols.checklist_rounded,
+                            onTap: () => widget.onAdd(entry),
+                          ),
+                      ],
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A round outlined button the height of a pill, holding just an icon.
+class _RoundPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  const _RoundPill({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Semantics(
+      button: true,
+      label: label,
+      child: Pressable(
+        scale: 0.88,
+        child: Material(
+          color: Colors.transparent,
+          shape: CircleBorder(
+            side: BorderSide(color: c.textPrimary.withValues(alpha: 0.35)),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: SizedBox(
+              width: 40,
+              height: 40,
+              child: Icon(icon, size: 20, color: c.textPrimary),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// What happened to an emoji reply: sent, or typed into the chat.
+class _ReactedLine extends StatelessWidget {
+  final String emoji;
+  final ReplyOutcome outcome;
+  final String to;
+  const _ReactedLine({
+    super.key,
+    required this.emoji,
+    required this.outcome,
+    required this.to,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final (icon, text) = switch (outcome) {
+      ReplyOutcome.sent => (Symbols.check_circle_rounded, 'Sent $emoji to $to'),
+      ReplyOutcome.written => (
+        Symbols.edit_note_rounded,
+        '$emoji is typed in $to. Tap send there.',
+      ),
+      ReplyOutcome.picker => (
+        Symbols.edit_note_rounded,
+        'Pick $to; $emoji is typed in.',
+      ),
+      ReplyOutcome.copied => (
+        Symbols.content_copy_rounded,
+        '$emoji copied. Paste it in $to.',
+      ),
+    };
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Icon(
+            icon,
+            size: 18,
+            fill: outcome == ReplyOutcome.sent ? 1 : 0,
+            color: c.primaryGreen,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: GoogleFonts.nunito(
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+                color: c.primaryGreen,
+              ),
+            ),
           ),
         ],
       ),

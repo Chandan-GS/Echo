@@ -101,18 +101,24 @@ class _AskInputBarState extends State<AskInputBar> {
       children: [
         Expanded(
           child: Container(
-            constraints: const BoxConstraints(minHeight: 52),
-            padding: const EdgeInsets.only(left: 18, right: 8),
+            constraints: const BoxConstraints(minHeight: 58),
+            padding: const EdgeInsets.only(left: 20, right: 7),
             decoration: BoxDecoration(
               color: colors.surface,
-              borderRadius: BorderRadius.circular(26),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
-                  blurRadius: 20,
-                  offset: const Offset(0, 6),
-                ),
-              ],
+              borderRadius: BorderRadius.circular(29),
+              // Dark mode: a hairline, since a shadow doesn't show there.
+              border: context.isDarkMode
+                  ? Border.all(color: colors.dividerColor)
+                  : null,
+              boxShadow: context.isDarkMode
+                  ? null
+                  : [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.06),
+                        blurRadius: 20,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
@@ -148,35 +154,55 @@ class _AskInputBarState extends State<AskInputBar> {
                   ),
                 ),
                 const SizedBox(width: 6),
-                if (hasText || !widget.dictation)
-                  _RoundButton(
-                    size: 36,
-                    color: hasText && widget.enabled
-                        ? colors.buttonDark
-                        : colors.dividerColor,
-                    onTap: hasText && widget.enabled ? widget.onSend : null,
-                    child: Icon(
-                      Symbols.arrow_upward_rounded,
-                      size: 20,
-                      color: colors.textInverse,
-                    ),
-                  )
-                else
-                  _RoundButton(
-                    size: 36,
-                    color: _dictating
-                        ? context.selectionFill
-                        : Colors.transparent,
-                    onTap: widget.enabled ? _dictate : null,
-                    child: Icon(
-                      Symbols.mic_rounded,
-                      fill: _dictating ? 1 : 0,
-                      size: 22,
-                      color: _dictating
-                          ? context.onSelection
-                          : colors.textSecondary,
-                    ),
-                  ),
+                // Send swaps in for the mic once there's something to send.
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 220),
+                  switchInCurve: Curves.easeOutBack,
+                  transitionBuilder: (child, a) =>
+                      ScaleTransition(scale: a, child: child),
+                  child: hasText || !widget.dictation
+                      ? _RoundButton(
+                          key: const ValueKey('send'),
+                          size: 44,
+                          color: hasText && widget.enabled
+                              ? colors.primaryGreen
+                              : colors.dividerColor,
+                          onTap: hasText && widget.enabled
+                              ? widget.onSend
+                              : null,
+                          child: Icon(
+                            Symbols.arrow_upward_rounded,
+                            size: 24,
+                            color: context.isDarkMode
+                                ? colors.textInverse
+                                : Colors.white,
+                          ),
+                        )
+                      : _RoundButton(
+                          key: const ValueKey('mic'),
+                          size: 44,
+                          // A soft disc at rest, so it reads as a button in
+                          // both themes; green while listening.
+                          color: _dictating
+                              ? colors.primaryGreen
+                              : Color.lerp(
+                                  colors.surface,
+                                  colors.textPrimary,
+                                  context.isDarkMode ? 0.08 : 0.05,
+                                )!,
+                          onTap: widget.enabled ? _dictate : null,
+                          child: Icon(
+                            Symbols.mic_rounded,
+                            fill: _dictating ? 1 : 0,
+                            size: 24,
+                            color: _dictating
+                                ? (context.isDarkMode
+                                      ? colors.textInverse
+                                      : Colors.white)
+                                : colors.textPrimary,
+                          ),
+                        ),
+                ),
               ],
             ),
           ),
@@ -193,6 +219,7 @@ class _RoundButton extends StatelessWidget {
   final Widget child;
 
   const _RoundButton({
+    super.key,
     required this.size,
     required this.color,
     required this.onTap,
