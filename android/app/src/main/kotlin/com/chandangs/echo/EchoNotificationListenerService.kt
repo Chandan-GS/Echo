@@ -27,6 +27,16 @@ class EchoNotificationListenerService : NotificationListenerService() {
     override fun onListenerConnected() {
         super.onListenerConnected()
         instance = this
+        // After an update or restart, chats still in the shade can be
+        // answered and opened again straight away.
+        try {
+            for (sbn in activeNotifications.orEmpty()) {
+                val conversation = ConversationReader.read(sbn) ?: continue
+                sbn.notification?.let { ReplyActions.remember(applicationContext, conversation.thread, conversation, it) }
+            }
+        } catch (e: Exception) {
+            Log.w("EchoNotification", "Couldn't read the shade: ${e.message}")
+        }
     }
 
     override fun onListenerDisconnected() {
@@ -80,6 +90,7 @@ class EchoNotificationListenerService : NotificationListenerService() {
             val now = System.currentTimeMillis()
             val fresh = seen.unseen(conversation, now)
             seen.markSeen(conversation)
+            sbn.notification?.let { ReplyActions.remember(applicationContext, conversation.thread, conversation, it) }
             for (m in fresh) {
                 // Apps mark the owner's own messages with no sender, or with
                 // the same name they give the owner.
@@ -137,9 +148,10 @@ class EchoNotificationListenerService : NotificationListenerService() {
 
     /**
      * Tapping a notification or swiping it away is the clearest sign of what
-     * matters to the owner. Only those two are kept: when an app clears its
-     * own notification (read elsewhere, opened from the launcher) there's no
-     * telling which it was.
+     * matters to the owner. Chat apps such as WhatsApp clear their own
+     * notification when the chat is read (opened from the notification, the
+     * launcher, or another device), so for a chat that counts as "read" — a
+     * weaker sign than a tap. Anything else an app clears says nothing.
      */
     override fun onNotificationRemoved(
         sbn: StatusBarNotification?,
@@ -148,9 +160,11 @@ class EchoNotificationListenerService : NotificationListenerService() {
     ) {
         super.onNotificationRemoved(sbn, rankingMap, reason)
         if (sbn == null || sbn.isOngoing) return
-        val action = when (reason) {
-            REASON_CLICK -> "opened"
-            REASON_CANCEL -> "dismissed"
+        val conversation = ConversationReader.read(sbn)
+        val action = when {
+            reason == REASON_CLICK -> "opened"
+            reason == REASON_CANCEL -> "dismissed"
+            reason == REASON_APP_CANCEL && conversation != null -> "read"
             else -> return
         }
         val packageName = sbn.packageName ?: return
@@ -163,7 +177,7 @@ class EchoNotificationListenerService : NotificationListenerService() {
         json.put("action", action)
         json.put("packageName", packageName)
         json.put("source", mapPackageToSource(packageName))
-        json.put("thread", ConversationReader.read(sbn)?.thread ?: ConversationReader.threadId(sbn))
+        json.put("thread", conversation?.thread ?: ConversationReader.threadId(sbn))
         json.put("timestamp", System.currentTimeMillis())
         emit(json)
     }

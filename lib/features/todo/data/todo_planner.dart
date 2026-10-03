@@ -18,34 +18,54 @@ const _groupRule =
     'Group chat marked "not addressed to you" becomes a to-do only when it '
     'asks something of everyone in the group.';
 
+/// A message that lists several tasks with their own times ("send the deck
+/// by 4, call the vendor at 11 tomorrow, …") becomes one item per task. The
+/// model copies each task's time words; the day and time are still worked
+/// out here.
+const _splitRule =
+    'A notification that lists more than $splitAbove separate tasks becomes one '
+    'item per task, all with that notification\'s "s", each with "w": the words '
+    'from the notification saying when that task is due, copied exactly (for '
+    'example "by 4 PM" or "tomorrow at 11"), left out when that task names no '
+    'time. Any other notification gives at most one item.';
+
 const makeInstruction =
     'You turn a person\'s notifications into a short to-do list. Each numbered '
     'line is one notification, starting with a label in square brackets saying '
     'when it applies. Reply with JSON only: an array of objects {"t": string, '
-    '"s": number}. "t" is the to-do in plain words, at most 8 words, starting '
-    'with a verb where it reads naturally, for example "Prep the deck for the '
-    'client demo". "s" is the number of the notification it comes from. '
-    'Include only things the person needs to do, attend or remember. Skip '
-    'promotions, OTPs, delivery updates, receipts and general news. One item '
-    'per real task: merge notifications about the same thing. $_groupRule '
-    'At most '
-    '$maxListItems items, the most important first. Never invent anything.';
+    '"s": number, "w"?: string}. "t" is the to-do in plain words, at most 8 '
+    'words, starting with a verb where it reads naturally, for example "Prep '
+    'the deck for the client demo". "s" is the number of the notification it '
+    'comes from. Include only things the person needs to do, attend or '
+    'remember. Skip promotions, OTPs, delivery updates, receipts and general '
+    'news. Merge notifications about the same thing. $_splitRule $_groupRule '
+    'Items from at most $maxListItems notifications, the most important first. '
+    'Never invent anything.';
 
 const updateInstruction =
     'You keep a person\'s to-do list up to date. "Open items" are already on '
     'the list, as id: text · when. "New notifications" are numbered, each '
     'starting with a label in square brackets saying when it applies. Reply '
-    'with JSON only: {"add": [{"t": string, "s": number}], "change": [{"id": '
-    'number, "s": number}]}. Use "change" when a new notification is about an '
-    'open item (for example its time moved), naming the item\'s id and the '
-    'notification number. Use "add" only for genuinely new things, with "t" '
-    'at most 8 words starting with a verb where it reads naturally. '
-    '$_groupRule Skip '
-    'promotions, OTPs, delivery updates, receipts and general news. Never '
-    'remove anything and never invent anything. Reply {"add": [], "change": '
-    '[]} if nothing applies.';
+    'with JSON only: {"add": [{"t": string, "s": number, "w"?: string}], '
+    '"change": [{"id": number, "s": number}]}. Use "change" when a new '
+    'notification is about an open item (for example its time moved), naming '
+    'the item\'s id and the notification number. Use "add" only for genuinely '
+    'new things, with "t" at most 8 words starting with a verb where it reads '
+    'naturally. $_splitRule $_groupRule Skip promotions, OTPs, delivery '
+    'updates, receipts and general news. Never remove anything and never '
+    'invent anything. Reply {"add": [], "change": []} if nothing applies.';
+
+/// Only a message with more tasks than this is split into one item per task.
+const splitAbove = 3;
+
+/// The most items one message can become.
+const _maxPerMessage = 8;
 
 const _maxSourceChars = 200;
+
+/// A message that reads like a list keeps more of its text, so every task in
+/// it reaches the model.
+const _maxListSourceChars = 700;
 
 /// A list is a short plan, not a copy of the inbox.
 const maxListItems = 8;
@@ -76,7 +96,7 @@ String numberedLines(
       e,
       content: _clip(
         rewriteRelativeDays(e.content, e.timestamp, now),
-        _maxSourceChars,
+        looksLikeList(e.content) ? _maxListSourceChars : _maxSourceChars,
       ),
       when: describeEntry(e, items[i].window, now),
       myTurns: myTurns,
@@ -95,7 +115,9 @@ String openItemLines(List<TodoItem> items, DateTime now) => items
     )
     .join('\n');
 
-typedef NewTodo = ({String title, int source});
+/// A to-do from the model: its title, the notification it came from, and for
+/// one task of a split message, the words saying when that task is due.
+typedef NewTodo = ({String title, int source, String? when});
 typedef TodoChange = ({int id, int source});
 
 List<NewTodo> parseMakeReply(String raw) {
@@ -105,7 +127,17 @@ List<NewTodo> parseMakeReply(String raw) {
       : decoded is Map
       ? (decoded['add'] ?? decoded['items'] ?? const [])
       : const [];
-  return _newTodos(list).take(maxListItems).toList();
+  // The cap counts messages, so a split message doesn't crowd others out.
+  final sources = <int>{};
+  final out = <NewTodo>[];
+  for (final t in _newTodos(list)) {
+    if (!sources.contains(t.source)) {
+      if (sources.length == maxListItems) continue;
+      sources.add(t.source);
+    }
+    out.add(t);
+  }
+  return out;
 }
 
 ({List<NewTodo> add, List<TodoChange> change}) parseUpdateReply(String raw) {
@@ -132,12 +164,44 @@ List<NewTodo> _newTodos(List list) {
   for (final t in list) {
     if (t is Map && t['t'] is String && t['s'] is num) {
       final title = (t['t'] as String).trim();
+      final when = t['w'] is String ? (t['w'] as String).trim() : '';
       if (title.isNotEmpty) {
-        out.add((title: _clip(title, 80), source: (t['s'] as num).toInt()));
+        out.add((
+          title: _clip(title, 80),
+          source: (t['s'] as num).toInt(),
+          when: when.isEmpty ? null : when,
+        ));
       }
     }
   }
   return out;
+}
+
+/// A message becomes several items only when it has more than [splitAbove]
+/// tasks; with two or three, its first item stands for it.
+List<NewTodo> keepSplitsOnlyForLists(List<NewTodo> todos) {
+  final perSource = <int, int>{};
+  for (final t in todos) {
+    perSource[t.source] = (perSource[t.source] ?? 0) + 1;
+  }
+  final taken = <int, int>{};
+  final out = <NewTodo>[];
+  for (final t in todos) {
+    final count = perSource[t.source]!;
+    final n = taken[t.source] = (taken[t.source] ?? 0) + 1;
+    final split = count > splitAbove;
+    if (n > (split ? _maxPerMessage : 1)) continue;
+    out.add(split ? t : (title: t.title, source: t.source, when: null));
+  }
+  return out;
+}
+
+/// Whether [text] reads like a list of things: four or more lines, bullets or
+/// numbered points.
+bool looksLikeList(String text) {
+  final points = RegExp(r'(^|\n)\s*([-•*]|\d{1,2}[.)])\s', multiLine: true);
+  final lines = text.split('\n').where((l) => l.trim().isNotEmpty).length;
+  return lines >= 4 || points.allMatches(text).length >= 4;
 }
 
 Object? _decodeJson(String raw) {
@@ -157,20 +221,35 @@ Object? _decodeJson(String raw) {
 
 /// A to-do built from [candidate], with [title] from the model (or
 /// [localTitle] when there is no model).
-TodoItem itemFrom(BriefingItem candidate, String title, int id, DateTime now) {
+///
+/// One task of a split message ([part]) takes its time from [when], its own
+/// time words, not from the message as a whole; the message's day still
+/// applies when [when] names only a time.
+TodoItem itemFrom(
+  BriefingItem candidate,
+  String title,
+  int id,
+  DateTime now, {
+  bool part = false,
+  String? when,
+}) {
   final e = candidate.entry;
-  final w = candidate.window;
   final today = startOfDay(now);
+  var w = candidate.window;
+  var timed = w.explicit && w.hasTime;
+  if (part) {
+    final own = when == null ? null : partWindow(when, e.timestamp, w);
+    timed = own != null && own.hasTime;
+    if (own != null) w = own;
+  }
   var day = w.explicit ? startOfDay(w.start) : today;
   if (day.isBefore(today)) day = today; // a multi-day span that began earlier
   return TodoItem(
     id: id,
     title: title,
     day: day,
-    time: w.explicit && w.hasTime ? compactTime(w) : null,
-    sort: w.explicit && w.hasTime
-        ? w.start.hour * 60 + w.start.minute
-        : TodoItem.noTimeSort,
+    time: timed ? compactTime(w) : null,
+    sort: timed ? w.start.hour * 60 + w.start.minute : TodoItem.noTimeSort,
     sender: e.who,
     app: displaySource(e.source, const {}),
     sourceText: _clip(rewriteRelativeDays(e.content, e.timestamp, now), 240),
@@ -181,6 +260,47 @@ TodoItem itemFrom(BriefingItem candidate, String title, int id, DateTime now) {
 
 String sourceKeyOf(RawData e) =>
     '${e.sender}|${e.timestamp.millisecondsSinceEpoch}';
+
+/// The key of the [n]th task (from 1) of a split message: the first keeps the
+/// message's own key, so a message already on the list is never added again.
+String partKey(String key, int n) => n == 1 ? key : '$key#$n';
+
+final _dayWords = RegExp(
+  r'\b(today|tonight|tomorrow|tmrw|tmr|yesterday|mon|tue|wed|thu|fri|sat|sun|'
+  r'jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b|'
+  r'\b\d{1,2}(st|nd|rd|th)\b|\b\d{1,2}/\d{1,2}\b',
+  caseSensitive: false,
+);
+
+/// When one task of a split message applies: the time named in [when]. If
+/// [when] gives only a time ("by 4 PM"), it's on the day the whole message
+/// is about ([message]), not necessarily the day it arrived.
+RelevanceWindow? partWindow(
+  String when,
+  DateTime receivedAt,
+  RelevanceWindow message,
+) {
+  final found = extractExplicitWindows(when, receivedAt);
+  if (found.isEmpty) return null;
+  final own = found.first;
+  if (_dayWords.hasMatch(when) || !message.explicit) return own;
+  final day = message.start;
+  final first = startOfDay(own.start);
+  DateTime onDay(DateTime t) => DateTime(
+    day.year,
+    day.month,
+    day.day + startOfDay(t).difference(first).inDays,
+    t.hour,
+    t.minute,
+  );
+  return RelevanceWindow(
+    start: onDay(own.start),
+    end: onDay(own.end),
+    explicit: true,
+    hasTime: own.hasTime,
+    hasEndTime: own.hasEndTime,
+  );
+}
 
 /// Without a model: the notification's own first sentence, trimmed.
 String localTitle(RawData e, DateTime now) {
@@ -201,17 +321,38 @@ List<TodoItem> applyMake({
   required DateTime now,
 }) {
   final keys = existing.map((i) => i.sourceKey).toSet();
+  return [...existing, ..._newItems(todos, candidates, keys, firstId, now)];
+}
+
+/// Items for [todos] whose notification isn't in [keys] yet, numbered from
+/// [firstId]. A split message gives several items, each keyed by [partKey].
+List<TodoItem> _newItems(
+  List<NewTodo> todos,
+  List<BriefingItem> candidates,
+  Set<String> keys,
+  int firstId,
+  DateTime now,
+) {
+  final bySource = <int, List<NewTodo>>{};
+  for (final t in keepSplitsOnlyForLists(todos)) {
+    if (t.source < 1 || t.source > candidates.length) continue;
+    bySource.putIfAbsent(t.source, () => []).add(t);
+  }
   final added = <TodoItem>[];
   var id = firstId;
-  for (final t in todos) {
-    if (t.source < 1 || t.source > candidates.length) continue;
-    final c = candidates[t.source - 1];
+  for (final MapEntry(key: source, value: parts) in bySource.entries) {
+    final c = candidates[source - 1];
     final key = sourceKeyOf(c.entry);
     if (keys.contains(key)) continue;
     keys.add(key);
-    added.add(itemFrom(c, t.title, id++, now));
+    final split = parts.length > 1;
+    for (var n = 1; n <= parts.length; n++) {
+      final t = parts[n - 1];
+      final item = itemFrom(c, t.title, id++, now, part: split, when: t.when);
+      added.add(split ? item.copyWith(sourceKey: partKey(key, n)) : item);
+    }
   }
-  return [...existing, ...added];
+  return added;
 }
 
 /// An update: additions are marked new, changes are applied in place with the
@@ -247,17 +388,11 @@ List<TodoItem> applyUpdate({
     keys.add(fresh.sourceKey);
   }
 
-  final ordered = [for (final i in existing) byId[i.id]!];
-  var id = firstId;
-  for (final t in add) {
-    if (t.source < 1 || t.source > candidates.length) continue;
-    final c = candidates[t.source - 1];
-    final key = sourceKeyOf(c.entry);
-    if (keys.contains(key)) continue;
-    keys.add(key);
-    ordered.add(itemFrom(c, t.title, id++, now).copyWith(isNew: true));
-  }
-  return ordered;
+  return [
+    for (final i in existing) byId[i.id]!,
+    for (final item in _newItems(add, candidates, keys, firstId, now))
+      item.copyWith(isNew: true),
+  ];
 }
 
 /// "6:30 PM", "5 PM", "4–6 PM", "11 AM–1 PM".

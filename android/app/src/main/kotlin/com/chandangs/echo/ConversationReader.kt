@@ -33,6 +33,11 @@ object ConversationReader {
         val selfName: String?,
         /** Oldest first. A null sender is the phone's owner. */
         val messages: List<Message>,
+        /**
+         * The app's own id for the chat (WhatsApp's "…@s.whatsapp.net" or
+         * "…@g.us"), for opening it. Stays on the phone: see ReplyActions.
+         */
+        val chatId: String?,
     )
 
     // Notification.MessagingStyle.Message bundle keys.
@@ -71,6 +76,7 @@ object ConversationReader {
             isGroup = isGroup,
             selfName = selfName(extras),
             messages = messages,
+            chatId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) n.shortcutId else null,
         )
     }
 
@@ -110,7 +116,7 @@ object ConversationReader {
             ?.trim()?.takeIf { it.isNotEmpty() }
     }
 
-    private fun shortHash(s: String): String =
+    fun shortHash(s: String): String =
         MessageDigest.getInstance("SHA-256").digest(s.toByteArray())
             .take(8).joinToString("") { "%02x".format(it) }
 

@@ -5,7 +5,7 @@ import 'package:project_echo/core/theme/app_theme.dart';
 /// Siri-style waveform visualizer with an integrated tap-to-play/pause gesture.
 class SiriWaveformVisualizer extends StatefulWidget {
   final bool isPlaying;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final double amplitude;
   final double height;
 
@@ -19,7 +19,7 @@ class SiriWaveformVisualizer extends StatefulWidget {
   const SiriWaveformVisualizer({
     super.key,
     required this.isPlaying,
-    required this.onTap,
+    this.onTap,
     required this.amplitude,
     this.height = 180,
     this.color1,
@@ -53,7 +53,8 @@ class _SiriWaveformVisualizerState extends State<SiriWaveformVisualizer> {
   @override
   void didUpdateWidget(covariant SiriWaveformVisualizer oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.isPlaying != oldWidget.isPlaying) {
+    if (widget.isPlaying != oldWidget.isPlaying ||
+        widget.amplitude != oldWidget.amplitude) {
       _waveController?.amplitude = widget.isPlaying ? widget.amplitude : 0.5;
     }
   }
@@ -63,14 +64,10 @@ class _SiriWaveformVisualizerState extends State<SiriWaveformVisualizer> {
     super.dispose();
   }
 
-  void _handleTap() {
-    widget.onTap();
-  }
-
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: _handleTap,
+      onTap: widget.onTap,
       behavior: HitTestBehavior.opaque,
       child: SizedBox(
         height: widget.height,

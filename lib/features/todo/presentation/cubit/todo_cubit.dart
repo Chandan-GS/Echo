@@ -120,6 +120,7 @@ class TodoCubit extends Cubit<TodoState> {
       _generator = generator ?? TodoGenerator(store: store),
       super(TodoState(now: DateTime.now())) {
     _lifecycle = AppLifecycleListener(onResume: load);
+    TodoStore.changed.addListener(load);
     load();
     _watchNotifications();
   }
@@ -278,6 +279,7 @@ class TodoCubit extends Cubit<TodoState> {
     _isarWatch?.cancel();
     _recount?.cancel();
     _lifecycle.dispose();
+    TodoStore.changed.removeListener(load);
     return super.close();
   }
 }

@@ -68,10 +68,9 @@ class _NavDockState extends State<NavDock> {
     super.dispose();
   }
 
-  void _submit() {
-    final q = _controller.text.trim();
-    if (q.isNotEmpty) widget.onAsk(q);
-  }
+  /// Sends the question; with nothing typed, opens Ask Echo itself, which
+  /// leads with what's come in for the owner.
+  void _submit() => widget.onAsk(_controller.text.trim());
 
   /// Light mode only: a soft, wide shadow that melts into the page. In dark
   /// mode the dock holds its edge with the hairline alone.

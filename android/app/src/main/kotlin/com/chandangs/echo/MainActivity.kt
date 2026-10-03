@@ -19,6 +19,8 @@ class MainActivity : FlutterActivity() {
     private val NOTIFICATIONS_EVENT_CHANNEL = "project_echo/notification_stream"
     private val WIDGET_CHANNEL = "project_echo/widget"
     private val APP_ICONS_CHANNEL = "project_echo/app_icons"
+    private val REPLY_CHANNEL = "project_echo/reply"
+    private val REMINDERS_CHANNEL = "project_echo/reminders"
 
     // Drawing and PNG-encoding icons stays off the main thread.
     private val iconExecutor = Executors.newFixedThreadPool(2)
@@ -137,6 +139,52 @@ class MainActivity : FlutterActivity() {
                     null
                 }
                 runOnUiThread { result.success(png) }
+            }
+        }
+
+        // Answering chats: through the notification's Reply button, or by
+        // opening the chat app (see ReplySender.dart).
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, REPLY_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "route" -> result.success(ReplyActions.route(applicationContext, call.argument<String>("thread") ?: ""))
+                "send" -> result.success(
+                    ReplyActions.send(applicationContext, call.argument<String>("thread") ?: "", call.argument<String>("text") ?: ""),
+                )
+                "write" -> result.success(
+                    ReplyActions.write(this, call.argument<String>("thread") ?: "", call.argument<String>("text") ?: ""),
+                )
+                "openChat" -> result.success(ReplyActions.openChat(this, call.argument<String>("thread") ?: ""))
+                "openApp" -> {
+                    val launch = call.argument<String>("package")?.let { packageManager.getLaunchIntentForPackage(it) }
+                    if (launch == null) {
+                        result.success(false)
+                    } else {
+                        startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        result.success(true)
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, REMINDERS_CHANNEL).setMethodCallHandler { call, result ->
+            val id = call.argument<Int>("id") ?: 0
+            when (call.method) {
+                "set" -> {
+                    Reminders.set(
+                        applicationContext,
+                        id,
+                        call.argument<Number>("at")?.toLong() ?: 0L,
+                        call.argument<String>("title") ?: "",
+                        call.argument<String>("body") ?: "",
+                    )
+                    result.success(null)
+                }
+                "cancel" -> {
+                    Reminders.cancel(applicationContext, id)
+                    result.success(null)
+                }
+                else -> result.notImplemented()
             }
         }
 

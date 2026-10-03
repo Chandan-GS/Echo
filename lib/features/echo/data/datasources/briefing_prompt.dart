@@ -400,6 +400,12 @@ String getAskAiSystemInstruction(String userName, {DateTime? now}) {
       'When the user asks what needs them, what they missed or who wants something, put what was meant for them first. '
       'If an "Earlier today" exchange is included, use it only to work out what the new question refers to (who "she" is, what "that" means), '
       'then answer the new question. '
+      'The notifications are numbered. Right after a sentence that uses one, '
+      'put its number in square brackets, like "… by 4 PM [2]." or "[1, 3]", '
+      'and only use numbers from the list. '
+      'If your reply mentions things $name has to do (a task, a reply someone '
+      'is waiting for, a deadline), end the whole reply with [todo:N], N being '
+      'how many separate things; otherwise add nothing. '
       'Keep every reply to one or two short sentences.';
 }
 

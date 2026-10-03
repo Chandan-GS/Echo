@@ -19,7 +19,11 @@ class ChatContextStore {
   static const _maxThreads = 400;
 
   /// Remembers that the owner wrote [text] in [thread] at [at].
-  static Future<void> recordMyTurn(String thread, DateTime at, String text) async {
+  static Future<void> recordMyTurn(
+    String thread,
+    DateTime at,
+    String text,
+  ) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.reload();
     final all = _decode(prefs.getString(_turnsKey));
@@ -54,20 +58,32 @@ class ChatContextStore {
     return prefs.getStringList(_namesKey) ?? const [];
   }
 
-  /// Counts a tap ("opened") or a swipe ("dismissed") on [thread].
+  /// Counts a tap ("opened"), a swipe ("dismissed") or a chat read in its
+  /// own app ("read", half a tap: it may have been read on another device)
+  /// on [thread].
   static Future<void> recordEngagement(
     String thread,
     String action,
     DateTime at,
   ) async {
-    if (action != 'opened' && action != 'dismissed') return;
+    final weight = switch (action) {
+      'opened' => 1.0,
+      'read' => 0.5,
+      'dismissed' => -1.0,
+      _ => 0.0,
+    };
+    if (weight == 0) return;
     final prefs = await SharedPreferences.getInstance();
     await prefs.reload();
     final all = _decode(prefs.getString(_engagementKey));
     final e = Map<String, dynamic>.from((all[thread] as Map?) ?? const {});
     var o = (e['o'] as num?)?.toDouble() ?? 0;
     var d = (e['d'] as num?)?.toDouble() ?? 0;
-    action == 'opened' ? o++ : d++;
+    if (weight > 0) {
+      o += weight;
+    } else {
+      d -= weight;
+    }
     // Halve old counts now and then, so a habit that changes shows up.
     if (o + d > 40) {
       o /= 2;

@@ -6,8 +6,10 @@ import 'package:project_echo/core/services/gemini_service.dart';
 import 'package:project_echo/features/echo/data/context/chat_context_store.dart';
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
 import 'package:project_echo/features/echo/data/datasources/priority_query_embedding.dart';
+import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:project_echo/features/echo/data/relevance/briefing_selection.dart';
 import 'package:project_echo/features/echo/data/relevance/temporal_relevance.dart';
+import 'package:project_echo/features/todo/data/todo_item.dart';
 import 'package:project_echo/features/todo/data/todo_planner.dart';
 import 'package:project_echo/features/todo/data/todo_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -62,13 +64,16 @@ class TodoGenerator {
     final picked = await candidates(now);
 
     List<NewTodo> todos;
-    final reply = await _ask(makeInstruction, numberedLines(picked, now, myTurns: await ChatContextStore.loadMyTurns()));
+    final reply = await _ask(
+      makeInstruction,
+      numberedLines(picked, now, myTurns: await ChatContextStore.loadMyTurns()),
+    );
     if (reply != null) {
       todos = parseMakeReply(reply);
     } else {
       todos = [
         for (final i in localPicks(picked))
-          (title: localTitle(picked[i].entry, now), source: i + 1),
+          (title: localTitle(picked[i].entry, now), source: i + 1, when: null),
       ];
     }
 
@@ -116,7 +121,7 @@ class TodoGenerator {
     } else {
       add = [
         for (final i in localPicks(fresh))
-          (title: localTitle(fresh[i].entry, now), source: i + 1),
+          (title: localTitle(fresh[i].entry, now), source: i + 1, when: null),
       ];
       change = const [];
     }
@@ -135,6 +140,48 @@ class TodoGenerator {
       meta.copyWith(updatedAt: now, nextId: meta.nextId + added),
     );
     return added + change.length;
+  }
+
+  /// Puts [entries] (chosen in Ask Echo) on the list and returns what was
+  /// added: nothing for messages already on it or with nothing to do.
+  Future<List<TodoItem>> addFrom(List<RawData> entries, DateTime now) async {
+    final candidates = [
+      for (final e in entries)
+        BriefingItem(
+          e,
+          relevanceWindows('${e.sender} ${e.content}', e.timestamp).first,
+        ),
+    ];
+    final (items, meta) = await store.load();
+    final reply = await _ask(
+      makeInstruction,
+      numberedLines(
+        candidates,
+        now,
+        myTurns: await ChatContextStore.loadMyTurns(),
+      ),
+    );
+    final todos = reply != null
+        ? parseMakeReply(reply)
+        : [
+            for (var i = 0; i < candidates.length; i++)
+              (
+                title: localTitle(candidates[i].entry, now),
+                source: i + 1,
+                when: null,
+              ),
+          ];
+    final next = applyMake(
+      existing: items,
+      candidates: candidates,
+      todos: todos,
+      firstId: meta.nextId,
+      now: now,
+    );
+    final added = next.sublist(items.length);
+    await store.save(next, meta.copyWith(nextId: meta.nextId + added.length));
+    TodoStore.changed.value++;
+    return added;
   }
 
   /// Gemini's reply, or null when the cloud engine isn't in use or the call
