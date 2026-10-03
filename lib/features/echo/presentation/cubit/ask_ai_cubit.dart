@@ -5,6 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:fllama/fllama.dart';
 import 'package:project_echo/features/echo/data/ask/ask_retrieval.dart';
 import 'package:project_echo/features/echo/data/ask/conversation_memory.dart';
+import 'package:project_echo/features/echo/data/context/chat_context_store.dart';
 import 'package:project_echo/features/echo/data/datasources/briefing_prompt.dart';
 import 'package:project_echo/features/echo/data/relevance/temporal_relevance.dart';
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
@@ -174,13 +175,14 @@ class AskAiCubit extends Cubit<AskAiState> {
         return;
       }
 
+      final myTurns = await ChatContextStore.loadMyTurns();
       final contextString = ragSources.isEmpty
           ? 'No notifications needed — this is just a casual message.'
           : ragSources
                 .map(
-                  (e) => formatNotification(
-                    source: e.source,
-                    sender: e.sender,
+                  (e) => formatEntry(
+                    e,
+                    myTurns: myTurns,
                     content: _clip(
                       rewriteRelativeDays(e.content, e.timestamp, now),
                       _maxContentChars,

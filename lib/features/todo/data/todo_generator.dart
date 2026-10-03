@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:project_echo/core/services/gemini_service.dart';
+import 'package:project_echo/features/echo/data/context/chat_context_store.dart';
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
 import 'package:project_echo/features/echo/data/datasources/priority_query_embedding.dart';
 import 'package:project_echo/features/echo/data/relevance/briefing_selection.dart';
@@ -46,6 +47,7 @@ class TodoGenerator {
       aliases: aliases,
       blockedCategories: excluded.toList(),
       priorityVector: isDesktop ? null : priorityQueryEmbedding,
+      affinity: (await ChatContextStore.loadEngagement()).affinity,
       limit: 25,
     );
   }
@@ -60,7 +62,7 @@ class TodoGenerator {
     final picked = await candidates(now);
 
     List<NewTodo> todos;
-    final reply = await _ask(makeInstruction, numberedLines(picked, now));
+    final reply = await _ask(makeInstruction, numberedLines(picked, now, myTurns: await ChatContextStore.loadMyTurns()));
     if (reply != null) {
       todos = parseMakeReply(reply);
     } else {
@@ -105,7 +107,7 @@ class TodoGenerator {
     final reply = await _ask(
       updateInstruction,
       'Open items:\n${open.isEmpty ? '(none)' : openItemLines(open, now)}\n\n'
-      'New notifications:\n${numberedLines(fresh, now)}',
+      'New notifications:\n${numberedLines(fresh, now, myTurns: await ChatContextStore.loadMyTurns())}',
     );
     if (reply != null) {
       final parsed = parseUpdateReply(reply);
