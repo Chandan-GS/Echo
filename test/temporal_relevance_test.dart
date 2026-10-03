@@ -149,4 +149,21 @@ void main() {
   test('horizon ends at the end of tomorrow', () {
     expect(briefingHorizonEnd(at(26, 21)), endOfDay(at(27, 0)));
   });
+
+  test('a bare hour with "tonight" or "this evening" is in the evening', () {
+    final at2pm = DateTime(2026, 9, 26, 14);
+    for (final text in [
+      'need to know by 8 tonight',
+      'tonight at 8',
+      '8 this evening',
+    ]) {
+      final w = relevanceWindows(text, at2pm).first;
+      expect(w.start, DateTime(2026, 9, 26, 20), reason: text);
+      expect(w.hasTime, isTrue, reason: text);
+    }
+    expect(
+      relevanceWindows('dinner at 8:30 tonight', at2pm).first.start,
+      DateTime(2026, 9, 26, 20, 30),
+    );
+  });
 }

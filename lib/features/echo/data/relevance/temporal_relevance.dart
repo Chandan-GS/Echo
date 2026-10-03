@@ -501,6 +501,31 @@ List<_TimeMention> _findTimes(String text, List<_Span> taken) {
     return true;
   });
 
+  // A bare hour said with "tonight" or "this evening" is in the evening:
+  // "by 8 tonight", "8:30 this evening", "tonight at 8".
+  int evening(String h, String? min) {
+    final hour = int.parse(h);
+    return (hour < 12 ? hour + 12 : hour) * 60 + int.parse(min ?? '0');
+  }
+
+  bool eveningTime(RegExpMatch m, _Span span) {
+    final hour = int.parse(m[1]!), min = int.parse(m[2] ?? '0');
+    if (!_validClock(hour, min, twelveHour: true)) return false;
+    times.add(_TimeMention(span, evening(m[1]!, m[2]), null));
+    return true;
+  }
+
+  _scan(
+      text,
+      r'\b(\d{1,2})(?:[:.](\d{2}))?(?=\s+(?:tonight|this evening)\b)',
+      taken,
+      eveningTime);
+  _scan(
+      text,
+      r'(?<=\b(?:tonight|this evening)\s+(?:at|by|around)\s+)(\d{1,2})(?:[:.](\d{2}))?\b',
+      taken,
+      eveningTime);
+
   // 24-hour clock ranges and single times: 17:00 - 18:30, 09:15. A bare
   // single-digit hour from 1 to 7 ("at 5:30") is read as PM — nobody books a
   // 5:30 AM meeting without saying so.
