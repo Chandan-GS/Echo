@@ -10,7 +10,6 @@ import 'package:project_echo/features/vault/presentation/widgets/category_detail
 import 'package:project_echo/core/presentation/animations/app_motion.dart';
 import 'package:project_echo/core/presentation/animations/fade_slide_in.dart';
 import 'package:project_echo/features/echo/presentation/widgets/echo_mascot.dart';
-import 'package:project_echo/features/vault/presentation/screens/desktop_vault_screen.dart';
 import 'package:project_echo/features/vault/presentation/screens/app_access_screen.dart';
 import 'package:project_echo/core/presentation/animations/page_transitions.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
@@ -26,9 +25,7 @@ class VaultScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocProvider(
       create: (context) => VaultCubit()..loadEntries(),
-      child: (Platform.isMacOS || Platform.isWindows)
-          ? const DesktopVaultScreen()
-          : const _VaultView(),
+      child: const _VaultView(),
     );
   }
 }

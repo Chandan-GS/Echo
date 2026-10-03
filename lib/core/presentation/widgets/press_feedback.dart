@@ -6,7 +6,7 @@ import 'package:project_echo/core/presentation/animations/app_motion.dart';
 /// back when it lifts, with a light tap of the phone. It only listens, so
 /// the child's own taps and ripples work as before; and when the finger
 /// moves off to scroll, it lets go without the tap.
-class Pressable extends StatefulWidget {
+class PressFeedback extends StatefulWidget {
   final Widget child;
 
   /// How far it sinks: 0.95 for buttons, nearer 1 for wide rows.
@@ -18,7 +18,7 @@ class Pressable extends StatefulWidget {
   /// Nothing happens when false (a disabled button).
   final bool enabled;
 
-  const Pressable({
+  const PressFeedback({
     super.key,
     required this.child,
     this.scale = 0.95,
@@ -27,10 +27,10 @@ class Pressable extends StatefulWidget {
   });
 
   @override
-  State<Pressable> createState() => _PressableState();
+  State<PressFeedback> createState() => _PressFeedbackState();
 }
 
-class _PressableState extends State<Pressable> {
+class _PressFeedbackState extends State<PressFeedback> {
   bool _down = false;
   Offset? _from;
 

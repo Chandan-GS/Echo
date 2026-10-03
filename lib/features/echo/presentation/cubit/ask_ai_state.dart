@@ -95,6 +95,15 @@ enum DraftStatus {
   picker,
   copied,
   dismissed,
+
+  /// On a computer: the phone hasn't collected it after a while.
+  waitingForPhone,
+
+  /// On a computer: the phone shows it, ready to send with a tap.
+  onPhone,
+
+  /// On a computer: the phone couldn't send it.
+  failed,
 }
 
 /// A message Echo wrote for the owner to send to [to].

@@ -12,7 +12,7 @@ import 'package:project_echo/features/todo/data/todo_generator.dart';
 import 'package:project_echo/features/todo/data/todo_planner.dart';
 import 'package:project_echo/features/todo/data/todo_store.dart';
 import 'package:material_symbols_icons/symbols.dart';
-import 'package:project_echo/core/presentation/widgets/pressable.dart';
+import 'package:project_echo/core/presentation/widgets/press_feedback.dart';
 
 /// What Ask Echo opens with when something came in for the owner: a
 /// greeting, a card for each chat that wants them, and the group chatter
@@ -283,7 +283,7 @@ class _RoundPill extends StatelessWidget {
     return Semantics(
       button: true,
       label: label,
-      child: Pressable(
+      child: PressFeedback(
         scale: 0.88,
         child: Material(
           color: Colors.transparent,
@@ -465,7 +465,7 @@ class _ChatterRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    return Pressable(
+    return PressFeedback(
       scale: 0.98,
       child: Material(
         color: colors.surface,

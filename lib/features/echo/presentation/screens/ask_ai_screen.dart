@@ -18,11 +18,11 @@ import 'package:project_echo/features/echo/presentation/widgets/ask/ask_input_ba
 import 'package:project_echo/features/echo/presentation/widgets/ask/for_you_view.dart';
 import 'package:project_echo/features/echo/presentation/widgets/echo_mascot.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:project_echo/core/presentation/widgets/pressable.dart';
+import 'package:project_echo/core/presentation/widgets/press_feedback.dart';
 
 class AskAiScreen extends StatelessWidget {
   /// True when rendered as a persistent desktop sidebar tab (inside
-  /// [DesktopShell], sitting alongside the sidebar) rather than pushed as a
+  /// [DesktopAskScreen], sitting alongside the sidebar) rather than pushed as a
   /// full-screen phone route. Embedded mode drops the [EchoAppBar] — there's
   /// nothing to "back" out of, the sidebar itself is the navigation.
   final bool embedded;
@@ -34,23 +34,38 @@ class AskAiScreen extends StatelessWidget {
   /// Reply).
   final RawData? replyTo;
 
+  /// Made by whoever shows the chat when something beside it needs the same
+  /// conversation (the desktop sources pane), and closed by them; otherwise
+  /// the screen makes its own.
+  final AskAiCubit? cubit;
+
+  /// Desktop: a citation hovered or clicked in the answer at [message] (its
+  /// place in the chat), and the one to light to match a picked source.
+  final void Function(int message, int number)? onCite;
+  final (int message, int number)? litCite;
+
   const AskAiScreen({
     super.key,
     this.embedded = false,
     this.initialQuestion,
     this.replyTo,
+    this.cubit,
+    this.onCite,
+    this.litCite,
   });
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider(
-      create: (context) => AskAiCubit(),
-      child: _AskAiView(
-        embedded: embedded,
-        initialQuestion: initialQuestion,
-        replyTo: replyTo,
-      ),
+    final view = _AskAiView(
+      embedded: embedded,
+      initialQuestion: initialQuestion,
+      replyTo: replyTo,
+      onCite: onCite,
+      litCite: litCite,
     );
+    return cubit != null
+        ? BlocProvider.value(value: cubit!, child: view)
+        : BlocProvider(create: (context) => AskAiCubit(), child: view);
   }
 }
 
@@ -58,11 +73,15 @@ class _AskAiView extends StatefulWidget {
   final bool embedded;
   final String? initialQuestion;
   final RawData? replyTo;
+  final void Function(int message, int number)? onCite;
+  final (int message, int number)? litCite;
 
   const _AskAiView({
     required this.embedded,
     this.initialQuestion,
     this.replyTo,
+    this.onCite,
+    this.litCite,
   });
 
   @override
@@ -237,7 +256,7 @@ class _AskAiViewState extends State<_AskAiView> {
           // the chat stretching edge to edge across a much wider window.
           return Center(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 640),
+              constraints: const BoxConstraints(maxWidth: 760),
               child: chat,
             ),
           );
@@ -260,6 +279,8 @@ class _AskAiViewState extends State<_AskAiView> {
         earlier: earlier,
         onAdd: m.addable ? () => cubit.addFromAnswer(i) : null,
         onOpenSource: _openSource,
+        onCite: widget.onCite == null ? null : (n) => widget.onCite!(i, n),
+        litCite: widget.litCite?.$1 == i ? widget.litCite!.$2 : null,
       ),
       MessageKind.notice => _NoticeBubble(m.text),
       MessageKind.added => AddedCard(
@@ -503,7 +524,7 @@ class _Chips extends StatelessWidget {
                   separatorBuilder: (_, _) => const SizedBox(width: 8),
                   itemBuilder: (context, i) {
                     final (label, onTap) = chips[i];
-                    return Pressable(
+                    return PressFeedback(
                       child: Material(
                         color: colors.surface,
                         shape: StadiumBorder(

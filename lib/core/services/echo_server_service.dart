@@ -379,6 +379,17 @@ class EchoServerService {
         final value = body[field];
         if (value is String) await prefs.setString(key, value);
       }
+      final aliases = body['categoryAliases'];
+      if (aliases is String) {
+        await prefs.setString('vault_category_aliases', aliases);
+      }
+      final blocked = body['blockedCategories'];
+      if (blocked is List) {
+        await prefs.setStringList(
+          'vault_blocked_categories',
+          blocked.whereType<String>().toList(),
+        );
+      }
       final routes = body['routes'];
       if (routes is Map) {
         await prefs.setString(replyRoutesKey, jsonEncode(routes));

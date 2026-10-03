@@ -5,7 +5,7 @@ import 'package:project_echo/core/presentation/animations/app_motion.dart';
 import 'package:project_echo/core/presentation/animations/fade_slide_in.dart';
 import 'package:project_echo/core/presentation/animations/page_transitions.dart';
 import 'package:project_echo/core/presentation/widgets/header_icon_button.dart';
-import 'package:project_echo/core/presentation/widgets/pressable.dart';
+import 'package:project_echo/core/presentation/widgets/press_feedback.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/features/profile/data/week_stats.dart';
@@ -265,7 +265,7 @@ class _IdentityState extends State<_Identity> {
                         style: nameStyle,
                       ),
                     ),
-                    Pressable(
+                    PressFeedback(
                       scale: 0.85,
                       child: IconButton(
                         tooltip: 'Edit your name',

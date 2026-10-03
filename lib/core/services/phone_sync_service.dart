@@ -125,6 +125,10 @@ class PhoneSyncService {
           'userName': prefs.getString('user_name'),
           'reminderLead': ReminderSettings.lead.value.inMinutes,
           'reminderSuggest': ReminderSettings.suggest.value,
+          // The Vault's renamed and blocked categories, so the computer's
+          // Vault groups and hides the same way.
+          'categoryAliases': prefs.getString('vault_category_aliases'),
+          'blockedCategories': prefs.getStringList('vault_blocked_categories'),
         }),
         options: Options(
           headers: {

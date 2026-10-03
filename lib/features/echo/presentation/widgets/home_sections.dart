@@ -13,7 +13,7 @@ import 'package:project_echo/features/todo/data/todo_planner.dart';
 import 'package:project_echo/features/todo/presentation/cubit/todo_cubit.dart';
 import 'package:project_echo/features/todo/presentation/widgets/todo_card.dart';
 import 'package:material_symbols_icons/symbols.dart';
-import 'package:project_echo/core/presentation/widgets/pressable.dart';
+import 'package:project_echo/core/presentation/widgets/press_feedback.dart';
 
 /// Home's sections under the briefing. Each one is left out when it has
 /// nothing to show, so a quiet day is a short Home.
@@ -519,7 +519,7 @@ class _GroupRow extends StatelessWidget {
         (latest.sender.isEmpty
             ? latest.content
             : '${latest.sender}: ${latest.content}');
-    return Pressable(
+    return PressFeedback(
       scale: 0.98,
       child: Material(
         color: c.surface,

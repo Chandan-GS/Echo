@@ -3,7 +3,7 @@ import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:material_symbols_icons/symbols.dart';
-import 'package:project_echo/core/presentation/widgets/pressable.dart';
+import 'package:project_echo/core/presentation/widgets/press_feedback.dart';
 
 /// Ask Echo's bottom bar: a rounded field with a mic for dictating, which
 /// becomes a send arrow once there's text.
@@ -227,7 +227,7 @@ class _RoundButton extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) => Pressable(
+  Widget build(BuildContext context) => PressFeedback(
     scale: 0.9,
     child: Material(
       color: color,

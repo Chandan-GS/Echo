@@ -25,7 +25,7 @@ import 'package:project_echo/features/todo/presentation/widgets/reminder_sheet.d
 import 'package:project_echo/features/todo/presentation/widgets/todo_card.dart';
 import 'package:project_echo/features/todo/presentation/widgets/todo_parts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:project_echo/core/presentation/widgets/pressable.dart';
+import 'package:project_echo/core/presentation/widgets/press_feedback.dart';
 
 /// The phone's To-do tab: everything Echo has put on the owner's list, and
 /// anything they add, each with a reminder they can set — or Echo's
@@ -763,7 +763,7 @@ class _AddFieldState extends State<_AddField> {
             duration: AppMotion.medium,
             curve: AppMotion.spring,
             scale: typed ? 1 : 0,
-            child: Pressable(
+            child: PressFeedback(
               scale: 0.88,
               child: GestureDetector(
                 onTap: _submit,
@@ -920,7 +920,7 @@ class _DoneRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return Pressable(
+    return PressFeedback(
       scale: 0.98,
       child: Material(
         color: Colors.transparent,
@@ -1439,7 +1439,7 @@ class _ReminderChip extends StatelessWidget {
         ],
       ),
     );
-    return Pressable(
+    return PressFeedback(
       scale: 0.9,
       child: Semantics(
         key: ValueKey(key),

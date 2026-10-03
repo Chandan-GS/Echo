@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:project_echo/core/services/phone_actions.dart';
 import 'package:project_echo/core/services/reminders.dart';
+import 'package:project_echo/features/desktop/data/desktop_actions.dart';
 import 'package:project_echo/features/todo/data/todo_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -85,5 +86,21 @@ void main() {
     final prefs = await SharedPreferences.getInstance();
     final reminders = jsonDecode(prefs.getString(Reminders.storeKey)!) as Map;
     expect(reminders['k2']['at'], 1791036600000);
+  });
+
+  test('two quick adds on the computer get different ids', () async {
+    final first = await DesktopActions.add('call the plumber');
+    final second = await DesktopActions.add('pay rent');
+    expect(first.id, isNot(second.id));
+    expect([first.id, second.id], everyElement(greaterThan(2)));
+    expect((await items()).map((i) => i['id']).toSet(), hasLength(4));
+  });
+
+  test('undo puts a deleted to-do back', () async {
+    final (list, _) = await TodoStore().load();
+    await DesktopActions.delete(list.first);
+    expect((await items()).map((i) => i['id']), [2]);
+    await DesktopActions.restore(list.first);
+    expect((await items()).map((i) => i['id']), containsAll([1, 2]));
   });
 }

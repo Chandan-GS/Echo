@@ -27,6 +27,8 @@ import 'package:project_echo/features/todo/data/todo_planner.dart';
 import 'package:project_echo/features/todo/data/todo_store.dart';
 import 'package:project_echo/features/vault/data/app_access.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:project_echo/core/services/phone_actions.dart';
+import 'package:project_echo/features/desktop/data/desktop_actions.dart';
 
 part 'ask_ai_state.dart';
 
@@ -483,6 +485,10 @@ class AskAiCubit extends Cubit<AskAiState> {
     final draft = _messages[index].draft;
     if (draft == null || !draft.open || draft.text.trim().isEmpty) return;
     _updateDraft(index, (d) => d.copyWith(status: DraftStatus.sending));
+    // A computer can't reach the chat app; the phone sends it.
+    if (Platform.isMacOS || Platform.isWindows) {
+      return _sendThroughPhone(index, draft);
+    }
     final outcome = await ReplySender.send(draft.to, draft.text.trim());
     _updateDraft(
       index,
@@ -496,6 +502,46 @@ class AskAiCubit extends Cubit<AskAiState> {
         },
       ),
     );
+  }
+
+  /// Hands the reply to the phone (see DesktopActions) and follows it: the
+  /// phone sends it, or shows it ready to send with a tap.
+  Future<void> _sendThroughPhone(int index, ReplyDraft draft) async {
+    final id = await DesktopActions.reply(draft.to, draft.text.trim());
+    final started = DateTime.now();
+    final done = Completer<void>();
+    Future<void> check() async {
+      final action = await DesktopActions.state(id);
+      final status = switch (action?.state) {
+        ActionState.done =>
+          action!.outcome == 'sent' ? DraftStatus.sent : DraftStatus.onPhone,
+        ActionState.failed => DraftStatus.failed,
+        _ =>
+          DateTime.now().difference(started) > const Duration(seconds: 40)
+              ? DraftStatus.waitingForPhone
+              : DraftStatus.sending,
+      };
+      if (isClosed) return;
+      _updateDraft(
+        index,
+        (d) => d.copyWith(
+          status: status,
+          doneAt: status == DraftStatus.sent ? DateTime.now() : null,
+        ),
+      );
+      if (status != DraftStatus.sending &&
+          status != DraftStatus.waitingForPhone &&
+          !done.isCompleted) {
+        done.complete();
+      }
+    }
+
+    PhoneActions.changed.addListener(check);
+    // Also notices the 40 seconds passing when nothing changes.
+    final tick = Timer.periodic(const Duration(seconds: 10), (_) => check());
+    await done.future.timeout(const Duration(minutes: 10), onTimeout: () {});
+    tick.cancel();
+    PhoneActions.changed.removeListener(check);
   }
 
   void _updateDraft(int index, ReplyDraft Function(ReplyDraft) change) {

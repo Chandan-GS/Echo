@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
@@ -313,7 +315,24 @@ class _DraftCardState extends State<DraftCard> {
           ],
         ],
       ),
-      DraftStatus.sending => note(Symbols.schedule_rounded, 'Sending…'),
+      DraftStatus.sending => note(
+        Symbols.schedule_rounded,
+        Platform.isMacOS || Platform.isWindows
+            ? 'Sending through your phone…'
+            : 'Sending…',
+      ),
+      DraftStatus.waitingForPhone => note(
+        Symbols.wifi_find_rounded,
+        'Waiting for your phone. Is it on the same Wi-Fi?',
+      ),
+      DraftStatus.onPhone => note(
+        Symbols.smartphone_rounded,
+        'Ready on your phone: tap the notification to send.',
+      ),
+      DraftStatus.failed => note(
+        Symbols.error_rounded,
+        "Your phone couldn't send it.",
+      ),
       DraftStatus.sent => note(
         Symbols.check_circle_rounded,
         'Sent to ${d.chatName}'

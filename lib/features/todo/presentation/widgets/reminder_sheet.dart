@@ -9,7 +9,7 @@ import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/features/echo/presentation/widgets/ask/ask_parts.dart';
 import 'package:project_echo/features/echo/presentation/widgets/echo_mascot.dart';
 import 'package:project_echo/features/todo/data/todo_item.dart';
-import 'package:project_echo/core/presentation/widgets/pressable.dart';
+import 'package:project_echo/core/presentation/widgets/press_feedback.dart';
 
 /// What the owner picked in the reminder sheet.
 sealed class ReminderChoice {
@@ -448,7 +448,7 @@ class _OptionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return Pressable(
+    return PressFeedback(
       scale: 0.98,
       haptic: false,
       child: AnimatedContainer(

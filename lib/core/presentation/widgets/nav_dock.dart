@@ -7,7 +7,7 @@ import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/features/echo/presentation/widgets/echo_mascot.dart';
 import 'package:project_echo/core/services/echo_says.dart';
 import 'package:material_symbols_icons/symbols.dart';
-import 'package:project_echo/core/presentation/widgets/pressable.dart';
+import 'package:project_echo/core/presentation/widgets/press_feedback.dart';
 
 /// Height of the dock's pill and of Echo beside it.
 const double kNavDockHeight = 56;
@@ -190,7 +190,7 @@ class _NavDockState extends State<NavDock> {
                               button: true,
                               selected: widget.selectedIndex == i,
                               label: label,
-                              child: Pressable(
+                              child: PressFeedback(
                                 scale: 0.88,
                                 haptic: false,
                                 child: GestureDetector(
@@ -268,7 +268,7 @@ class _NavDockState extends State<NavDock> {
     return Semantics(
       button: !widget.asking,
       label: widget.asking ? null : 'Ask Echo',
-      child: Pressable(
+      child: PressFeedback(
         scale: 0.92,
         enabled: !widget.asking,
         child: GestureDetector(
@@ -348,7 +348,7 @@ class _NavDockState extends State<NavDock> {
                           Semantics(
                             button: true,
                             label: 'Send',
-                            child: Pressable(
+                            child: PressFeedback(
                               scale: 0.88,
                               child: GestureDetector(
                                 onTap: _submit,
@@ -415,7 +415,7 @@ class AskSuggestionChips extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 20),
         itemCount: questions.length,
         separatorBuilder: (_, _) => const SizedBox(width: 8),
-        itemBuilder: (context, i) => Pressable(
+        itemBuilder: (context, i) => PressFeedback(
           child: Material(
             color: c.surface,
             shape: StadiumBorder(
