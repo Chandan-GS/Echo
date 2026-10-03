@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:material_symbols_icons/symbols.dart';
+import 'package:project_echo/core/presentation/widgets/pressable.dart';
 
 /// Ask Echo's bottom bar: a rounded field with a mic for dictating, which
 /// becomes a send arrow once there's text.
@@ -154,7 +156,7 @@ class _AskInputBarState extends State<AskInputBar> {
                         : colors.dividerColor,
                     onTap: hasText && widget.enabled ? widget.onSend : null,
                     child: Icon(
-                      Icons.arrow_upward_rounded,
+                      Symbols.arrow_upward_rounded,
                       size: 20,
                       color: colors.textInverse,
                     ),
@@ -167,7 +169,8 @@ class _AskInputBarState extends State<AskInputBar> {
                         : Colors.transparent,
                     onTap: widget.enabled ? _dictate : null,
                     child: Icon(
-                      _dictating ? Icons.mic_rounded : Icons.mic_none_rounded,
+                      Symbols.mic_rounded,
+                      fill: _dictating ? 1 : 0,
                       size: 22,
                       color: _dictating
                           ? context.onSelection
@@ -197,16 +200,19 @@ class _RoundButton extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) => Material(
-    color: color,
-    shape: const CircleBorder(),
-    clipBehavior: Clip.antiAlias,
-    child: InkWell(
-      onTap: onTap,
-      child: SizedBox(
-        width: size,
-        height: size,
-        child: Center(child: child),
+  Widget build(BuildContext context) => Pressable(
+    scale: 0.9,
+    child: Material(
+      color: color,
+      shape: const CircleBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: SizedBox(
+          width: size,
+          height: size,
+          child: Center(child: child),
+        ),
       ),
     ),
   );

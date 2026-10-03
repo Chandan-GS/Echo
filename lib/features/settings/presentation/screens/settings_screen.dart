@@ -33,6 +33,7 @@ import 'package:project_echo/features/todo/presentation/cubit/todo_cubit.dart';
 import 'package:project_echo/features/widgets/presentation/screens/widgets_screen.dart';
 import 'dart:io';
 import 'package:project_echo/core/services/offline_model_repository.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 bool get _isDesktop => Platform.isMacOS || Platform.isWindows;
 
@@ -188,7 +189,7 @@ class _ProfileViewState extends State<_ProfileView>
                           context.read<OnBoardingCubit>().startOnboarding();
                           context.go('/');
                         },
-                        icon: const Icon(Icons.replay_rounded, size: 18),
+                        icon: const Icon(Symbols.replay_rounded, size: 18),
                         label: const Text('Replay onboarding (debug)'),
                         style: TextButton.styleFrom(
                           foregroundColor: context.colors.textSecondary,
@@ -200,7 +201,7 @@ class _ProfileViewState extends State<_ProfileView>
                       child: TextButton.icon(
                         onPressed: () => _sendTestNotification(context),
                         icon: const Icon(
-                          Icons.notifications_active_outlined,
+                          Symbols.notifications_active_rounded,
                           size: 18,
                         ),
                         label: const Text(
@@ -216,7 +217,7 @@ class _ProfileViewState extends State<_ProfileView>
                       child: TextButton.icon(
                         onPressed: () => _bumpStreak(context),
                         icon: const Icon(
-                          Icons.local_fire_department_outlined,
+                          Symbols.local_fire_department_rounded,
                           size: 18,
                         ),
                         label: const Text('+1 streak day (debug)'),
@@ -229,7 +230,7 @@ class _ProfileViewState extends State<_ProfileView>
                       alignment: Alignment.centerLeft,
                       child: TextButton.icon(
                         onPressed: () => _resetStreak(context),
-                        icon: const Icon(Icons.restart_alt_rounded, size: 18),
+                        icon: const Icon(Symbols.restart_alt_rounded, size: 18),
                         label: const Text('Reset streak (debug)'),
                         style: TextButton.styleFrom(
                           foregroundColor: context.colors.textSecondary,
@@ -240,10 +241,7 @@ class _ProfileViewState extends State<_ProfileView>
                       alignment: Alignment.centerLeft,
                       child: TextButton.icon(
                         onPressed: () => _previewStreakAnimation(context),
-                        icon: const Icon(
-                          Icons.play_circle_outline_rounded,
-                          size: 18,
-                        ),
+                        icon: const Icon(Symbols.play_circle_rounded, size: 18),
                         label: const Text('Preview streak animation (debug)'),
                         style: TextButton.styleFrom(
                           foregroundColor: context.colors.textSecondary,
@@ -257,7 +255,7 @@ class _ProfileViewState extends State<_ProfileView>
                           context,
                           rootNavigator: true,
                         ).push(bouncyRoute(const EchoMascotPreview())),
-                        icon: const Icon(Icons.blur_on_rounded, size: 18),
+                        icon: const Icon(Symbols.blur_on_rounded, size: 18),
                         label: const Text('Preview Echo mascot (debug)'),
                         style: TextButton.styleFrom(
                           foregroundColor: context.colors.textSecondary,
@@ -376,7 +374,7 @@ class _ProfileViewState extends State<_ProfileView>
                   final sizeStr = snapshot.data;
                   return AiModeCard(
                     isSelected: state.isOfflineEngine,
-                    icon: Icons.laptop_mac,
+                    icon: Symbols.laptop_mac_rounded,
                     title: 'Offline (Private)',
                     tags: [
                       offlineModelDisplayName(),
@@ -461,7 +459,7 @@ class _ProfileViewState extends State<_ProfileView>
                 final placed = snap.data?.kindsPlaced ?? 0;
                 return _aboutTile(
                   context,
-                  icon: Icons.widgets_outlined,
+                  icon: Symbols.widgets_rounded,
                   title: 'Widgets',
                   subtitle: placed == 0
                       ? '4 available · none on your home screen yet'
@@ -507,7 +505,7 @@ class _ProfileViewState extends State<_ProfileView>
               children: [
                 _aboutTile(
                   context,
-                  icon: Icons.privacy_tip_outlined,
+                  icon: Symbols.privacy_tip_rounded,
                   title: 'Privacy Policy',
                   subtitle: 'How your data is handled',
                   onTap: () => _openUrl(
@@ -518,7 +516,7 @@ class _ProfileViewState extends State<_ProfileView>
                 Divider(height: 1, color: context.colors.dividerColor),
                 _aboutTile(
                   context,
-                  icon: Icons.mail_outline_rounded,
+                  icon: Symbols.mail_rounded,
                   title: 'Contact the founder',
                   subtitle: 'chandan1204@gmail.com — questions or bug reports',
                   onTap: () => _openUrl(
@@ -576,7 +574,7 @@ class _ProfileViewState extends State<_ProfileView>
                 ),
               ),
               Icon(
-                Icons.chevron_right_rounded,
+                Symbols.chevron_right_rounded,
                 size: 20,
                 color: context.colors.textSecondary,
               ),

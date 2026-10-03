@@ -5,6 +5,7 @@ import 'package:project_echo/core/services/home_widgets_service.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/features/todo/presentation/cubit/todo_cubit.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 /// Flutter renderings of Echo's home-screen widgets, matching their Android
 /// layouts (res/layout/widget_*.xml) and colours, fed with live data.
@@ -396,7 +397,8 @@ class BriefingWidgetPreview extends StatelessWidget {
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
-                  Icons.play_arrow_rounded,
+                  Symbols.play_arrow_rounded,
+                  fill: 1,
                   color: Colors.white,
                   size: 26,
                 ),
@@ -541,7 +543,7 @@ class _Dot extends StatelessWidget {
           : Border.all(color: color.withValues(alpha: 0.55), width: 2),
     ),
     child: done
-        ? Icon(Icons.check_rounded, size: size * 0.62, color: tick)
+        ? Icon(Symbols.check_rounded, size: size * 0.62, color: tick)
         : null,
   );
 }

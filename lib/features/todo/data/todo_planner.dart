@@ -258,6 +258,51 @@ TodoItem itemFrom(
   );
 }
 
+/// A to-do the owner typed in: "call the plumber at 11 tomorrow" is "Call
+/// the plumber", tomorrow at 11 AM. The time is read as in messages.
+TodoItem typedItem(String text, int id, DateTime now) {
+  final w = relevanceWindows(text, now).first;
+  final timed = w.explicit && w.hasTime;
+  var day = w.explicit ? startOfDay(w.start) : startOfDay(now);
+  if (day.isBefore(startOfDay(now))) day = startOfDay(now);
+  return TodoItem(
+    id: id,
+    title: typedTitle(text),
+    day: day,
+    time: timed ? compactTime(w) : null,
+    sort: timed ? w.start.hour * 60 + w.start.minute : TodoItem.noTimeSort,
+    sender: 'Added by you',
+    app: '',
+    sourceText: text.trim(),
+    sourceKey: 'you|${now.millisecondsSinceEpoch}',
+    created: now,
+  );
+}
+
+/// [text] without when it's due: "call the plumber at 11 tomorrow" → "Call
+/// the plumber".
+String typedTitle(String text) {
+  const day =
+      r'today|tonight|tomorrow|tmrw|this (?:morning|afternoon|evening)|'
+      r'(?:on |next )?(?:mon|tues|wednes|thurs|fri|satur|sun)day';
+  final title = text
+      .replaceAll(
+        RegExp(
+          r'\b(?:at|by|around|before|till|until)?\s*\d{1,2}(?:[:.]\d{2})?\s*(?:am|pm)\b'
+          r'|\b(?:at|by|around|before|till|until)\s+\d{1,2}(?:[:.]\d{2})?\b'
+          r'|\b(?:'
+          '$day'
+          r')\b',
+          caseSensitive: false,
+        ),
+        ' ',
+      )
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .replaceAll(RegExp(r'^[\s,.;:-]+|[\s,.;:-]+$'), '');
+  if (title.isEmpty) return text.trim();
+  return title[0].toUpperCase() + title.substring(1);
+}
+
 String sourceKeyOf(RawData e) =>
     '${e.sender}|${e.timestamp.millisecondsSinceEpoch}';
 

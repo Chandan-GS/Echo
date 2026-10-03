@@ -12,6 +12,7 @@ import 'package:project_echo/core/services/voice/natural_voice.dart';
 import 'package:project_echo/core/services/voice_catalog.dart';
 import 'package:project_echo/features/onboarding/data/voice_preference.dart';
 import 'package:project_echo/features/onboarding/presentation/widgets/voice_studio.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 /// Settings ▸ Voice — lets the user re-tune the briefing voice (gender · accent ·
 /// speed · character) at any time, using the same [VoiceStudio] surface as
@@ -107,7 +108,7 @@ class _VoiceSettingsSectionState extends State<VoiceSettingsSection> {
   Future<void> _audition() async {
     if (!_ready) return;
     // With the natural voice downloaded, that's the voice Echo speaks in.
-    if (!_isDesktop && await NaturalVoice.instance.modelDir() != null) {
+    if (!_isDesktop && await NaturalVoice.instance.modelDir(_pref) != null) {
       await _tts.stop();
       await _persist();
       final voice = EchoVoice.instance;
@@ -149,7 +150,7 @@ class _VoiceSettingsSectionState extends State<VoiceSettingsSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (!_isDesktop) const _NaturalVoiceTile(),
+        if (!_isDesktop) _NaturalVoiceTile(pref: _pref),
         if (Platform.isMacOS && !_hasHighQualityVoice) const _BetterVoicesHint(),
         if (_isDesktop)
           Padding(
@@ -172,7 +173,9 @@ class _VoiceSettingsSectionState extends State<VoiceSettingsSection> {
 /// Echo's natural voice: a download that makes him sound like a person
 /// rather than the phone's reader. Without it, the phone's voice is used.
 class _NaturalVoiceTile extends StatefulWidget {
-  const _NaturalVoiceTile();
+  /// The voice the owner has chosen; each has its own download.
+  final VoicePreference pref;
+  const _NaturalVoiceTile({required this.pref});
 
   @override
   State<_NaturalVoiceTile> createState() => _NaturalVoiceTileState();
@@ -187,9 +190,18 @@ class _NaturalVoiceTileState extends State<_NaturalVoiceTile> {
     EchoVoice.instance.warmUp();
   }
 
+  @override
+  void didUpdateWidget(_NaturalVoiceTile old) {
+    super.didUpdateWidget(old);
+    // Another voice or accent: is that one downloaded?
+    if (piperVoice(old.pref) != piperVoice(widget.pref)) {
+      _voice.modelDir(widget.pref);
+    }
+  }
+
   Future<void> _install() async {
     try {
-      await _voice.install();
+      await _voice.install(widget.pref);
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -236,8 +248,10 @@ class _NaturalVoiceTileState extends State<_NaturalVoiceTile> {
                     Text(
                       progress == null
                           ? (installed
-                                ? 'Echo speaks with it, on your phone.'
-                                : 'A more human voice that runs on your phone. '
+                                ? '${widget.pref.voice.label} speaks with it, on '
+                                      'your phone.'
+                                : 'A more human ${widget.pref.voice.label} that '
+                                      'runs on your phone. '
                                       '${NaturalVoice.downloadLabel} download.')
                           : progress < 0.9
                           ? 'Downloading · ${(progress / 0.9 * 100).round()}%'
@@ -256,7 +270,7 @@ class _NaturalVoiceTileState extends State<_NaturalVoiceTile> {
                 IconButton(
                   tooltip: 'Cancel',
                   onPressed: _voice.cancelInstall,
-                  icon: Icon(Icons.close_rounded, color: colors.textSecondary),
+                  icon: Icon(Symbols.close_rounded, color: colors.textSecondary),
                 )
               else if (installed)
                 TextButton(
@@ -317,7 +331,7 @@ class _RescanButton extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.refresh_rounded, size: 16, color: colors.primaryGreen),
+                Icon(Symbols.refresh_rounded, size: 16, color: colors.primaryGreen),
                 const SizedBox(width: 8),
                 Text(
                   'Rescan installed voices',
@@ -364,7 +378,7 @@ class _BetterVoicesHint extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.record_voice_over_rounded, size: 18, color: colors.primaryGreen),
+          Icon(Symbols.record_voice_over_rounded, size: 18, color: colors.primaryGreen),
           const SizedBox(width: 10),
           Expanded(
             child: RichText(

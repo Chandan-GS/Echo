@@ -7,30 +7,24 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:project_echo/features/onboarding/data/voice_preference.dart';
 
-/// Echo's natural voice: the Kokoro v1.0 model, downloaded when the owner
-/// asks for it and run on the phone. Until then, and if it's removed, Echo
-/// speaks with the phone's own voice.
+/// Echo's natural voice: a Piper voice for each of the owner's four voices
+/// in each accent, downloaded when the owner asks for it and run on the
+/// phone. Until then, and if it's removed, Echo speaks with the phone's own
+/// voice.
 ///
-/// The full-size model, not the compressed (int8) one: the compressed one
-/// whines at 4.8 and 9.6 kHz and runs slower on phone chips.
+/// Each was picked for the cleanest sound among Piper's English voices (no
+/// steady high-pitched tone under the speech).
 class NaturalVoice {
   NaturalVoice._();
   static final instance = NaturalVoice._();
 
-  static const _name = 'kokoro-multi-lang-v1_0';
-
-  /// Earlier versions, removed when this one is installed.
-  static const _older = ['kokoro-int8-en-v0_19'];
-  static const _url =
-      'https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/$_name.tar.bz2';
-
-  /// The download, for the button: "98 MB".
-  static const downloadLabel = '350 MB';
+  /// The download for one voice, for the button.
+  static const downloadLabel = '64 MB';
 
   /// 0..1 while downloading and unpacking, null otherwise.
   final progress = ValueNotifier<double?>(null);
 
-  /// Whether it's ready to speak, kept current for the Settings switch.
+  /// Whether the chosen voice is ready to speak, kept current for Settings.
   final installed = ValueNotifier<bool>(false);
 
   CancelToken? _cancel;
@@ -38,36 +32,40 @@ class NaturalVoice {
   Future<Directory> _voicesDir() async =>
       Directory('${(await getApplicationSupportDirectory()).path}/voices');
 
-  /// The model's folder once fully unpacked, else null.
-  Future<String?> modelDir() async {
-    final dir = '${(await _voicesDir()).path}/$_name';
+  /// [pref]'s voice's folder once fully unpacked, else null.
+  Future<String?> modelDir(VoicePreference pref) async {
+    final voices = await _voicesDir();
+    await _removeKokoro(voices);
+    final dir = '${voices.path}/${_folder(piperVoice(pref))}';
     final ready = await File('$dir/.ready').exists();
     installed.value = ready;
     return ready ? dir : null;
   }
 
-  Future<void> install() async {
+  Future<void> install(VoicePreference pref) async {
     if (progress.value != null) return;
     progress.value = 0;
+    final name = _folder(piperVoice(pref));
     final voices = await _voicesDir();
     await voices.create(recursive: true);
-    final archive = File('${voices.path}/$_name.tar.bz2');
+    final archive = File('${voices.path}/$name.tar.bz2');
     _cancel = CancelToken();
     try {
       try {
-        await _download(archive, _cancel!);
+        await _download(
+          'https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/'
+          '$name.tar.bz2',
+          archive,
+          _cancel!,
+        );
       } on DioException catch (e) {
         if (CancelToken.isCancel(e)) return; // the owner cancelled
         debugPrint('Natural voice download failed: $e');
         rethrow;
       }
       await Isolate.run(() => _unpack(archive.path, voices.path));
-      await File('${voices.path}/$_name/.ready').writeAsString('ok');
+      await File('${voices.path}/$name/.ready').writeAsString('ok');
       installed.value = true;
-      for (final old in _older) {
-        final dir = Directory('${voices.path}/$old');
-        if (await dir.exists()) await dir.delete(recursive: true);
-      }
     } catch (e) {
       debugPrint('Natural voice install failed: $e');
       rethrow;
@@ -78,16 +76,28 @@ class NaturalVoice {
     }
   }
 
+  static String _folder(String voice) => 'vits-piper-$voice';
+
+  /// The Kokoro voice Echo used before Piper, 350 MB: gone for good.
+  static Future<void> _removeKokoro(Directory voices) async {
+    if (!await voices.exists()) return;
+    await for (final e in voices.list()) {
+      if (e is Directory && e.path.split('/').last.startsWith('kokoro')) {
+        await e.delete(recursive: true);
+      }
+    }
+  }
+
   /// Downloads the archive into [file], resuming from where a dropped
   /// connection left off rather than starting again.
-  Future<void> _download(File file, CancelToken cancel) async {
+  Future<void> _download(String url, File file, CancelToken cancel) async {
     const attempts = 5;
     final dio = Dio();
     for (var attempt = 1; ; attempt++) {
       final have = await file.exists() ? await file.length() : 0;
       try {
         final response = await dio.get<ResponseBody>(
-          _url,
+          url,
           cancelToken: cancel,
           options: Options(
             responseType: ResponseType.stream,
@@ -127,14 +137,15 @@ class NaturalVoice {
 
   void cancelInstall() => _cancel?.cancel();
 
+  /// Removes every downloaded voice.
   Future<void> remove() async {
-    final dir = Directory('${(await _voicesDir()).path}/$_name');
-    if (await dir.exists()) await dir.delete(recursive: true);
+    final voices = await _voicesDir();
+    if (await voices.exists()) await voices.delete(recursive: true);
     installed.value = false;
   }
 
   /// bzip2 to a temporary tar beside it, then the tar onto disk, streamed so
-  /// the 160 MB never sits in memory.
+  /// the archive never sits in memory whole.
   static Future<void> _unpack(String bz2Path, String outDir) async {
     final tarPath = '$bz2Path.tar';
     final input = InputFileStream(bz2Path);
@@ -149,20 +160,31 @@ class NaturalVoice {
   }
 }
 
-/// Whether the owner's accent is spoken the British way. Kokoro has American
-/// and British English; Indian goes American, Australian and Irish British.
-bool kokoroBritish(VoicePreference pref) => switch (pref.accent) {
+/// Whether the owner's accent is spoken the British way. Piper's English is
+/// American or British; Indian goes American, Australian and Irish British.
+bool britishVoice(VoicePreference pref) => switch (pref.accent) {
   EchoAccent.us || EchoAccent.india => false,
   EchoAccent.uk || EchoAccent.australia || EchoAccent.ireland => true,
 };
 
-/// The Kokoro speaker for the owner's chosen voice: four in each accent.
-int kokoroSpeaker(VoicePreference pref) {
-  const american = [3, 2, 16, 11]; // af_heart, af_bella, am_michael, am_adam
-  const british = [21, 22, 26, 25]; // bf_emma, bf_isabella, bm_george, bm_fable
-  return (kokoroBritish(pref) ? british : american)[pref.voice.voiceIndex];
+/// The Piper voice for the owner's chosen voice and accent: Aria and Sage
+/// are women, Atlas and Nova men.
+String piperVoice(VoicePreference pref) {
+  const american = [
+    'en_US-lessac-medium',
+    'en_US-kristin-medium',
+    'en_US-ryan-medium',
+    'en_US-norman-medium',
+  ];
+  const british = [
+    'en_GB-alba-medium',
+    'en_GB-jenny_dioco-medium',
+    'en_GB-northern_english_male-medium',
+    'en_GB-alan-medium',
+  ];
+  return (britishVoice(pref) ? british : american)[pref.voice.voiceIndex];
 }
 
-/// The speed slider (0..1, centre is normal) as Kokoro's speed.
-double kokoroSpeed(VoicePreference pref) =>
+/// The speed slider (0..1, centre is normal) as Piper's speed.
+double piperSpeed(VoicePreference pref) =>
     0.85 + 0.35 * pref.speed.clamp(0.0, 1.0);

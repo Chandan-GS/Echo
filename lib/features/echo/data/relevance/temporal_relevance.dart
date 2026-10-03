@@ -96,7 +96,7 @@ List<RelevanceWindow> extractExplicitWindows(
 }) {
   final taken = <_Span>[];
   final days = _findDays(text, receivedAt, taken);
-  final times = _findTimes(text, taken);
+  final times = _findTimes(text, taken, receivedAt);
   final instants = _findRelativeInstants(text, receivedAt, taken);
 
   final windows = <RelevanceWindow>[...instants];
@@ -470,7 +470,8 @@ bool _validClock(int hour, int minute, {required bool twelveHour}) =>
     minute < 60 &&
     (twelveHour ? hour >= 1 && hour <= 12 : hour >= 0 && hour <= 23);
 
-List<_TimeMention> _findTimes(String text, List<_Span> taken) {
+List<_TimeMention> _findTimes(
+    String text, List<_Span> taken, DateTime receivedAt) {
   final times = <_TimeMention>[];
 
   // Ranges ending in AM/PM; the start inherits the end's meridiem when it has
@@ -525,6 +526,35 @@ List<_TimeMention> _findTimes(String text, List<_Span> taken) {
       r'(?<=\b(?:tonight|this evening)\s+(?:at|by|around)\s+)(\d{1,2})(?:[:.](\d{2}))?\b',
       taken,
       eveningTime);
+
+  // A bare hour after "at", "by" and the like: "I'll send it by 6", "call
+  // you at 9". One to six is the afternoon or evening; otherwise it's the
+  // next time that hour comes round after the message ("at 9" said at 8 AM
+  // is 9 AM, said at 2 PM is 9 PM), or the morning on a later day named
+  // ("at 11 tomorrow").
+  final laterDay = RegExp(
+    r'\b(?:tomorrow|tmrw|tmr|(?:mon|tues|wednes|thurs|fri|satur|sun)day)\b',
+    caseSensitive: false,
+  ).hasMatch(text);
+  final sent = laterDay ? 0 : receivedAt.hour * 60 + receivedAt.minute;
+  _scan(
+      text,
+      r'(?<=\b(?:at|by|around|before|till|until)\s+)(\d{1,2})\b'
+      r'(?![:.]\d|\s*(?:%|percent|days?|weeks?|months?|hours?|hrs?|minutes?|mins?|people|of\b))',
+      taken, (m, span) {
+    final hour = int.parse(m[1]!);
+    if (hour < 1 || hour > 12) return false;
+    final am = hour % 12 * 60, pm = am + 12 * 60;
+    final minutes = hour <= 6
+        ? pm
+        : sent < am
+            ? am
+            : sent < pm
+                ? pm
+                : am;
+    times.add(_TimeMention(span, minutes, null));
+    return true;
+  });
 
   // 24-hour clock ranges and single times: 17:00 - 18:30, 09:15. A bare
   // single-digit hour from 1 to 7 ("at 5:30") is read as PM — nobody books a

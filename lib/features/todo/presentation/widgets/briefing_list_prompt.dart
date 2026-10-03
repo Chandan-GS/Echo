@@ -6,6 +6,7 @@ import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/features/todo/presentation/cubit/todo_cubit.dart';
 import 'package:project_echo/features/todo/presentation/widgets/drafting_skeleton.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 /// The end of the briefing transcript: an offer to turn the briefing into a
 /// to-do list (or bring an existing list up to date). The briefing itself
@@ -197,7 +198,7 @@ class _OfferButton extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 14),
-              Icon(Icons.checklist_rounded, color: fg, size: 30),
+              Icon(Symbols.checklist_rounded, color: fg, size: 30),
             ],
           ),
         ),

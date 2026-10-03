@@ -1,12 +1,11 @@
 import 'dart:async';
 import 'dart:collection';
-import 'dart:math' as math;
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:project_echo/core/services/echo_tts.dart';
-import 'package:project_echo/core/services/voice/kokoro_engine.dart';
+import 'package:project_echo/core/services/voice/piper_engine.dart';
 import 'package:project_echo/core/services/voice/natural_voice.dart';
 import 'package:project_echo/features/onboarding/data/voice_preference.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -28,10 +27,10 @@ class EchoVoice {
   Completer<void>? _cut;
   var _session = 0;
 
-  KokoroEngine? _kokoro;
+  PiperEngine? _piper;
 
-  /// The model folder and accent [_kokoro] was started with.
-  String? _kokoroKey;
+  /// The voice folder [_piper] was started with.
+  String? _piperDir;
   final _player = AudioPlayer();
   FlutterTts? _tts;
 
@@ -79,28 +78,19 @@ class EchoVoice {
 
   Future<void> _run(int session) async {
     final pref = VoicePreference.read(await SharedPreferences.getInstance());
-    final kokoro = await _naturalEngine(pref);
-    debugPrint('Echo voice: ${kokoro != null ? 'natural (Kokoro)' : 'phone'}');
+    final piper = await _naturalEngine(pref);
+    debugPrint('Echo voice: ${piper != null ? 'natural (Piper)' : 'phone'}');
     Future<Speech>? next;
     try {
       while (_queue.isNotEmpty && session == _session) {
         final sentence = _queue.removeFirst();
-        if (kokoro != null) {
+        if (piper != null) {
           final current =
-              next ??
-              kokoro.speak(
-                sentence,
-                speaker: kokoroSpeaker(pref),
-                speed: kokoroSpeed(pref),
-              );
+              next ?? piper.speak(sentence, speed: piperSpeed(pref));
           final speech = await current;
           next = _queue.isEmpty
               ? null
-              : kokoro.speak(
-                  _queue.first,
-                  speaker: kokoroSpeaker(pref),
-                  speed: kokoroSpeed(pref),
-                );
+              : piper.speak(_queue.first, speed: piperSpeed(pref));
           if (session != _session) break;
           speaking.value = sentence;
           await _play(speech, session);
@@ -123,32 +113,30 @@ class EchoVoice {
 
   /// The natural voice's engine, started on first use; null when the voice
   /// isn't downloaded or won't start.
-  Future<KokoroEngine?>? _starting;
+  Future<PiperEngine?>? _starting;
 
   /// Starting it is shared, so a warm-up and a first sentence arriving
   /// together load it once.
-  Future<KokoroEngine?> _naturalEngine(VoicePreference pref) =>
+  Future<PiperEngine?> _naturalEngine(VoicePreference pref) =>
       _starting ??= _startNatural(pref).whenComplete(() => _starting = null);
 
-  Future<KokoroEngine?> _startNatural(VoicePreference pref) async {
-    final dir = await NaturalVoice.instance.modelDir();
+  Future<PiperEngine?> _startNatural(VoicePreference pref) async {
+    final dir = await NaturalVoice.instance.modelDir(pref);
     if (dir == null) {
-      _kokoro?.dispose();
-      _kokoro = null;
+      _piper?.dispose();
+      _piper = null;
       return null;
     }
-    final british = kokoroBritish(pref);
-    final key = '$dir|$british';
-    if (_kokoro != null && _kokoroKey == key) return _kokoro;
-    _kokoro?.dispose();
+    if (_piper != null && _piperDir == dir) return _piper;
+    _piper?.dispose();
     try {
-      _kokoro = await KokoroEngine.start(dir, british: british);
-      _kokoroKey = key;
+      _piper = await PiperEngine.start(dir, piperVoice(pref));
+      _piperDir = dir;
     } catch (e) {
       debugPrint('Natural voice unavailable, using the phone voice: $e');
-      _kokoro = null;
+      _piper = null;
     }
-    return _kokoro;
+    return _piper;
   }
 
   Future<void> _play(Speech speech, int session) async {

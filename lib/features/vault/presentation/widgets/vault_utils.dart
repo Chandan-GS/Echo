@@ -1,22 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:project_echo/features/vault/data/vault_icons.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 IconData getSourceIcon(String source) {
   switch (source.toLowerCase()) {
     case 'slack':
-      return Icons.chat_bubble_outline_rounded;
+      return Symbols.chat_bubble_rounded;
     case 'sms':
-      return Icons.sms_outlined;
+      return Symbols.sms_rounded;
     case 'whatsapp':
-      return Icons.message_outlined;
+      return Symbols.message_rounded;
     case 'calendar':
-      return Icons.calendar_today_outlined;
+      return Symbols.calendar_today_rounded;
     case 'gmail':
-      return Icons.mail_outline_rounded;
+      return Symbols.mail_rounded;
     case 'email':
-      return Icons.mail_outline_rounded;
+      return Symbols.mail_rounded;
     default:
-      return Icons.notifications_none_rounded;
+      return Symbols.notifications_rounded;
   }
 }
 

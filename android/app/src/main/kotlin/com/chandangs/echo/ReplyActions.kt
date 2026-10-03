@@ -116,6 +116,23 @@ object ReplyActions {
         return fresh(thread)?.open?.let { sendOpen(context, it) } ?: false
     }
 
+    /**
+     * What a reminder's "Open chat" button opens: [thread]'s chat itself, or
+     * the chat app's own tap target while its notification is fresh. Null
+     * when neither is known.
+     */
+    @Synchronized
+    fun openChatIntent(context: Context, thread: String, requestCode: Int): PendingIntent? {
+        val chatId = if (isWhatsApp(thread)) chatId(context, thread) else null
+        if (chatId != null) {
+            val chat = Intent().setClassName(appOf(thread), "com.whatsapp.Conversation")
+                .putExtra("jid", chatId)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            return PendingIntent.getActivity(context, requestCode, chat, PendingIntent.FLAG_IMMUTABLE)
+        }
+        return fresh(thread)?.open
+    }
+
     private fun share(app: String, text: String) = Intent(Intent.ACTION_SEND)
         .setType("text/plain")
         .setPackage(app)

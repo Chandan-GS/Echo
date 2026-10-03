@@ -16,6 +16,7 @@ import 'package:project_echo/core/presentation/animations/page_transitions.dart'
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:project_echo/features/vault/presentation/widgets/week_card.dart';
 import 'package:project_echo/features/vault/presentation/widgets/vault_day_heading.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 class VaultScreen extends StatelessWidget {
   const VaultScreen({super.key});
@@ -257,7 +258,7 @@ class _VaultViewState extends State<_VaultView> {
             width: 48,
             height: 48,
             child: Icon(
-              Icons.tune_rounded,
+              Symbols.tune_rounded,
               size: 22,
               color: context.colors.textPrimary,
             ),
@@ -334,7 +335,7 @@ class _VaultViewState extends State<_VaultView> {
                 onPressed: () =>
                     _showManageBlockedCategoriesDialog(parentContext, state),
                 icon: Icon(
-                  Icons.block,
+                  Symbols.block_rounded,
                   color: parentContext.colors.textSecondary,
                 ),
                 label: Text(

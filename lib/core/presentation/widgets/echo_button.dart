@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/presentation/animations/app_motion.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 class EchoButton extends StatefulWidget {
   final String text;
@@ -82,7 +83,7 @@ class _EchoButtonState extends State<EchoButton> {
                 ),
                 if (widget.showArrow) ...[
                   const SizedBox(width: 8),
-                  const Icon(Icons.arrow_forward, size: 20),
+                  const Icon(Symbols.arrow_forward_rounded, size: 20),
                 ],
               ],
             ),

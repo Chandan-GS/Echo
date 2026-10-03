@@ -10,6 +10,7 @@ import 'package:project_echo/features/echo/data/reply/reply_drafter.dart';
 import 'package:project_echo/features/echo/data/reply/reply_sender.dart';
 import 'package:project_echo/features/echo/presentation/cubit/ask_ai_cubit.dart';
 import 'package:project_echo/features/echo/presentation/widgets/ask/answer_text.dart';
+import 'package:project_echo/features/echo/presentation/widgets/ask/ask_parts.dart';
 import 'package:project_echo/features/todo/data/todo_item.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -295,5 +296,19 @@ void main() {
         expect(reminderTimeFor(chat('B', 'lol', at(9)), at(10)), isNull);
       },
     );
+
+    test('a reminder on another day says which', () {
+      final now = at(19, 10); // Sat 26 Sep
+      expect(whenLabel(at(19, 40), now), 'at 7:40 PM');
+      expect(
+        whenLabel(DateTime(2026, 9, 27, 9, 40), now),
+        'tomorrow at 9:40 AM',
+      );
+      expect(whenLabel(DateTime(2026, 9, 29, 9), now), 'Tue at 9:00 AM');
+      expect(
+        whenLabel(DateTime(2026, 10, 12, 9, 40), now),
+        'on 12 Oct at 9:40 AM',
+      );
+    });
   });
 }

@@ -18,6 +18,7 @@ import 'package:project_echo/features/echo/presentation/widgets/ask/ask_input_ba
 import 'package:project_echo/features/echo/presentation/widgets/ask/for_you_view.dart';
 import 'package:project_echo/features/echo/presentation/widgets/echo_mascot.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:project_echo/core/presentation/widgets/pressable.dart';
 
 class AskAiScreen extends StatelessWidget {
   /// True when rendered as a persistent desktop sidebar tab (inside
@@ -29,13 +30,26 @@ class AskAiScreen extends StatelessWidget {
   /// Asked as soon as the screen opens (from the nav dock's question bar).
   final String? initialQuestion;
 
-  const AskAiScreen({super.key, this.embedded = false, this.initialQuestion});
+  /// A message to draft a reply to as soon as the screen opens (Home's
+  /// Reply).
+  final RawData? replyTo;
+
+  const AskAiScreen({
+    super.key,
+    this.embedded = false,
+    this.initialQuestion,
+    this.replyTo,
+  });
 
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
       create: (context) => AskAiCubit(),
-      child: _AskAiView(embedded: embedded, initialQuestion: initialQuestion),
+      child: _AskAiView(
+        embedded: embedded,
+        initialQuestion: initialQuestion,
+        replyTo: replyTo,
+      ),
     );
   }
 }
@@ -43,8 +57,13 @@ class AskAiScreen extends StatelessWidget {
 class _AskAiView extends StatefulWidget {
   final bool embedded;
   final String? initialQuestion;
+  final RawData? replyTo;
 
-  const _AskAiView({required this.embedded, this.initialQuestion});
+  const _AskAiView({
+    required this.embedded,
+    this.initialQuestion,
+    this.replyTo,
+  });
 
   @override
   State<_AskAiView> createState() => _AskAiViewState();
@@ -67,6 +86,8 @@ class _AskAiViewState extends State<_AskAiView> {
     super.initState();
     _load();
     if (!_desktop) EchoVoice.instance.warmUp();
+    final replyTo = widget.replyTo;
+    if (replyTo != null) context.read<AskAiCubit>().draftReply(replyTo);
     final question = widget.initialQuestion?.trim();
     if (question != null && question.isNotEmpty) {
       // A beat's pause in the filming build, so the empty chat is seen first.
@@ -481,31 +502,35 @@ class _Chips extends StatelessWidget {
                   separatorBuilder: (_, _) => const SizedBox(width: 8),
                   itemBuilder: (context, i) {
                     final (label, onTap) = chips[i];
-                    return Material(
-                      color: colors.surface,
-                      shape: StadiumBorder(
-                        side: BorderSide(
-                          color: colors.dividerColor.withValues(alpha: 0.8),
+                    return Pressable(
+                      child: Material(
+                        color: colors.surface,
+                        shape: StadiumBorder(
+                          side: BorderSide(
+                            color: colors.dividerColor.withValues(alpha: 0.8),
+                          ),
                         ),
-                      ),
-                      clipBehavior: Clip.antiAlias,
-                      child: InkWell(
-                        onTap: onTap,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 14),
-                          child: Center(
-                            child: ConstrainedBox(
-                              // A long group name ends in "…" rather than
-                              // running off the screen.
-                              constraints: const BoxConstraints(maxWidth: 240),
-                              child: Text(
-                                label,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: GoogleFonts.nunito(
-                                  fontSize: 13.5,
-                                  fontWeight: FontWeight.w700,
-                                  color: colors.textPrimary,
+                        clipBehavior: Clip.antiAlias,
+                        child: InkWell(
+                          onTap: onTap,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 14),
+                            child: Center(
+                              child: ConstrainedBox(
+                                // A long group name ends in "…" rather than
+                                // running off the screen.
+                                constraints: const BoxConstraints(
+                                  maxWidth: 240,
+                                ),
+                                child: Text(
+                                  label,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.nunito(
+                                    fontSize: 13.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: colors.textPrimary,
+                                  ),
                                 ),
                               ),
                             ),

@@ -69,6 +69,7 @@ dependencies:
   sherpa_onnx: ^1.13.8
   audioplayers: ^6.8.1
   archive: ^4.3.0
+  material_symbols_icons: ^4.2960.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

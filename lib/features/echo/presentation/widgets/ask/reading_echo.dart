@@ -61,12 +61,13 @@ Offset readingGaze(Duration t) {
   return Offset(x, 0.1 + row * 0.3);
 }
 
-/// Ask Echo while it works: Echo reading beside the green pill, which says
-/// what it's doing ("Reading 63 messages…", then "4 look relevant…").
+/// Echo while he works: reading beside the green pill, which says what he's
+/// doing ("Reading 63 messages…", then "4 look relevant…"), or [text].
 class WorkingRow extends StatelessWidget {
   final AskProgress? progress;
   final bool happy;
-  const WorkingRow({super.key, this.progress, this.happy = false});
+  final String? text;
+  const WorkingRow({super.key, this.progress, this.happy = false, this.text});
 
   static String label(AskProgress? p) {
     if (p == null) return 'Thinking…';
@@ -96,8 +97,8 @@ class WorkingRow extends StatelessWidget {
           child: AnimatedSwitcher(
             duration: const Duration(milliseconds: 250),
             child: Text(
-              label(progress),
-              key: ValueKey(label(progress)),
+              text ?? label(progress),
+              key: ValueKey(text ?? label(progress)),
               style: GoogleFonts.nunito(
                 fontSize: 13.5,
                 fontStyle: FontStyle.italic,

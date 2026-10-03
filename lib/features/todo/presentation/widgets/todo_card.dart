@@ -12,6 +12,8 @@ import 'package:project_echo/features/todo/data/todo_item.dart';
 import 'package:project_echo/features/todo/presentation/cubit/todo_cubit.dart';
 import 'package:project_echo/features/todo/presentation/screens/todo_celebration_screen.dart';
 import 'package:project_echo/features/todo/presentation/widgets/drafting_skeleton.dart';
+import 'package:project_echo/features/todo/presentation/widgets/todo_parts.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 /// The home screen's to-do card. Before a list exists it shows placeholder
 /// rows (and, once there's a briefing, a way to make one); while Echo writes
@@ -95,7 +97,7 @@ class _TodoCardState extends State<TodoCard>
   final Set<int> _expanded = {};
 
   /// Items just ticked on this card: they stay in place while the check
-  /// plays, then fold away (see [_Leavable]).
+  /// plays, then fold away (see [Leavable]).
   final Set<int> _leaving = {};
   bool _arriving = false;
   int _arrivalKey = 0;
@@ -225,7 +227,7 @@ class _TodoCardState extends State<TodoCard>
         ),
         // When everything's done the panel below says so; no ring needed.
         if (s.hasList && !s.allDoneToday)
-          _ProgressRing(done: done, total: total),
+          ProgressRing(done: done, total: total),
       ],
     );
   }
@@ -254,7 +256,7 @@ class _TodoCardState extends State<TodoCard>
           child: Text(
             widget.hasBriefing
                 ? "Turn today's briefing into a checklist for today and tomorrow."
-                : "Generate today's briefing first. Then you can turn it into a checklist for today and tomorrow.",
+                : "Make today's briefing first, then turn it into a list for today and tomorrow.",
             style: GoogleFonts.nunito(
               fontSize: 14,
               color: context.colors.textSecondary,
@@ -263,7 +265,7 @@ class _TodoCardState extends State<TodoCard>
         ),
         if (widget.hasBriefing) ...[
           _SolidButton(
-            icon: Icons.checklist_rounded,
+            icon: Symbols.checklist_rounded,
             label: 'Make a to-do list',
             onTap: () => context.read<TodoCubit>().make(),
           ),
@@ -285,7 +287,7 @@ class _TodoCardState extends State<TodoCard>
     final allDone = s.allDoneToday && _leaving.isEmpty;
 
     Widget rowFor(TodoItem item, int index) {
-      Widget row = _Leavable(
+      Widget row = Leavable(
         key: ValueKey('todo-${item.id}'),
         leaving: _leaving.contains(item.id),
         onGone: () => setState(() => _leaving.remove(item.id)),
@@ -334,7 +336,7 @@ class _TodoCardState extends State<TodoCard>
 
     return [
       if (s.phase == TodoPhase.idle && s.pendingNew > 0)
-        _UpdateRow(
+        UpdateRow(
           count: s.pendingNew,
           since: updatedAt ?? madeAt,
           onUpdate: () => context.read<TodoCubit>().update(),
@@ -353,7 +355,7 @@ class _TodoCardState extends State<TodoCard>
       const SizedBox(height: 6),
       if (allDone) ...[
         // One calm panel instead of a pile of crossed-out items.
-        _AllDonePanel(count: today.length, lastDoneAt: s.lastDoneToday),
+        AllDonePanel(count: today.length, lastDoneAt: s.lastDoneToday),
         _LinkRow(
           label: 'See all ${today.length} done',
           onTap: () => showTodoSheet(context),
@@ -415,176 +417,6 @@ String _clock(DateTime t) {
 
 // ── Pieces ──────────────────────────────────────────────────────────────────
 
-/// Keeps a just-ticked row in place while its check and strike-through
-/// play, then folds it away and calls [onGone]. Always in the tree (not
-/// only while leaving) so the row's own check animation isn't remounted.
-class _Leavable extends StatefulWidget {
-  final bool leaving;
-  final VoidCallback onGone;
-  final Widget child;
-
-  const _Leavable({
-    super.key,
-    required this.leaving,
-    required this.onGone,
-    required this.child,
-  });
-
-  @override
-  State<_Leavable> createState() => _LeavableState();
-}
-
-class _LeavableState extends State<_Leavable>
-    with SingleTickerProviderStateMixin {
-  static const _hold = Duration(milliseconds: 650);
-
-  late final AnimationController _present = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 340),
-    value: 1,
-  );
-  Timer? _timer;
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.leaving) _scheduleLeave();
-  }
-
-  @override
-  void didUpdateWidget(covariant _Leavable oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.leaving && !oldWidget.leaving) _scheduleLeave();
-    if (!widget.leaving && oldWidget.leaving) {
-      // Unticked before it left: stay.
-      _timer?.cancel();
-      _present.forward();
-    }
-  }
-
-  void _scheduleLeave() {
-    _timer?.cancel();
-    _timer = Timer(_hold, () async {
-      if (!mounted) return;
-      await _present.reverse();
-      if (mounted && widget.leaving) widget.onGone();
-    });
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    _present.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final curve = CurvedAnimation(
-      parent: _present,
-      curve: Curves.easeOutCubic,
-      reverseCurve: Curves.easeInCubic,
-    );
-    return SizeTransition(
-      sizeFactor: curve,
-      alignment: Alignment.topCenter,
-      child: FadeTransition(
-        opacity: curve,
-        child: SlideTransition(
-          position: Tween(
-            begin: const Offset(0.06, 0),
-            end: Offset.zero,
-          ).animate(curve),
-          child: widget.child,
-        ),
-      ),
-    );
-  }
-}
-
-class _ProgressRing extends StatelessWidget {
-  final int done;
-  final int total;
-  const _ProgressRing({required this.done, required this.total});
-
-  @override
-  Widget build(BuildContext context) {
-    final target = total == 0 ? 0.0 : done / total;
-    return TweenAnimationBuilder<double>(
-      tween: Tween(end: target),
-      duration: const Duration(milliseconds: 600),
-      curve: const Cubic(0.2, 0.8, 0.2, 1),
-      builder: (context, value, _) => SizedBox(
-        width: 52,
-        height: 52,
-        child: CustomPaint(
-          painter: _RingPainter(
-            value: value,
-            track: context.colors.primaryGreen.withValues(
-              alpha: context.isDarkMode ? 0.14 : 0.10,
-            ),
-            fill: context.colors.primaryGreen,
-          ),
-          child: Center(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 260),
-              transitionBuilder: (child, a) =>
-                  ScaleTransition(scale: a, child: child),
-              child: total > 0 && done == total
-                  ? Icon(
-                      Icons.check_rounded,
-                      key: const ValueKey('all-done'),
-                      size: 24,
-                      color: context.colors.primaryGreen,
-                    )
-                  : Text(
-                      '$done',
-                      key: const ValueKey('count'),
-                      style: GoogleFonts.nunito(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800,
-                        color: context.colors.textPrimary,
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                      ),
-                    ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _RingPainter extends CustomPainter {
-  final double value;
-  final Color track;
-  final Color fill;
-  _RingPainter({required this.value, required this.track, required this.fill});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rect = (Offset.zero & size).deflate(3);
-    final stroke = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 5.5
-      ..strokeCap = StrokeCap.round;
-    canvas.drawArc(rect, 0, 2 * math.pi, false, stroke..color = track);
-    if (value > 0) {
-      canvas.drawArc(
-        rect,
-        -math.pi / 2,
-        2 * math.pi * value,
-        false,
-        stroke..color = fill,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _RingPainter old) =>
-      old.value != value || old.track != track || old.fill != fill;
-}
-
 /// Solid, inverted like the Play button: white on dark, dark on light.
 class _SolidButton extends StatelessWidget {
   final IconData icon;
@@ -624,83 +456,6 @@ class _SolidButton extends StatelessWidget {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _UpdateRow extends StatelessWidget {
-  final int count;
-  final DateTime? since;
-  final VoidCallback onUpdate;
-  const _UpdateRow({
-    required this.count,
-    required this.since,
-    required this.onUpdate,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final fg = context.colors.textInverse;
-    return FadeSlideIn(
-      offsetY: -6,
-      child: Container(
-        margin: const EdgeInsets.only(top: 14),
-        padding: const EdgeInsets.fromLTRB(16, 4, 4, 4),
-        decoration: BoxDecoration(
-          color: context.colors.textPrimary,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text.rich(
-                TextSpan(
-                  children: [
-                    TextSpan(text: '$count new'),
-                    if (since != null)
-                      TextSpan(
-                        text: ' since ${_clock(since!)}',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          color: fg.withValues(alpha: 0.6),
-                        ),
-                      ),
-                  ],
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.nunito(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: fg,
-                ),
-              ),
-            ),
-            TextButton(
-              onPressed: () {
-                HapticFeedback.lightImpact();
-                onUpdate();
-              },
-              style: TextButton.styleFrom(
-                foregroundColor: fg,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                minimumSize: const Size(0, 38),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: Text(
-                'Update',
-                style: GoogleFonts.nunito(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  color: fg,
-                ),
-              ),
-            ),
-          ],
         ),
       ),
     );
@@ -758,123 +513,11 @@ class _TomorrowRow extends StatelessWidget {
               ),
             ),
             Icon(
-              Icons.chevron_right_rounded,
+              Symbols.chevron_right_rounded,
               size: 22,
               color: context.colors.textSecondary,
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Shown when today's list is finished: a green badge whose tick draws itself,
-/// "That's everything for today", and when the last item was done.
-class _AllDonePanel extends StatefulWidget {
-  final int count;
-  final DateTime? lastDoneAt;
-  const _AllDonePanel({required this.count, required this.lastDoneAt});
-
-  @override
-  State<_AllDonePanel> createState() => _AllDonePanelState();
-}
-
-class _AllDonePanelState extends State<_AllDonePanel>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _in = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 900),
-  )..forward();
-
-  late final Animation<double> _rise = CurvedAnimation(
-    parent: _in,
-    curve: const Interval(0, 0.55, curve: Cubic(0.2, 0.8, 0.2, 1)),
-  );
-  late final Animation<double> _pop = CurvedAnimation(
-    parent: _in,
-    curve: const Interval(0.12, 0.7, curve: Cubic(0.34, 1.56, 0.64, 1)),
-  );
-  late final Animation<double> _tick = CurvedAnimation(
-    parent: _in,
-    curve: const Interval(0.45, 0.85, curve: Curves.easeOut),
-  );
-
-  @override
-  void dispose() {
-    _in.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    final last = widget.lastDoneAt;
-    return AnimatedBuilder(
-      animation: _in,
-      builder: (context, _) => Opacity(
-        opacity: _rise.value.clamp(0.0, 1.0),
-        child: Transform.translate(
-          offset: Offset(0, 14 * (1 - _rise.value)),
-          child: Container(
-            margin: const EdgeInsets.fromLTRB(0, 14, 0, 6),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: c.primaryGreen.withValues(
-                alpha: context.isDarkMode ? 0.14 : 0.10,
-              ),
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: Row(
-              children: [
-                Transform.scale(
-                  scale: _pop.value,
-                  child: Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      color: c.primaryGreen,
-                      shape: BoxShape.circle,
-                    ),
-                    child: CustomPaint(
-                      painter: _CheckPainter(
-                        _tick.value,
-                        context.isDarkMode
-                            ? const Color(0xFF16301B)
-                            : Colors.white,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "That's everything for today",
-                        style: GoogleFonts.nunito(
-                          fontSize: 15.5,
-                          fontWeight: FontWeight.w800,
-                          color: c.textPrimary,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        last == null
-                            ? '${widget.count} done'
-                            : '${widget.count} done · last one at ${_clock(last)}',
-                        style: GoogleFonts.nunito(
-                          fontSize: 13,
-                          color: c.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
         ),
       ),
     );
@@ -912,7 +555,7 @@ class _LinkRow extends StatelessWidget {
               ),
             ),
             Icon(
-              Icons.chevron_right_rounded,
+              Symbols.chevron_right_rounded,
               size: 20,
               color: context.colors.primaryGreen,
             ),
@@ -1163,7 +806,7 @@ class _TodoRow extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _CheckCircle(done: item.done, onTap: onToggle, label: item.title),
+              TodoCheck(done: item.done, onTap: onToggle, label: item.title),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -1207,7 +850,7 @@ class _TodoRow extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    _Highlight(
+                    ChangeHighlight(
                       active: changed,
                       child: Text.rich(
                         TextSpan(children: meta),
@@ -1229,10 +872,10 @@ class _TodoRow extends StatelessWidget {
                   onPressed: onExpand,
                   icon: AnimatedRotation(
                     turns: expanded ? 0.5 : 0,
-                    duration: _Reveal.duration,
-                    curve: _Reveal.curve,
+                    duration: Reveal.duration,
+                    curve: Reveal.curve,
                     child: Icon(
-                      Icons.expand_more_rounded,
+                      Symbols.expand_more_rounded,
                       size: 22,
                       color: c.textSecondary,
                     ),
@@ -1241,7 +884,7 @@ class _TodoRow extends StatelessWidget {
               ),
             ],
           ),
-          _Reveal(
+          Reveal(
             open: expanded,
             child: Container(
               margin: const EdgeInsets.only(left: 38, top: 8),
@@ -1275,175 +918,4 @@ class _TodoRow extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Opens and closes [child] by growing and fading it together. The child
-/// stays built while closed, so it never pops in mid-animation.
-class _Reveal extends StatefulWidget {
-  static const duration = Duration(milliseconds: 260);
-  static const curve = Curves.easeOutCubic;
-
-  final bool open;
-  final Widget child;
-  const _Reveal({required this.open, required this.child});
-
-  @override
-  State<_Reveal> createState() => _RevealState();
-}
-
-class _RevealState extends State<_Reveal> with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(
-    vsync: this,
-    duration: _Reveal.duration,
-    value: widget.open ? 1 : 0,
-  );
-  late final Animation<double> _size = CurvedAnimation(
-    parent: _c,
-    curve: _Reveal.curve,
-    reverseCurve: Curves.easeInCubic,
-  );
-  late final Animation<double> _fade = CurvedAnimation(
-    parent: _c,
-    curve: const Interval(0.25, 1, curve: Curves.easeOut),
-    reverseCurve: const Interval(0.4, 1, curve: Curves.easeIn),
-  );
-
-  @override
-  void didUpdateWidget(covariant _Reveal oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.open != oldWidget.open) {
-      widget.open ? _c.forward() : _c.reverse();
-    }
-  }
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SizeTransition(
-      sizeFactor: _size,
-      alignment: Alignment.topCenter,
-      child: FadeTransition(opacity: _fade, child: widget.child),
-    );
-  }
-}
-
-/// A brief green wash behind a line that just changed (e.g. a moved time).
-class _Highlight extends StatelessWidget {
-  final bool active;
-  final Widget child;
-  const _Highlight({required this.active, required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    if (!active) return child;
-    final tint = context.colors.primaryGreen.withValues(
-      alpha: context.isDarkMode ? 0.14 : 0.10,
-    );
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0, end: 1),
-      duration: const Duration(milliseconds: 1200),
-      builder: (context, t, child) {
-        final a = t < 0.3 ? t / 0.3 : (1 - t) / 0.7;
-        return DecoratedBox(
-          decoration: BoxDecoration(
-            color: Color.lerp(Colors.transparent, tint, a.clamp(0.0, 1.0)),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: child,
-        );
-      },
-      child: child,
-    );
-  }
-}
-
-class _CheckCircle extends StatelessWidget {
-  final bool done;
-  final VoidCallback onTap;
-  final String label;
-  const _CheckCircle({
-    required this.done,
-    required this.onTap,
-    required this.label,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final green = context.colors.primaryGreen;
-    return Semantics(
-      button: true,
-      checked: done,
-      label: label,
-      child: GestureDetector(
-        onTap: onTap,
-        behavior: HitTestBehavior.opaque,
-        child: Padding(
-          padding: const EdgeInsets.only(top: 1),
-          child: AnimatedScale(
-            scale: done ? 1.08 : 1,
-            duration: const Duration(milliseconds: 220),
-            curve: const Cubic(0.34, 1.56, 0.64, 1),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: 26,
-              height: 26,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: done ? green : Colors.transparent,
-                border: Border.all(
-                  color: done ? green : green.withValues(alpha: 0.55),
-                  width: 2,
-                ),
-              ),
-              child: TweenAnimationBuilder<double>(
-                tween: Tween(end: done ? 1 : 0),
-                duration: const Duration(milliseconds: 280),
-                builder: (context, t, _) => CustomPaint(
-                  painter: _CheckPainter(
-                    t,
-                    context.isDarkMode ? const Color(0xFF16301B) : Colors.white,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _CheckPainter extends CustomPainter {
-  final double t;
-  final Color color;
-  _CheckPainter(this.t, this.color);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (t <= 0) return;
-    final w = size.width, h = size.height;
-    final path = Path()
-      ..moveTo(w * 0.28, h * 0.52)
-      ..lineTo(w * 0.44, h * 0.67)
-      ..lineTo(w * 0.72, h * 0.36);
-    final metric = path.computeMetrics().first;
-    canvas.drawPath(
-      metric.extractPath(0, metric.length * t),
-      Paint()
-        ..color = color
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.6
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _CheckPainter old) =>
-      old.t != t || old.color != color;
 }

@@ -6,6 +6,8 @@ import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:project_echo/features/echo/data/reply/reply_sender.dart';
 import 'package:project_echo/features/todo/data/todo_item.dart';
 import 'package:project_echo/features/vault/presentation/widgets/source_icon.dart';
+import 'package:material_symbols_icons/symbols.dart';
+import 'package:project_echo/core/presentation/widgets/pressable.dart';
 
 /// The small pieces Ask Echo is built from, each matching a piece the app
 /// already has (the to-do card's surface and rows, the limit card's pill
@@ -46,54 +48,71 @@ class AskCard extends StatelessWidget {
   }
 }
 
-/// A stadium button: [filled] dark (light in dark mode), or outlined.
+/// A stadium button: [filled] dark (light in dark mode), outlined, or
+/// [set]: soft green with a filled icon, for something already on ("Reminding
+/// at 7:40 PM").
 class AskPill extends StatelessWidget {
   final String label;
   final IconData? icon;
   final bool filled;
+  final bool set;
   final VoidCallback? onTap;
   const AskPill({
     super.key,
     required this.label,
     this.icon,
     this.filled = false,
+    this.set = false,
     this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final fg = filled ? colors.background : colors.textPrimary;
-    return Material(
-      color: filled ? colors.textPrimary : Colors.transparent,
-      shape: StadiumBorder(
-        side: BorderSide(
-          color: filled
-              ? colors.textPrimary
-              : colors.textPrimary.withValues(alpha: 0.35),
+    final fg = set
+        ? context.onSelection
+        : filled
+        ? colors.background
+        : colors.textPrimary;
+    return Pressable(
+      enabled: onTap != null,
+      child: Material(
+        color: set
+            ? context.selectionFill
+            : filled
+            ? colors.textPrimary
+            : Colors.transparent,
+        shape: StadiumBorder(
+          side: BorderSide(
+            color: set
+                ? Colors.transparent
+                : filled
+                ? colors.textPrimary
+                : colors.textPrimary.withValues(alpha: 0.35),
+          ),
         ),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 9),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (icon != null) ...[
-                Icon(icon, size: 17, color: fg),
-                const SizedBox(width: 6),
-              ],
-              Text(
-                label,
-                style: GoogleFonts.nunito(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w800,
-                  color: fg,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 9),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (icon != null) ...[
+                  Icon(icon, size: 17, fill: set ? 1 : 0, color: fg),
+                  const SizedBox(width: 6),
+                ],
+                Text(
+                  label,
+                  style: GoogleFonts.nunito(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w800,
+                    color: fg,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -116,28 +135,31 @@ class AskSolidButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    return Material(
-      color: colors.textPrimary,
-      borderRadius: BorderRadius.circular(16),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 20, color: colors.textInverse),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: GoogleFonts.nunito(
-                  fontSize: 14.5,
-                  fontWeight: FontWeight.w800,
-                  color: colors.textInverse,
+    return Pressable(
+      enabled: onTap != null,
+      child: Material(
+        color: colors.textPrimary,
+        borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 20, color: colors.textInverse),
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: GoogleFonts.nunito(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w800,
+                    color: colors.textInverse,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -233,14 +255,14 @@ class SourceBadge extends StatelessWidget {
 
   static IconData _fallbackIcon(String source) {
     final s = source.toLowerCase();
-    if (s.contains('slack')) return Icons.chat_bubble_outline_rounded;
-    if (s.contains('whatsapp')) return Icons.message_outlined;
-    if (s.contains('sms')) return Icons.sms_outlined;
-    if (s.contains('calendar')) return Icons.calendar_today_outlined;
+    if (s.contains('slack')) return Symbols.chat_bubble_rounded;
+    if (s.contains('whatsapp')) return Symbols.message_rounded;
+    if (s.contains('sms')) return Symbols.sms_rounded;
+    if (s.contains('calendar')) return Symbols.calendar_today_rounded;
     if (s.contains('mail') || s.contains('gmail')) {
-      return Icons.mail_outline_rounded;
+      return Symbols.mail_rounded;
     }
-    return Icons.notifications_none_rounded;
+    return Symbols.notifications_rounded;
   }
 }
 
@@ -366,4 +388,34 @@ class WhoLine extends StatelessWidget {
 String clockLabel(DateTime t) {
   final h = t.hour % 12 == 0 ? 12 : t.hour % 12;
   return '$h:${t.minute.toString().padLeft(2, '0')} ${t.hour < 12 ? 'AM' : 'PM'}';
+}
+
+/// When [t] is, from [now]: "at 7:40 PM" today, "tomorrow at 9:40 AM", "Mon
+/// at 9 AM" within the week, "on 12 Oct at 9:40 AM" beyond.
+String whenLabel(DateTime t, DateTime now) {
+  final days = DateTime(
+    t.year,
+    t.month,
+    t.day,
+  ).difference(DateTime(now.year, now.month, now.day)).inDays;
+  final at = 'at ${clockLabel(t)}';
+  if (days == 0) return at;
+  if (days == 1) return 'tomorrow $at';
+  const week = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  if (days > 1 && days < 7) return '${week[t.weekday - 1]} $at';
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  return 'on ${t.day} ${months[t.month - 1]} $at';
 }

@@ -10,6 +10,7 @@ import 'package:project_echo/features/echo/presentation/cubit/ask_ai_cubit.dart'
 import 'package:project_echo/features/echo/presentation/widgets/ask/answer_text.dart';
 import 'package:project_echo/features/echo/presentation/widgets/ask/ask_parts.dart';
 import 'package:project_echo/features/echo/presentation/widgets/ask/reading_echo.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 /// Echo's turn in the chat: reading while it works, then the answer. When the
 /// first words arrive Echo squints happily for a moment before handing over.
@@ -183,7 +184,7 @@ class _CheckedLineState extends State<_CheckedLine> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(
-                    Icons.inventory_2_outlined,
+                    Symbols.inventory_2_rounded,
                     size: 14,
                     color: colors.textSecondary,
                   ),
@@ -201,7 +202,7 @@ class _CheckedLineState extends State<_CheckedLine> {
                     turns: _open ? 0.5 : 0,
                     duration: const Duration(milliseconds: 220),
                     child: Icon(
-                      Icons.keyboard_arrow_down_rounded,
+                      Symbols.keyboard_arrow_down_rounded,
                       size: 16,
                       color: colors.textSecondary,
                     ),
@@ -358,7 +359,7 @@ class _Actions extends StatelessWidget {
             label: message.todos > 1
                 ? 'Add these ${message.todos} to my list'
                 : 'Add it to my list',
-            icon: Icons.checklist_rounded,
+            icon: Symbols.checklist_rounded,
             onTap: onAdd,
           ),
         const Spacer(),
@@ -369,7 +370,7 @@ class _Actions extends StatelessWidget {
             return IconButton(
               tooltip: speakingThis ? 'Stop' : 'Listen',
               icon: Icon(
-                speakingThis ? Icons.stop_rounded : Icons.volume_up_outlined,
+                speakingThis ? Symbols.stop_rounded : Symbols.volume_up_rounded,
                 size: 21,
                 color: colors.textSecondary,
               ),

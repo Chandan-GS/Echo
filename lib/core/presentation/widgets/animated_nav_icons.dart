@@ -57,6 +57,8 @@ class _SpinInIconState extends State<SpinInIcon>
       },
       child: Icon(
         widget.isSelected ? widget.selectedIcon : widget.unselectedIcon,
+        // The selected tab's icon is filled, the others outlined.
+        fill: widget.isSelected ? 1 : 0,
         size: widget.size,
         color: widget.color,
       ),
@@ -130,6 +132,8 @@ class _BounceInIconState extends State<BounceInIcon>
       },
       child: Icon(
         widget.isSelected ? widget.selectedIcon : widget.unselectedIcon,
+        // The selected tab's icon is filled, the others outlined.
+        fill: widget.isSelected ? 1 : 0,
         size: widget.size,
         color: widget.color,
       ),

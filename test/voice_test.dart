@@ -2,7 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:project_echo/core/services/voice/echo_voice.dart';
-import 'package:project_echo/core/services/voice/kokoro_engine.dart';
+import 'package:project_echo/core/services/voice/piper_engine.dart';
 import 'package:project_echo/core/services/voice/natural_voice.dart';
 import 'package:project_echo/features/echo/presentation/widgets/ask/reading_echo.dart';
 import 'package:project_echo/features/onboarding/data/voice_preference.dart';
@@ -35,22 +35,25 @@ void main() {
     expect(data.getInt16(48, Endian.little), -32767);
   });
 
-  test('each voice and accent picks its own Kokoro speaker', () {
+  test('each voice and accent has its own Piper voice', () {
     VoicePreference pref(EchoVoiceSlot v, EchoAccent a) =>
         VoicePreference.fallback.copyWith(voice: v, accent: a);
     final american = {
-      for (final v in EchoVoiceSlot.values)
-        kokoroSpeaker(pref(v, EchoAccent.us)),
+      for (final v in EchoVoiceSlot.values) piperVoice(pref(v, EchoAccent.us)),
     };
     final british = {
-      for (final v in EchoVoiceSlot.values)
-        kokoroSpeaker(pref(v, EchoAccent.uk)),
+      for (final v in EchoVoiceSlot.values) piperVoice(pref(v, EchoAccent.uk)),
     };
     expect(american, hasLength(4));
     expect(british, hasLength(4));
-    expect(american.intersection(british), isEmpty);
+    expect(american.every((v) => v.startsWith('en_US-')), isTrue);
+    expect(british.every((v) => v.startsWith('en_GB-')), isTrue);
     expect(
-      kokoroSpeed(VoicePreference.fallback.copyWith(speed: 0.5)),
+      piperVoice(pref(EchoVoiceSlot.aria, EchoAccent.india)),
+      'en_US-lessac-medium',
+    );
+    expect(
+      piperSpeed(VoicePreference.fallback.copyWith(speed: 0.5)),
       closeTo(1.025, 1e-9),
     );
   });

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import '../../../../core/presentation/widgets/chip_label.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 class AiModeCard extends StatelessWidget {
   final bool isSelected;
@@ -99,7 +100,9 @@ class AiModeCard extends StatelessWidget {
               Row(
                 children: [
                   Icon(
-                    isFast ? Icons.bolt : Icons.hourglass_empty,
+                    isFast
+                        ? Symbols.bolt_rounded
+                        : Symbols.hourglass_empty_rounded,
                     size: 16,
                     color: context.colors.textSecondary,
                   ),

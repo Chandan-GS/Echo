@@ -5,6 +5,7 @@ import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/core/services/offline_model_repository.dart';
 import 'package:project_echo/core/services/model_download_service.dart';
 import 'package:project_echo/features/onboarding/domain/repositories/model_download_repository.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 /// Local AI model download & management for the Settings screen.
 ///
@@ -180,7 +181,7 @@ class _ModelManagementSectionState extends State<ModelManagementSection> {
         children: [
           Row(
             children: [
-              Icon(Icons.memory_rounded, size: 20, color: colors.primaryGreen),
+              Icon(Symbols.memory_rounded, size: 20, color: colors.primaryGreen),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -290,7 +291,7 @@ class _ModelManagementSectionState extends State<ModelManagementSection> {
         key: const ValueKey('ready'),
         children: [
           Icon(
-            Icons.check_circle_rounded,
+            Symbols.check_circle_rounded, fill: 1,
             size: 20,
             color: colors.primaryGreen,
           ),
@@ -317,7 +318,7 @@ class _ModelManagementSectionState extends State<ModelManagementSection> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const Icon(
-                      Icons.delete_outline_rounded,
+                      Symbols.delete_rounded,
                       size: 16,
                       color: Colors.redAccent,
                     ),
@@ -345,7 +346,7 @@ class _ModelManagementSectionState extends State<ModelManagementSection> {
       width: double.infinity,
       child: ElevatedButton.icon(
         onPressed: _startDownload,
-        icon: const Icon(Icons.download_rounded, size: 20),
+        icon: const Icon(Symbols.download_rounded, size: 20),
         label: Text(
           'Download model (${offlineModelSizeLabel()})',
           style: GoogleFonts.nunito(

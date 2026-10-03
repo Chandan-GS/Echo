@@ -28,11 +28,15 @@ class EchoNotificationListenerService : NotificationListenerService() {
         super.onListenerConnected()
         instance = this
         // After an update or restart, chats still in the shade can be
-        // answered and opened again straight away.
+        // answered and opened again straight away, and messages that came
+        // in while Echo wasn't listening are caught up (the ones it already
+        // has are skipped). Other notifications aren't: nothing records
+        // which of those were already captured.
         try {
             for (sbn in activeNotifications.orEmpty()) {
+                if (!captures(sbn)) continue
                 val conversation = ConversationReader.read(sbn) ?: continue
-                sbn.notification?.let { ReplyActions.remember(applicationContext, conversation.thread, conversation, it) }
+                capture(sbn, conversation)
             }
         } catch (e: Exception) {
             Log.w("EchoNotification", "Couldn't read the shade: ${e.message}")
@@ -68,47 +72,12 @@ class EchoNotificationListenerService : NotificationListenerService() {
         val text = extras.getCharSequence("android.text")?.toString() ?: ""
         
         if (title.isEmpty() && text.isEmpty()) return
-        
-        // Filter out system and ongoing notifications
-        if (sbn.isOngoing || packageName == "android" || packageName == "com.android.systemui") {
-            return
-        }
-
-        // Apps switched off in Vault → Apps Echo hears are never captured.
-        if (!AppAccessRules.hears(applicationContext, packageName)) {
-            return
-        }
-
-        // Filter out group summaries and WhatsApp "X new messages" spam
-        if ((sbn.notification?.flags ?: 0) and android.app.Notification.FLAG_GROUP_SUMMARY != 0) {
-            return
-        }
+        if (!captures(sbn)) return
 
         // Chats: every new message in the thread, with its own sender and time.
         val conversation = ConversationReader.read(sbn)
         if (conversation != null) {
-            val now = System.currentTimeMillis()
-            val fresh = seen.unseen(conversation, now)
-            seen.markSeen(conversation)
-            sbn.notification?.let { ReplyActions.remember(applicationContext, conversation.thread, conversation, it) }
-            for (m in fresh) {
-                // Apps mark the owner's own messages with no sender, or with
-                // the same name they give the owner.
-                val fromMe = m.sender == null || m.sender == conversation.selfName
-                val json = JSONObject()
-                json.put("source", mapPackageToSource(packageName))
-                json.put("sender", if (fromMe) "" else m.sender)
-                json.put("content", m.text)
-                json.put("timestamp", m.time)
-                json.put("packageName", packageName)
-                json.put("thread", conversation.thread)
-                json.put("threadTitle", conversation.title)
-                json.put("isGroup", conversation.isGroup)
-                // The owner's own messages only tell Echo when they last spoke.
-                json.put("fromMe", fromMe)
-                conversation.selfName?.let { json.put("selfName", it) }
-                emit(json)
-            }
+            capture(sbn, conversation)
             return
         }
 
@@ -144,6 +113,44 @@ class EchoNotificationListenerService : NotificationListenerService() {
         json.put("packageName", packageName)
         json.put("thread", ConversationReader.threadId(sbn, cleanTitle))
         emit(json)
+    }
+
+    /**
+     * Whether [sbn] is one Echo reads: not ongoing or from the system, from
+     * an app the owner lets it hear (Vault → Apps Echo hears), and not a
+     * group summary (WhatsApp's "X new messages").
+     */
+    private fun captures(sbn: StatusBarNotification): Boolean {
+        val packageName = sbn.packageName ?: return false
+        if (sbn.isOngoing || packageName == "android" || packageName == "com.android.systemui") return false
+        if (!AppAccessRules.hears(applicationContext, packageName)) return false
+        return (sbn.notification?.flags ?: 0) and android.app.Notification.FLAG_GROUP_SUMMARY == 0
+    }
+
+    /** Passes on the messages in [conversation] Echo hasn't seen yet. */
+    private fun capture(sbn: StatusBarNotification, conversation: ConversationReader.Conversation) {
+        val packageName = sbn.packageName ?: return
+        val fresh = seen.unseen(conversation, System.currentTimeMillis())
+        seen.markSeen(conversation)
+        sbn.notification?.let { ReplyActions.remember(applicationContext, conversation.thread, conversation, it) }
+        for (m in fresh) {
+            // Apps mark the owner's own messages with no sender, or with
+            // the same name they give the owner.
+            val fromMe = m.sender == null || m.sender == conversation.selfName
+            val json = JSONObject()
+            json.put("source", mapPackageToSource(packageName))
+            json.put("sender", if (fromMe) "" else m.sender)
+            json.put("content", m.text)
+            json.put("timestamp", m.time)
+            json.put("packageName", packageName)
+            json.put("thread", conversation.thread)
+            json.put("threadTitle", conversation.title)
+            json.put("isGroup", conversation.isGroup)
+            // The owner's own messages only tell Echo when they last spoke.
+            json.put("fromMe", fromMe)
+            conversation.selfName?.let { json.put("selfName", it) }
+            emit(json)
+        }
     }
 
     /**

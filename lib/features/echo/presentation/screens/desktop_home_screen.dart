@@ -28,6 +28,7 @@ import 'package:project_echo/features/todo/presentation/widgets/todo_card.dart';
 import 'package:project_echo/features/echo/presentation/widgets/home_glance.dart';
 import 'package:project_echo/features/echo/presentation/widgets/home_masthead.dart';
 import 'package:project_echo/demo/demo_mode.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 /// The desktop Today screen — a genuine three-pane workspace rather than a
 /// centered phone column. The sidebar is supplied by [DesktopShell]; this
@@ -127,7 +128,7 @@ class _DesktopHomeScreenState extends State<DesktopHomeScreen>
     BriefingCached() || BriefingReady() => 'Your briefing is ready.',
     BriefingGenerating() => 'Writing your briefing…',
     BriefingError() => "Today's briefing couldn't be written.",
-    _ => "Generate today's briefing to get started.",
+    _ => 'No briefing yet today.',
   };
 
   @override
@@ -273,8 +274,8 @@ class _DesktopHomeScreenState extends State<DesktopHomeScreen>
     if (state is BriefingError) {
       return _SurfaceCard(
         child: _CenteredMessage(
-          icon: Icons.error_outline_rounded,
-          title: "We couldn't generate your briefing.",
+          icon: Symbols.error_rounded,
+          title: "Today's briefing didn't finish.",
           subtitle: state.message,
           actionLabel: 'Try again',
           onAction: () => context.read<BriefingCubit>().generateBriefing(),
@@ -284,10 +285,10 @@ class _DesktopHomeScreenState extends State<DesktopHomeScreen>
     // Initial
     return _SurfaceCard(
       child: _CenteredMessage(
-        icon: Icons.auto_awesome_rounded,
+        icon: Symbols.play_arrow_rounded,
         title: 'No briefing yet',
-        subtitle: "Generate today's briefing to get started.",
-        actionLabel: 'Generate briefing',
+        subtitle: "Echo makes it from everything that's come in today.",
+        actionLabel: 'Make the briefing',
         onAction: () => context.read<BriefingCubit>().generateBriefing(),
       ),
     );
@@ -476,7 +477,8 @@ class _PlayCircle extends StatelessWidget {
           ],
         ),
         child: Icon(
-          isPlaying ? Icons.stop_rounded : Icons.play_arrow_rounded,
+          isPlaying ? Symbols.stop_rounded : Symbols.play_arrow_rounded,
+          fill: 1,
           color: Colors.white,
           size: 30,
         ),
@@ -504,7 +506,7 @@ class _RegenerateButton extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
-                Icons.refresh_rounded,
+                Symbols.refresh_rounded,
                 size: 16,
                 color: colors.textSecondary,
               ),
@@ -626,7 +628,7 @@ class _ChatPane extends StatelessWidget {
           child: Row(
             children: [
               Icon(
-                Icons.chat_bubble_rounded,
+                Symbols.chat_bubble_rounded,
                 size: 17,
                 color: colors.primaryGreen,
               ),
@@ -655,7 +657,7 @@ class _ChatPane extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
-                          Icons.arrow_back_rounded,
+                          Symbols.arrow_back_rounded,
                           size: 15,
                           color: colors.textSecondary,
                         ),
@@ -716,7 +718,7 @@ class _AskEchoBar extends StatelessWidget {
           child: Row(
             children: [
               Icon(
-                Icons.auto_awesome_rounded,
+                Symbols.chat_bubble_rounded,
                 size: 18,
                 color: colors.primaryGreen,
               ),

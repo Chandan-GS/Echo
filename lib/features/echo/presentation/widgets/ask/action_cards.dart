@@ -6,6 +6,7 @@ import 'package:project_echo/features/echo/data/reply/reply_sender.dart';
 import 'package:project_echo/features/echo/presentation/cubit/ask_ai_cubit.dart';
 import 'package:project_echo/features/echo/presentation/widgets/ask/ask_parts.dart';
 import 'package:project_echo/features/echo/presentation/widgets/echo_mascot.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 /// What Echo put on the to-do list: the same rows as on Home, under a
 /// heading saying which list, with an undo.
@@ -234,7 +235,12 @@ class _DraftCardState extends State<DraftCard> {
     final d = widget.draft;
     Widget note(IconData icon, String text) => Row(
       children: [
-        Icon(icon, size: 18, color: colors.primaryGreen),
+        Icon(
+          icon,
+          size: 18,
+          fill: icon == Symbols.check_circle_rounded ? 1 : 0,
+          color: colors.primaryGreen,
+        ),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
@@ -256,7 +262,7 @@ class _DraftCardState extends State<DraftCard> {
         children: [
           AskPill(
             label: _sendLabel,
-            icon: Icons.send_rounded,
+            icon: Symbols.send_rounded,
             filled: true,
             onTap: d.text.trim().isEmpty && !_editing
                 ? null
@@ -267,7 +273,7 @@ class _DraftCardState extends State<DraftCard> {
           ),
           AskPill(
             label: _editing ? 'Done' : 'Edit',
-            icon: _editing ? Icons.check_rounded : Icons.edit_outlined,
+            icon: _editing ? Symbols.check_rounded : Symbols.edit_rounded,
             onTap: _toggleEdit,
           ),
           if (widget.onDismiss != null)
@@ -280,7 +286,7 @@ class _DraftCardState extends State<DraftCard> {
               tooltip: 'Copy',
               visualDensity: VisualDensity.compact,
               icon: Icon(
-                Icons.content_copy_rounded,
+                Symbols.content_copy_rounded,
                 size: 19,
                 color: colors.textSecondary,
               ),
@@ -293,22 +299,22 @@ class _DraftCardState extends State<DraftCard> {
             ),
         ],
       ),
-      DraftStatus.sending => note(Icons.schedule_rounded, 'Sending…'),
+      DraftStatus.sending => note(Symbols.schedule_rounded, 'Sending…'),
       DraftStatus.sent => note(
-        Icons.check_circle_rounded,
+        Symbols.check_circle_rounded,
         'Sent to ${d.chatName}'
         '${d.doneAt == null ? '' : ' · ${clockLabel(d.doneAt!)}'}',
       ),
       DraftStatus.written => note(
-        Icons.edit_note_rounded,
+        Symbols.edit_note_rounded,
         'Written in ${d.chatName} in ${_app()}. Tap send there.',
       ),
       DraftStatus.picker => note(
-        Icons.edit_note_rounded,
+        Symbols.edit_note_rounded,
         'Pick ${d.chatName} in ${_app()}; your reply is written in.',
       ),
       DraftStatus.copied => note(
-        Icons.content_copy_rounded,
+        Symbols.content_copy_rounded,
         'Copied. Paste it in the chat.',
       ),
       DraftStatus.dismissed => Text(

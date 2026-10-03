@@ -7,7 +7,11 @@ import 'package:project_echo/features/echo/data/context/addressed.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:project_echo/features/echo/presentation/widgets/ask/ask_parts.dart';
 import 'package:project_echo/features/echo/presentation/widgets/echo_mascot.dart';
+import 'package:project_echo/features/todo/data/todo_generator.dart';
 import 'package:project_echo/features/todo/data/todo_planner.dart';
+import 'package:project_echo/features/todo/data/todo_store.dart';
+import 'package:material_symbols_icons/symbols.dart';
+import 'package:project_echo/core/presentation/widgets/pressable.dart';
 
 /// What Ask Echo opens with when something came in for the owner: a
 /// greeting, a card for each chat that wants them, and the group chatter
@@ -86,7 +90,7 @@ class ForYouView extends StatelessWidget {
         ),
         const SizedBox(height: 14),
         for (final e in forYou.items) ...[
-          _ForYouCard(entry: e, onReply: onReply, onAdd: onAdd),
+          ForYouCard(entry: e, onReply: onReply, onAdd: onAdd),
           const SizedBox(height: 10),
         ],
         if (forYou.chatter > 0)
@@ -96,65 +100,59 @@ class ForYouView extends StatelessWidget {
   }
 }
 
-class _ForYouCard extends StatefulWidget {
+/// A message meant for the owner, with what they can do about it: reply,
+/// be reminded before the time it names, or put it on the list. Ask Echo
+/// opens with these, and Home's "Needs you" is made of them.
+class ForYouCard extends StatefulWidget {
   final RawData entry;
   final void Function(RawData) onReply;
   final void Function(RawData) onAdd;
 
-  const _ForYouCard({
+  const ForYouCard({
+    super.key,
     required this.entry,
     required this.onReply,
     required this.onAdd,
   });
 
   @override
-  State<_ForYouCard> createState() => _ForYouCardState();
+  State<ForYouCard> createState() => _ForYouCardState();
 }
 
-class _ForYouCardState extends State<_ForYouCard> {
-  /// When a reminder about this message is set for, if one is.
-  DateTime? _reminding;
-
+class _ForYouCardState extends State<ForYouCard> {
   /// When "Remind me" would remind: before the time the message names.
   late final DateTime? _remindAt = reminderTimeFor(
     widget.entry,
     DateTime.now(),
   );
 
-  String get _key => sourceKeyOf(widget.entry);
+  /// Whether the message is on the to-do list already.
+  bool _onList = false;
 
   @override
   void initState() {
     super.initState();
-    Reminders.setFor(_key).then((at) {
-      if (mounted) setState(() => _reminding = at);
-    });
+    _checkList();
+    TodoStore.changed.addListener(_checkList);
   }
 
-  Future<void> _toggleReminder() async {
-    final e = widget.entry;
-    if (_reminding != null) {
-      await Reminders.cancel(_key);
-      if (mounted) setState(() => _reminding = null);
-      return;
-    }
-    final at = _remindAt!;
-    await Reminders.set(
-      message: _key,
-      at: at,
-      title: e.isGroup && (e.threadTitle?.isNotEmpty ?? false)
-          ? '${e.sender} in ${e.threadTitle}'
-          : e.sender,
-      body: e.content,
-    );
-    if (mounted) setState(() => _reminding = at);
+  @override
+  void dispose() {
+    TodoStore.changed.removeListener(_checkList);
+    super.dispose();
+  }
+
+  Future<void> _checkList() async {
+    final (items, _) = await TodoStore().load();
+    final key = sourceKeyOf(widget.entry);
+    final onList = items.any((i) => i.sourceKey == key);
+    if (mounted && onList != _onList) setState(() => _onList = onList);
   }
 
   @override
   Widget build(BuildContext context) {
     final entry = widget.entry;
     final addressed = Addressed.parse(entry.addressed) ?? Addressed.direct;
-    final reminding = _reminding;
     return AskCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -188,26 +186,23 @@ class _ForYouCardState extends State<_ForYouCard> {
               if (entry.thread != null)
                 AskPill(
                   label: 'Reply',
-                  icon: Icons.reply_rounded,
+                  icon: Symbols.reply_rounded,
                   filled: true,
                   onTap: () => widget.onReply(entry),
                 ),
-              if (reminding != null)
-                AskPill(
-                  label: 'Reminding at ${clockLabel(reminding)}',
-                  icon: Icons.alarm_on_rounded,
-                  onTap: _toggleReminder,
+              if (_remindAt != null)
+                RemindPill(entry: entry, at: _remindAt)
+              // A reminder already brings it back at the right time, so Add
+              // is offered only for messages without one.
+              else if (_onList)
+                const AskPill(
+                  label: 'On your list',
+                  icon: Symbols.check_rounded,
                 )
-              else if (_remindAt != null)
-                AskPill(
-                  label: 'Remind me at ${clockLabel(_remindAt)}',
-                  icon: Icons.alarm_rounded,
-                  onTap: _toggleReminder,
-                ),
-              if (looksActionable(entry))
+              else if (looksActionable(entry))
                 AskPill(
                   label: 'Add to my list',
-                  icon: Icons.checklist_rounded,
+                  icon: Symbols.checklist_rounded,
                   onTap: () => widget.onAdd(entry),
                 ),
             ],
@@ -215,6 +210,100 @@ class _ForYouCardState extends State<_ForYouCard> {
         ],
       ),
     );
+  }
+}
+
+/// "Remind me at 7:40 PM", and once tapped "Reminding at 7:40 PM" (tap again
+/// to cancel). The reminder quotes [entry].
+class RemindPill extends StatefulWidget {
+  final RawData entry;
+  final DateTime at;
+
+  /// The reminder's title; who sent [entry] when not given.
+  final String? title;
+  final bool filled;
+
+  const RemindPill({
+    super.key,
+    required this.entry,
+    required this.at,
+    this.title,
+    this.filled = false,
+  });
+
+  @override
+  State<RemindPill> createState() => _RemindPillState();
+}
+
+class _RemindPillState extends State<RemindPill> {
+  /// When the reminder is set for, if it is.
+  DateTime? _reminding;
+
+  String get _key => sourceKeyOf(widget.entry);
+
+  @override
+  void initState() {
+    super.initState();
+    _read();
+    // Set or changed on the to-do too: one reminder per message.
+    Reminders.changed.addListener(_read);
+  }
+
+  @override
+  void dispose() {
+    Reminders.changed.removeListener(_read);
+    super.dispose();
+  }
+
+  Future<void> _read() async {
+    final at = await Reminders.setFor(_key);
+    if (mounted) setState(() => _reminding = at);
+  }
+
+  Future<void> _toggle() async {
+    final e = widget.entry;
+    if (_reminding != null) {
+      await Reminders.cancel(_key);
+      return;
+    }
+    final title =
+        widget.title ??
+        (e.isGroup && (e.threadTitle?.isNotEmpty ?? false)
+            ? '${e.sender} in ${e.threadTitle}'
+            : e.sender);
+    setState(() => _reminding = widget.at);
+    Future<void> remind({int? todoId}) => Reminders.set(
+      message: _key,
+      at: widget.at,
+      title: title,
+      body: e.content,
+      todoId: todoId,
+      thread: e.thread,
+    );
+    await remind();
+    // It goes on the list too, so it can be ticked off from the reminder.
+    final (items, _) = await TodoStore().load();
+    var todo = items.where((i) => i.sourceKey == _key).firstOrNull;
+    todo ??= (await TodoGenerator().addFrom([e], DateTime.now())).firstOrNull;
+    if (todo != null) await remind(todoId: todo.id);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final reminding = _reminding;
+    return reminding != null
+        ? AskPill(
+            label: 'Reminding ${whenLabel(reminding, DateTime.now())}',
+            icon: Symbols.notifications_active_rounded,
+            set: true,
+            onTap: _toggle,
+          )
+        : AskPill(
+            label: 'Remind me ${whenLabel(widget.at, DateTime.now())}',
+            icon: Symbols.alarm_rounded,
+            filled: widget.filled,
+            onTap: _toggle,
+          );
   }
 }
 
@@ -227,46 +316,53 @@ class _ChatterRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    return Material(
-      color: colors.surface,
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
+    return Pressable(
+      scale: 0.98,
+      child: Material(
+        color: colors.surface,
         borderRadius: BorderRadius.circular(18),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: colors.dividerColor.withValues(alpha: 0.6),
-            ),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.forum_outlined, size: 20, color: colors.textSecondary),
-              const SizedBox(width: 12),
-              Text(
-                '$count group message${count == 1 ? '' : 's'}',
-                style: GoogleFonts.nunito(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: colors.textPrimary,
-                ),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: colors.dividerColor.withValues(alpha: 0.6),
               ),
-              const Spacer(),
-              Text(
-                'not for you',
-                style: GoogleFonts.nunito(
-                  fontSize: 12.5,
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Symbols.forum_rounded,
+                  size: 20,
                   color: colors.textSecondary,
                 ),
-              ),
-              Icon(
-                Icons.chevron_right_rounded,
-                size: 20,
-                color: colors.textSecondary,
-              ),
-            ],
+                const SizedBox(width: 12),
+                Text(
+                  '$count group message${count == 1 ? '' : 's'}',
+                  style: GoogleFonts.nunito(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: colors.textPrimary,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  'not for you',
+                  style: GoogleFonts.nunito(
+                    fontSize: 12.5,
+                    color: colors.textSecondary,
+                  ),
+                ),
+                Icon(
+                  Symbols.chevron_right_rounded,
+                  size: 20,
+                  color: colors.textSecondary,
+                ),
+              ],
+            ),
           ),
         ),
       ),

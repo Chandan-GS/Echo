@@ -99,7 +99,7 @@ class BriefingCubit extends Cubit<BriefingState> {
       }
 
       // ── 3. REDUCE PHASE: Final briefing generation ────────────────────────
-      emit(BriefingGenerating(partial: 'Synthesizing briefing...'));
+      emit(BriefingGenerating(partial: 'Writing your briefing…'));
 
       final prefs = await SharedPreferences.getInstance();
       final isOfflineEngine = prefs.getBool('is_offline_engine') ?? true;

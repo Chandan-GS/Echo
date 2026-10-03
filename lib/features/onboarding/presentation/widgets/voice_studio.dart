@@ -6,6 +6,7 @@ import 'package:project_echo/core/presentation/widgets/wave_slider.dart';
 import 'package:project_echo/features/echo/presentation/widgets/siri_waveform_visualizer.dart';
 import 'package:project_echo/features/onboarding/data/voice_preference.dart';
 import 'package:project_echo/features/onboarding/presentation/widgets/selectable_tile.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 /// Live preview + control surface for shaping a [VoicePreference]: pick one of
 /// four voices (Aria, Sage, Atlas, Nova), choose an accent, and set the pace.
@@ -307,7 +308,8 @@ class _PlayButton extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
-                isPlaying ? Icons.stop_rounded : Icons.play_arrow_rounded,
+                isPlaying ? Symbols.stop_rounded : Symbols.play_arrow_rounded,
+                fill: 1,
                 size: 20,
                 color: Colors.white,
               ),

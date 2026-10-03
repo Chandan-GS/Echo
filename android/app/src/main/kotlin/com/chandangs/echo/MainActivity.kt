@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.provider.Settings
 import androidx.annotation.NonNull
+import com.chandangs.echo_native.NotificationBuffer
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
@@ -173,10 +174,15 @@ class MainActivity : FlutterActivity() {
                 "set" -> {
                     Reminders.set(
                         applicationContext,
-                        id,
+                        Reminders.Reminder(
+                            id = id,
+                            key = call.argument<String>("key") ?: "",
+                            title = call.argument<String>("title") ?: "",
+                            body = call.argument<String>("body") ?: "",
+                            todoId = call.argument<Int>("todoId") ?: -1,
+                            thread = call.argument<String>("thread"),
+                        ),
                         call.argument<Number>("at")?.toLong() ?: 0L,
-                        call.argument<String>("title") ?: "",
-                        call.argument<String>("body") ?: "",
                     )
                     result.success(null)
                 }
@@ -222,9 +228,11 @@ class MainActivity : FlutterActivity() {
         notificationReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
                 val data = intent?.getStringExtra(EchoNotificationListenerService.EXTRA_NOTIFICATION_DATA)
-                if (data != null) {
-                    eventSink?.success(data)
-                }
+                    ?: return
+                // Until Dart has subscribed (just after the app opens), keep
+                // it for the buffer Dart drains once it has.
+                eventSink?.success(data)
+                    ?: context?.let { NotificationBuffer.append(it, data) }
             }
         }
         val filter = IntentFilter(EchoNotificationListenerService.ACTION_NEW_NOTIFICATION)
