@@ -20,7 +20,9 @@ class Reminders {
   static final changed = ValueNotifier<int>(0);
 
   static const _channel = MethodChannel('project_echo/reminders');
-  static const _key = 'echo_reminders_v1';
+
+  /// Also read and written by Reminders.kt, and synced to a paired computer.
+  static const storeKey = 'echo_reminders_v1';
 
   /// Notification ids from here up, clear of Echo's other notifications.
   static const _firstId = 100000;
@@ -113,7 +115,7 @@ class Reminders {
     // A snooze from the notification rewrites this natively.
     await prefs.reload();
     try {
-      final raw = jsonDecode(prefs.getString(_key) ?? '{}') as Map;
+      final raw = jsonDecode(prefs.getString(storeKey) ?? '{}') as Map;
       return {
         for (final e in raw.entries)
           e.key as String: Map<String, dynamic>.from(e.value as Map),
@@ -125,7 +127,7 @@ class Reminders {
 
   static Future<void> _save(Map<String, Map<String, dynamic>> all) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_key, jsonEncode(all));
+    await prefs.setString(storeKey, jsonEncode(all));
   }
 }
 

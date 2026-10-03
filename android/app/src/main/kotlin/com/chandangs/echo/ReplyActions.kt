@@ -117,6 +117,19 @@ object ReplyActions {
     }
 
     /**
+     * Opens [thread]'s chat with [text] typed in it (WhatsApp, by the chat's
+     * id), or the app's "send to" list with it. For a reply written on a
+     * paired computer, which the owner sends from the phone.
+     */
+    @Synchronized
+    fun writeIntent(context: Context, thread: String, text: String): Intent {
+        val chatId = if (isWhatsApp(thread)) chatId(context, thread) else null
+        val intent = share(appOf(thread), text)
+        if (chatId != null) intent.putExtra("jid", chatId)
+        return intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+
+    /**
      * What a reminder's "Open chat" button opens: [thread]'s chat itself, or
      * the chat app's own tap target while its notification is fresh. Null
      * when neither is known.

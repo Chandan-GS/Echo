@@ -12,6 +12,12 @@ import 'package:project_echo/features/todo/data/todo_store.dart';
 import 'package:project_echo/features/vault/data/daily_stats.dart';
 import 'package:project_echo/core/services/streak_service.dart';
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
+import 'package:project_echo/core/services/reminder_settings.dart';
+import 'package:project_echo/core/services/reminders.dart';
+import 'package:project_echo/features/echo/data/context/addressed.dart';
+import 'package:project_echo/features/echo/data/context/chat_context_store.dart';
+import 'package:project_echo/features/echo/data/relevance/temporal_relevance.dart';
+import 'package:project_echo/features/echo/data/reply/reply_sender.dart';
 
 /// Phone side of data sync: pushes a full snapshot of this device's captured
 /// notifications, cached briefing and streak to a desktop Echo Engine on the
@@ -81,6 +87,19 @@ class PhoneSyncService {
         'items': prefs.getString(TodoStore.itemsKey),
         'meta': prefs.getString(TodoStore.metaKey),
       };
+      // How a reply would go for each chat waiting on the owner today, so
+      // the computer can say whether it sends at once or waits for a tap
+      // on the phone.
+      final routes = <String, String>{};
+      final today = startOfDay(DateTime.now());
+      for (final e in entries) {
+        final thread = e.thread;
+        if (thread == null || routes.containsKey(thread)) continue;
+        if (e.timestamp.isBefore(today)) continue;
+        final addressed = Addressed.parse(e.addressed);
+        if (addressed == null || addressed == Addressed.group) continue;
+        routes[thread] = await ReplySender.routeName(thread);
+      }
       final icons = <String, String>{};
       for (final source in entries.map((e) => e.source).toSet()) {
         if (_sentIcons.contains(source)) continue;
@@ -98,6 +117,14 @@ class PhoneSyncService {
           'stats': prefs.getString(DailyStats.key),
           'briefingTime': prefs.getString('cached_briefing_time'),
           'icons': icons,
+          // For the computer's Today: who's been answered, what was
+          // promised, what's set to remind, and how replies would go.
+          'myTurns': prefs.getString(ChatContextStore.turnsKey),
+          'reminders': prefs.getString(Reminders.storeKey),
+          'routes': routes,
+          'userName': prefs.getString('user_name'),
+          'reminderLead': ReminderSettings.lead.value.inMinutes,
+          'reminderSuggest': ReminderSettings.suggest.value,
         }),
         options: Options(
           headers: {

@@ -34,6 +34,11 @@ class ReplySender {
     return thread == null ? ReplyRoute.pick : _route(thread);
   }
 
+  /// How a reply in [thread] would go right now, by name ("send", "write",
+  /// "pick", "copy"), for a paired computer to say so.
+  static Future<String> routeName(String thread) async =>
+      (await _route(thread)).name;
+
   static Future<ReplyRoute> _route(String thread) async =>
       switch (await _call<String>('route', {'thread': thread})) {
         'send' => ReplyRoute.send,

@@ -24,9 +24,14 @@ class EchoNotificationListenerService : NotificationListenerService() {
 
     private val seen by lazy { ConversationReader.Seen(applicationContext) }
 
+    /** Does what the owner did on their paired computer (see DesktopRelay). */
+    private var relay: DesktopRelay? = null
+
     override fun onListenerConnected() {
         super.onListenerConnected()
         instance = this
+        relay?.stop()
+        relay = DesktopRelay(applicationContext).also { it.start() }
         // After an update or restart, chats still in the shade can be
         // answered and opened again straight away, and messages that came
         // in while Echo wasn't listening are caught up (the ones it already
@@ -45,6 +50,8 @@ class EchoNotificationListenerService : NotificationListenerService() {
 
     override fun onListenerDisconnected() {
         instance = null
+        relay?.stop()
+        relay = null
         super.onListenerDisconnected()
     }
 
