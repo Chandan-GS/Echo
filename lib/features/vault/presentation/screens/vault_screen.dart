@@ -443,64 +443,6 @@ class _VaultViewState extends State<_VaultView> {
       },
     );
   }
-
-  void _showDeleteConfirmation(BuildContext context, String category) {
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          backgroundColor: context.colors.surface,
-          title: Text(
-            'Delete Category',
-            style: GoogleFonts.nunito(
-              fontWeight: FontWeight.bold,
-              color: context.colors.textPrimary,
-            ),
-          ),
-          content: Text(
-            'Are you sure you want to delete all notifications for $category?',
-            style: GoogleFonts.nunito(
-              color: context.colors.textPrimary.withValues(alpha: 0.8),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: Text(
-                'Cancel',
-                style: GoogleFonts.nunito(
-                  fontWeight: FontWeight.bold,
-                  color: context.colors.textSecondary,
-                ),
-              ),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop();
-                context.read<VaultCubit>().deleteCategory(category);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.redAccent,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: Text(
-                'Delete',
-                style: GoogleFonts.nunito(
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
 }
 
 /// The week card over the tabs and what they show. The scroll never rests

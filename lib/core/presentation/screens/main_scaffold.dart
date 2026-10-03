@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/presentation/animations/fade_indexed_stack.dart';
 import 'package:project_echo/core/presentation/widgets/nav_dock.dart';
@@ -15,6 +14,8 @@ import 'package:project_echo/features/echo/presentation/screens/desktop_home_scr
 import 'package:project_echo/features/vault/presentation/screens/vault_screen.dart';
 import 'package:project_echo/features/settings/presentation/screens/settings_screen.dart';
 import 'package:project_echo/demo/demo_mode.dart';
+import 'package:project_echo/core/presentation/widgets/echo_bubble.dart';
+import 'package:project_echo/core/services/echo_says.dart';
 
 class MainScaffold extends StatefulWidget {
   final Widget child;
@@ -196,6 +197,11 @@ class _MainScaffoldState extends State<MainScaffold> {
     // What the tabs keep clear at the bottom so nothing ends under the dock.
     final clearance = systemBar + 12 + kNavDockHeight + 12;
     const motion = Duration(milliseconds: 260);
+    // Echo keeps quiet while the question bar or keyboard is up.
+    final quiet = _asking || keyboard > 0;
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => EchoSays.instance.setQuiet(quiet),
+    );
 
     return PopScope(
       canPop: !_asking,
@@ -213,13 +219,20 @@ class _MainScaffoldState extends State<MainScaffold> {
                 data: media.copyWith(
                   padding: media.padding.copyWith(bottom: clearance),
                 ),
-                child: FadeIndexedStack(
-                  index: _selectedIndex,
-                  children: const [
-                    EchoHomeScreen(),
-                    VaultScreen(),
-                    SettingsScreen(),
-                  ],
+                // Scrolling moves Echo's ambient remarks out of the way.
+                child: NotificationListener<ScrollUpdateNotification>(
+                  onNotification: (_) {
+                    EchoSays.instance.scrolled();
+                    return false;
+                  },
+                  child: FadeIndexedStack(
+                    index: _selectedIndex,
+                    children: const [
+                      EchoHomeScreen(),
+                      VaultScreen(),
+                      SettingsScreen(),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -243,30 +256,6 @@ class _MainScaffoldState extends State<MainScaffold> {
                     ),
                   ),
                 ),
-              ),
-            ),
-            // Floating "generating in background" pill — shown on any tab
-            // other than Today (which already shows the full generating
-            // view). Tap to jump back to the briefing.
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: clearance + 8,
-              child: BlocBuilder<BriefingCubit, BriefingState>(
-                builder: (context, state) {
-                  final show =
-                      state is BriefingGenerating && _selectedIndex != 0;
-                  return AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 250),
-                    child: show
-                        ? Center(
-                            child: _GeneratingPill(
-                              onTap: () => _onItemTapped(0),
-                            ),
-                          )
-                        : const SizedBox.shrink(),
-                  );
-                },
               ),
             ),
             // Dims the screen behind the question bar; tap to close it.
@@ -301,6 +290,21 @@ class _MainScaffoldState extends State<MainScaffold> {
                 ),
               ),
             ),
+            // What Echo says, resting on the dock and as wide as it.
+            Positioned(
+              left: 20,
+              right: 20,
+              // The tail's tip just meets the dock, above Echo.
+              bottom: dockBottom + kNavDockHeight + 1,
+              child: const EchoBubble(),
+            ),
+            // Invisible: it only listens. Positioned, so the Stack doesn't
+            // take its zero size as the size of the whole screen.
+            Positioned(
+              left: 0,
+              top: 0,
+              child: EchoSaysHost(onOpenHome: () => _onItemTapped(0)),
+            ),
             AnimatedPositioned(
               duration: motion,
               curve: Curves.easeOutCubic,
@@ -317,88 +321,6 @@ class _MainScaffoldState extends State<MainScaffold> {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-/// A small breathing dot used to signal ongoing background work.
-class _PulseDot extends StatefulWidget {
-  final Color? color;
-  const _PulseDot({this.color});
-
-  @override
-  State<_PulseDot> createState() => _PulseDotState();
-}
-
-class _PulseDotState extends State<_PulseDot>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _c;
-
-  @override
-  void initState() {
-    super.initState();
-    _c = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 850),
-    )..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final color = widget.color ?? context.colors.primaryGreen;
-    return FadeTransition(
-      opacity: Tween<double>(begin: 0.45, end: 1.0).animate(_c),
-      child: Container(
-        width: 9,
-        height: 9,
-        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-      ),
-    );
-  }
-}
-
-/// Floating "working in the background" chip shown while a briefing generates
-/// and the user is on another tab. Tapping it returns to the briefing.
-class _GeneratingPill extends StatelessWidget {
-  final VoidCallback onTap;
-  const _GeneratingPill({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final onSel = context.onSelection;
-    return Material(
-      color: context.selectionFill,
-      borderRadius: BorderRadius.circular(24),
-      clipBehavior: Clip.antiAlias,
-      elevation: 4,
-      shadowColor: Colors.black.withValues(alpha: 0.18),
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _PulseDot(color: onSel),
-              const SizedBox(width: 10),
-              Text(
-                'Preparing your briefing…',
-                style: GoogleFonts.nunito(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  color: onSel,
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );

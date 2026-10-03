@@ -14,6 +14,7 @@ import 'package:project_echo/features/echo/data/relevance/temporal_relevance.dar
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:project_echo/core/services/gemini_service.dart';
+import 'package:project_echo/core/services/gemini_usage.dart';
 import 'package:project_echo/core/services/widget_refresh_service.dart';
 import 'package:project_echo/core/services/phone_sync_service.dart';
 import 'package:project_echo/core/services/desktop_engine_client.dart';
@@ -137,7 +138,14 @@ class BriefingCubit extends Cubit<BriefingState> {
           buffer.write(token);
         },
         onError: (Object err) {
-          emit(BriefingError('Generation failed: $err'));
+          emit(
+            BriefingError(
+              err is GeminiFailure ? err.message : 'Generation failed: $err',
+              limitReached:
+                  err is GeminiFailure &&
+                  err.hit?.kind == GeminiLimitKind.perDay,
+            ),
+          );
           if (!done.isCompleted) done.complete();
         },
         onDone: () async {
@@ -297,7 +305,7 @@ class BriefingCubit extends Cubit<BriefingState> {
 
       await done.future;
     } catch (e) {
-      emit(BriefingError('Error: $e'));
+      emit(BriefingError(e is GeminiFailure ? e.message : 'Error: $e'));
     }
   }
 

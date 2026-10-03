@@ -65,6 +65,7 @@ dependencies:
   package_info_plus: ^10.2.1
   echo_native:
     path: packages/echo_native
+  sensors_plus: ^7.1.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

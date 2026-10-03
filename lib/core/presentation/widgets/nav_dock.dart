@@ -5,6 +5,7 @@ import 'package:project_echo/core/presentation/widgets/animated_nav_icons.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/features/echo/presentation/widgets/echo_mascot.dart';
+import 'package:project_echo/core/services/echo_says.dart';
 
 /// Height of the dock's pill and of Echo beside it.
 const double kNavDockHeight = 56;
@@ -286,13 +287,18 @@ class _NavDockState extends State<NavDock> {
                           maxWidth: canvas,
                           maxHeight: canvas,
                           child: IgnorePointer(
-                            child: EchoMascot(
-                              size: canvas,
-                              showRings: false,
-                              glow: false,
-                              followTouchAnywhere: true,
-                              gazeReach: 2.2,
-                              gazeReachY: 4,
+                            // His face matches what he's saying, if anything.
+                            child: ValueListenableBuilder<EchoLine?>(
+                              valueListenable: EchoSays.instance.current,
+                              builder: (context, line, _) => EchoMascot(
+                                state: line?.mood ?? EchoState.idle,
+                                size: canvas,
+                                showRings: false,
+                                glow: false,
+                                followTouchAnywhere: true,
+                                gazeReach: 2.2,
+                                gazeReachY: 4,
+                              ),
                             ),
                           ),
                         ),

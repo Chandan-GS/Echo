@@ -35,13 +35,11 @@ class OnBoardingCubit extends Cubit<OnBoardingState> {
   Future<void> checkPermissions() async {
     final notificationStatus = await _checkNotificationPermission();
     final calendarStatus = await Permission.calendarFullAccess.status;
-    final smsStatus = await Permission.sms.status;
 
     emit(
       PermissionsStep(
         notificationGranted: notificationStatus,
         calendarGranted: calendarStatus.isGranted,
-        smsGranted: smsStatus.isGranted,
       ),
     );
   }
@@ -83,21 +81,6 @@ class OnBoardingCubit extends Cubit<OnBoardingState> {
         await openAppSettings();
       } else {
         final status = await Permission.calendarFullAccess.request();
-        if (!status.isGranted) {
-          await openAppSettings();
-        }
-      }
-      await checkPermissions();
-    }
-  }
-
-  Future<void> toggleSms() async {
-    final currentState = state;
-    if (currentState is PermissionsStep) {
-      if (currentState.smsGranted) {
-        await openAppSettings();
-      } else {
-        final status = await Permission.sms.request();
         if (!status.isGranted) {
           await openAppSettings();
         }

@@ -410,7 +410,10 @@ class AskAiCubit extends Cubit<AskAiState> {
       _messages.add(
         ChatMessage(
           sender: 'echo',
-          text: 'Sorry, I encountered an error running inference: $e',
+          text: e is GeminiFailure
+              ? e.message
+              : 'Sorry, I encountered an error running inference: $e',
+          isNotice: e is GeminiFailure,
         ),
       );
       emit(

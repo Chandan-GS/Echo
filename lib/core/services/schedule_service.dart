@@ -63,7 +63,7 @@ Future<void> alarmCallback() async {
     final state = await futureState;
 
     if (state is BriefingReady) {
-      await prefs.setString('cached_briefing_slot', matchedTimeSlot!);
+      await prefs.setString('cached_briefing_slot', matchedTimeSlot);
       await LocalNotificationService().init();
 
       // Read-only: the streak itself is only recorded once playback actually
@@ -128,7 +128,8 @@ class ScheduleService {
 
       for (int i = 0; i < times.length; i++) {
         final parsed = parseBriefingTime(times[i]);
-        if (parsed == null) continue; // Skip malformed entries instead of crashing
+        if (parsed == null)
+          continue; // Skip malformed entries instead of crashing
 
         final now = DateTime.now();
         var alarmTime = DateTime(
