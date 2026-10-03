@@ -8,6 +8,7 @@ import 'package:project_echo/core/services/app_icon_service.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/features/echo/presentation/widgets/echo_mascot.dart';
 import 'package:project_echo/features/onboarding/presentation/cubit/on_boarding_cubit.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 /// The first screen: Echo wakes up. He's asleep, three of the phone's own
 /// app icons pop up around him and drift into him, he wakes, bounces up
@@ -34,9 +35,9 @@ const _iconPackages = [
 
 /// Stand-ins when the phone can't show three real icons (or on desktop).
 const _fallbackIcons = [
-  Icons.chat_bubble_rounded,
-  Icons.mail_rounded,
-  Icons.event_rounded,
+  Symbols.chat_bubble_rounded,
+  Symbols.mail_rounded,
+  Symbols.event_rounded,
 ];
 
 class _WelcomeScreenState extends State<WelcomeScreen>

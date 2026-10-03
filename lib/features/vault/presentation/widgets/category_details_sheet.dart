@@ -8,6 +8,7 @@ import 'package:project_echo/features/vault/presentation/cubit/vault_cubit.dart'
 import 'package:project_echo/features/vault/presentation/widgets/notification_card_widget.dart';
 import 'package:project_echo/features/vault/presentation/widgets/source_icon.dart';
 import 'package:project_echo/features/vault/presentation/widgets/vault_utils.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 void showCategoryDetailsSheet(BuildContext context, String category) {
   // Ensure the cubit has this category selected before opening
@@ -436,14 +437,14 @@ class _CategoryDetailsSheet extends StatelessWidget {
                   children: [
                     _buildActionButton(
                       context: context,
-                      icon: Icons.edit_rounded,
+                      icon: Symbols.edit_rounded,
                       label: 'Rename',
                       onTap: () => _showRenameDialog(context),
                     ),
                     const SizedBox(width: 12),
                     _buildActionButton(
                       context: context,
-                      icon: Icons.block_rounded,
+                      icon: Symbols.block_rounded,
                       label: 'Block',
                       onTap: () => _showBlockConfirmation(context),
                       isWarning: true,
@@ -451,7 +452,7 @@ class _CategoryDetailsSheet extends StatelessWidget {
                     const SizedBox(width: 12),
                     _buildActionButton(
                       context: context,
-                      icon: Icons.delete_sweep_rounded,
+                      icon: Symbols.delete_sweep_rounded,
                       label: 'Clear',
                       onTap: () => _showDeleteConfirmation(context),
                       isDanger: true,

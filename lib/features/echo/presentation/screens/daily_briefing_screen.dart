@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:project_echo/core/services/analytics_service.dart';
-import 'package:flutter_tts/flutter_tts.dart';
-import 'package:project_echo/core/services/echo_tts.dart';
+import 'package:project_echo/core/services/voice/echo_voice.dart';
 import 'package:project_echo/core/presentation/animations/page_transitions.dart';
 import 'package:project_echo/core/services/streak_service.dart';
 import 'package:project_echo/core/services/widget_refresh_service.dart';
@@ -45,36 +44,29 @@ class DailyBriefingScreen extends StatefulWidget {
 }
 
 class _DailyBriefingScreenState extends State<DailyBriefingScreen> {
-  final FlutterTts _tts = FlutterTts();
+  final _voice = EchoVoice.instance;
   bool _isPlaying = false;
 
   @override
   void initState() {
     super.initState();
-    Future.delayed(const Duration(milliseconds: 1000), () {
-      if (mounted) _setupTts();
-    });
+    if (widget.autoPlay) {
+      Future.delayed(const Duration(milliseconds: 1000), () {
+        if (mounted) _play();
+      });
+    }
   }
 
-  Future<void> _setupTts() async {
-    // Apply the voice + rate the user chose during onboarding (or in settings).
-    await EchoTts.applyVoicePreferences(_tts);
-    await _tts.setVolume(1.0);
-
-    _tts.setStartHandler(() {
-      if (mounted) setState(() => _isPlaying = true);
-      _celebrateStreakIfAdvanced();
-    });
-    _tts.setCompletionHandler(() {
-      if (mounted) setState(() => _isPlaying = false);
-    });
-    _tts.setCancelHandler(() {
-      if (mounted) setState(() => _isPlaying = false);
-    });
-
-    if (widget.autoPlay) {
-      await _tts.speak(widget.ttsText);
-    }
+  /// Echo reads the briefing in his voice: the natural one when it's
+  /// downloaded, the phone's otherwise.
+  Future<void> _play() async {
+    await _voice.stop();
+    if (!mounted) return;
+    setState(() => _isPlaying = true);
+    _celebrateStreakIfAdvanced();
+    _voice.sayAll(widget.ttsText.replaceAll('**', ''));
+    await _voice.finished;
+    if (mounted) setState(() => _isPlaying = false);
   }
 
   /// Records that a briefing was heard and, if the streak actually advanced
@@ -88,24 +80,25 @@ class _DailyBriefingScreenState extends State<DailyBriefingScreen> {
     // Push the fresh streak/heard-days to the home-screen widgets.
     WidgetRefreshService.refresh();
     if (mounted && after.current != before.current) {
-      Navigator.of(context, rootNavigator: true).push(
-        bouncyRoute(StreakCelebrationScreen(days: after.current)),
-      );
+      Navigator.of(
+        context,
+        rootNavigator: true,
+      ).push(bouncyRoute(StreakCelebrationScreen(days: after.current)));
     }
   }
 
   @override
   void dispose() {
-    _tts.stop();
+    _voice.stop();
     super.dispose();
   }
 
   void _togglePlayback() async {
     HapticFeedback.lightImpact();
     if (_isPlaying) {
-      await _tts.stop();
+      await _voice.stop();
     } else {
-      await _tts.speak(widget.ttsText);
+      await _play();
     }
   }
 
@@ -217,7 +210,8 @@ class _DailyBriefingScreenState extends State<DailyBriefingScreen> {
                                     bottom: widget.todoCubit == null ? 60 : 120,
                                   ),
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
                                     children: [
                                       RichTranscript(rawText: widget.rawText),
                                       if (widget.todoCubit != null)

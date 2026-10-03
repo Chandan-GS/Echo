@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/core/presentation/animations/app_motion.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 /// A solid, borderless selection row used across onboarding (voices, tone, …).
 ///
@@ -119,7 +120,7 @@ class _CheckDisc extends StatelessWidget {
         scale: isSelected ? 1.0 : 0.0,
         duration: AppMotion.fast,
         curve: AppMotion.spring,
-        child: Icon(Icons.check_rounded, size: 17, color: context.selectionFill),
+        child: Icon(Symbols.check_rounded, size: 17, color: context.selectionFill),
       ),
     );
   }

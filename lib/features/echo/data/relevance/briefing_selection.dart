@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:project_echo/features/echo/data/context/addressed.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:project_echo/features/echo/data/relevance/temporal_relevance.dart';
 
@@ -19,6 +20,10 @@ const _junkSenders = [
 ];
 const _junkKeywords = ['% off', 'otp', 'flash sale', 'discount', 'free'];
 
+/// A busy group can't crowd out everything else: of its messages that aren't
+/// aimed at the owner, only the latest few are considered.
+const groupChatterPerThread = 3;
+
 /// The display name a source is grouped under in the Vault, after the user's
 /// renames.
 String displaySource(String source, Map<String, String> aliases) {
@@ -36,14 +41,18 @@ String displaySource(String source, Map<String, String> aliases) {
 /// When more than [limit] qualify (the on-device model's context is small),
 /// the least important are dropped — dated items outrank undated ones, then
 /// similarity to [priorityVector] (phone) or recency (desktop, where synced
-/// notifications carry no embeddings) decides. What's kept is returned dated
-/// first, chronologically, then undated by importance.
+/// notifications carry no embeddings) decides. Chat messages aimed at the
+/// owner count for more and group chatter for less, and [affinity] (how often
+/// the owner opens rather than swipes away a thread, −1 to 1) nudges the
+/// rest. What's kept is returned dated first, chronologically, then undated
+/// by importance.
 List<BriefingItem> selectForBriefing(
   Iterable<RawData> entries,
   DateTime now, {
   Map<String, String> aliases = const {},
   List<String> blockedCategories = const [],
   List<double>? priorityVector,
+  double Function(String? thread)? affinity,
   int limit = 15,
 }) {
   final horizonEnd = briefingHorizonEnd(now);
@@ -61,9 +70,20 @@ List<BriefingItem> selectForBriefing(
     unique[e.content] = e;
   }
 
+  final chatter = <String, int>{};
+  final pool = unique.values.toList()
+    ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+  pool.retainWhere((e) {
+    if (e.thread == null || Addressed.parse(e.addressed) != Addressed.group) {
+      return true;
+    }
+    final n = chatter.update(e.thread!, (v) => v + 1, ifAbsent: () => 1);
+    return n <= groupChatterPerThread;
+  });
+
   final dated = <BriefingItem>[];
   final undated = <BriefingItem>[];
-  for (final e in unique.values) {
+  for (final e in pool) {
     final windows = relevanceWindows('${e.sender} ${e.content}', e.timestamp);
     final inHorizon = windows.where((w) => w.overlaps(now, horizonEnd));
     if (inHorizon.isEmpty) continue;
@@ -77,7 +97,9 @@ List<BriefingItem> selectForBriefing(
       i: (i.window.explicit ? 1.0 : 0.0) +
           (priorityVector != null
               ? cosineSimilarity(priorityVector, i.entry.embedding)
-              : i.entry.timestamp.millisecondsSinceEpoch / 1e15),
+              : i.entry.timestamp.millisecondsSinceEpoch / 1e15) +
+          (Addressed.parse(i.entry.addressed)?.weight ?? 0) +
+          0.3 * (affinity?.call(i.entry.thread) ?? 0),
   };
   final kept = ([...dated, ...undated]
         ..sort((a, b) => importance[b]!.compareTo(importance[a]!)))

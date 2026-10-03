@@ -220,30 +220,12 @@ List<DayStop> dayStops(Iterable<TodoItem> items, DateTime now) {
   final stops = <DayStop>[];
   for (final item in items) {
     if (item.done || item.time == null) continue;
-    final at = _startOf(item.time!, item.day);
+    final at = item.startsAt;
     if (at == null || at.isBefore(from) || !at.isBefore(end)) continue;
     stops.add(DayStop(item, at));
   }
   stops.sort((a, b) => a.at.compareTo(b.at));
   return stops;
-}
-
-/// "6:30 PM" or "4 PM to 6 PM" on [day] → the start as a DateTime.
-DateTime? _startOf(String time, DateTime day) {
-  final m = RegExp(
-    r'^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)',
-    caseSensitive: false,
-  ).firstMatch(time.trim());
-  if (m == null) return null;
-  var hour = int.parse(m.group(1)!) % 12;
-  if (m.group(3)!.toUpperCase() == 'PM') hour += 12;
-  return DateTime(
-    day.year,
-    day.month,
-    day.day,
-    hour,
-    int.parse(m.group(2) ?? '0'),
-  );
 }
 
 /// Now to the end of tomorrow as one line, with each timed to-do as a dot.

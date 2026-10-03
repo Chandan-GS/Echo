@@ -11,6 +11,7 @@ import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/features/todo/presentation/cubit/todo_cubit.dart';
 import 'package:project_echo/features/widgets/presentation/widgets/widget_previews.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 class _Kind {
   final String id, name, size, description;
@@ -404,7 +405,7 @@ class _WidgetsScreenState extends State<WidgetsScreen>
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Icon(
-                              Icons.add_to_home_screen_rounded,
+                              Symbols.add_to_home_screen_rounded,
                               size: 20,
                               color: c.textInverse,
                             ),

@@ -11,7 +11,9 @@ import 'package:project_echo/features/echo/presentation/cubit/briefing_cubit.dar
 import 'package:project_echo/features/todo/presentation/cubit/todo_cubit.dart';
 import 'package:project_echo/features/echo/presentation/screens/echo_home_screen.dart';
 import 'package:project_echo/features/echo/presentation/screens/desktop_home_screen.dart';
+import 'package:project_echo/features/todo/presentation/screens/todo_screen.dart';
 import 'package:project_echo/features/vault/presentation/screens/vault_screen.dart';
+import 'package:project_echo/features/profile/presentation/screens/profile_screen.dart';
 import 'package:project_echo/features/settings/presentation/screens/settings_screen.dart';
 import 'package:project_echo/demo/demo_mode.dart';
 import 'package:project_echo/core/presentation/widgets/echo_bubble.dart';
@@ -60,18 +62,18 @@ class _MainScaffoldState extends State<MainScaffold> {
     super.dispose();
   }
 
+  static bool get _desktop => Platform.isMacOS || Platform.isWindows;
+
+  /// Each tab's route, in order. Desktop has no To-do tab: its list sits on
+  /// its Today screen.
+  static List<String> get _tabRoutes => _desktop
+      ? const ['/echo', '/vault', '/profile']
+      : const ['/echo', '/todo', '/vault', '/profile'];
+
   static int _calculateSelectedIndex(BuildContext context) {
-    final String location = GoRouterState.of(context).uri.path;
-    if (location.startsWith('/echo')) {
-      return 0;
-    }
-    if (location.startsWith('/vault')) {
-      return 1;
-    }
-    if (location.startsWith('/profile')) {
-      return 2;
-    }
-    return 0;
+    final location = GoRouterState.of(context).uri.path;
+    final i = _tabRoutes.indexWhere(location.startsWith);
+    return i < 0 ? 0 : i;
   }
 
   void _onItemTapped(int index) {
@@ -85,19 +87,7 @@ class _MainScaffoldState extends State<MainScaffold> {
     _updateRoute(index);
   }
 
-  void _updateRoute(int index) {
-    switch (index) {
-      case 0:
-        context.go('/echo');
-        break;
-      case 1:
-        context.go('/vault');
-        break;
-      case 2:
-        context.go('/profile');
-        break;
-    }
-  }
+  void _updateRoute(int index) => context.go(_tabRoutes[index]);
 
   // Desktop only — selecting Today/Vault/Profile always leaves the inline Ask
   // Echo chat, so the tapped tab is revealed even when its route index hasn't
@@ -166,7 +156,7 @@ class _MainScaffoldState extends State<MainScaffold> {
   }
 
   Widget _shell(BuildContext context) {
-    return (Platform.isMacOS || Platform.isWindows)
+    return _desktop
         ? DesktopShell(
             selectedIndex: _selectedIndex,
             onItemSelected: _onDesktopItemSelected,
@@ -229,8 +219,9 @@ class _MainScaffoldState extends State<MainScaffold> {
                     index: _selectedIndex,
                     children: const [
                       EchoHomeScreen(),
+                      TodoScreen(),
                       VaultScreen(),
-                      SettingsScreen(),
+                      ProfileScreen(),
                     ],
                   ),
                 ),

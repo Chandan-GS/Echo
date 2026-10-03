@@ -1,21 +1,24 @@
 import 'dart:io';
-import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:project_echo/core/services/echo_tts.dart';
-import 'package:flutter_svg/flutter_svg.dart';
-import 'package:project_echo/core/theme/google_fonts.dart';
-import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/presentation/widgets/echo_app_bar.dart';
+import 'package:project_echo/core/services/voice/echo_voice.dart';
+import 'package:project_echo/core/theme/app_theme.dart';
+import 'package:project_echo/core/theme/google_fonts.dart';
+import 'package:project_echo/demo/demo_mode.dart';
+import 'package:project_echo/features/echo/data/ask/for_you.dart';
+import 'package:project_echo/features/echo/data/context/addressed.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
+import 'package:project_echo/features/echo/data/reply/reply_sender.dart';
 import 'package:project_echo/features/echo/presentation/cubit/ask_ai_cubit.dart';
-import 'package:speech_to_text/speech_to_text.dart' as stt;
-import 'package:flutter_tts/flutter_tts.dart';
-import 'package:project_echo/features/echo/presentation/widgets/siri_waveform_visualizer.dart';
+import 'package:project_echo/features/echo/presentation/widgets/ask/action_cards.dart';
+import 'package:project_echo/features/echo/presentation/widgets/ask/answer_view.dart';
+import 'package:project_echo/features/echo/presentation/widgets/ask/ask_input_bar.dart';
+import 'package:project_echo/features/echo/presentation/widgets/ask/for_you_view.dart';
 import 'package:project_echo/features/echo/presentation/widgets/echo_mascot.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:project_echo/features/vault/presentation/widgets/source_icon.dart';
-import 'package:project_echo/demo/demo_mode.dart';
+import 'package:project_echo/core/presentation/widgets/pressable.dart';
 
 class AskAiScreen extends StatelessWidget {
   /// True when rendered as a persistent desktop sidebar tab (inside
@@ -27,13 +30,26 @@ class AskAiScreen extends StatelessWidget {
   /// Asked as soon as the screen opens (from the nav dock's question bar).
   final String? initialQuestion;
 
-  const AskAiScreen({super.key, this.embedded = false, this.initialQuestion});
+  /// A message to draft a reply to as soon as the screen opens (Home's
+  /// Reply).
+  final RawData? replyTo;
+
+  const AskAiScreen({
+    super.key,
+    this.embedded = false,
+    this.initialQuestion,
+    this.replyTo,
+  });
 
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
       create: (context) => AskAiCubit(),
-      child: _AskAiView(embedded: embedded, initialQuestion: initialQuestion),
+      child: _AskAiView(
+        embedded: embedded,
+        initialQuestion: initialQuestion,
+        replyTo: replyTo,
+      ),
     );
   }
 }
@@ -41,45 +57,37 @@ class AskAiScreen extends StatelessWidget {
 class _AskAiView extends StatefulWidget {
   final bool embedded;
   final String? initialQuestion;
+  final RawData? replyTo;
 
-  const _AskAiView({required this.embedded, this.initialQuestion});
+  const _AskAiView({
+    required this.embedded,
+    this.initialQuestion,
+    this.replyTo,
+  });
 
   @override
   State<_AskAiView> createState() => _AskAiViewState();
 }
 
-enum AudioState { initializing, listening, processing, speaking, idle }
-
 class _AskAiViewState extends State<_AskAiView> {
-  final TextEditingController _inputController = TextEditingController();
-  final ScrollController _scrollController = ScrollController();
-  final FocusNode _focusNode = FocusNode();
+  final _input = TextEditingController();
+  final _scroll = ScrollController();
+  final _focus = FocusNode();
 
+  /// Dictation relies on speech_to_text, whose macOS/Windows backend crashes
+  /// on entry, so desktop is typing only.
   static bool get _desktop => Platform.isMacOS || Platform.isWindows;
 
-  // Audio State
-  bool _isAudioMode = false;
-  bool _voiceSourcesExpanded = false;
-  final stt.SpeechToText _speech = stt.SpeechToText();
-  final FlutterTts _flutterTts = FlutterTts();
-  AudioState _audioState = AudioState.idle;
-  String _userTranscription = '';
-
-  // TTS Streaming variables
-  int _spokenLength = 0;
-  bool _isSpeaking = false;
-  final List<String> _ttsQueue = [];
-  // True once the model has finished generating the full answer. The TTS queue
-  // legitimately empties *between* streamed sentences while more text is still
-  // coming, so we must NOT drop back to idle on an empty queue until the answer
-  // is actually complete — otherwise the state flickers speaking→idle→speaking.
-  bool _answerComplete = false;
+  String? _name;
+  ForYou? _forYou;
 
   @override
   void initState() {
     super.initState();
-    _initAudio();
-    _loadUserName();
+    _load();
+    if (!_desktop) EchoVoice.instance.warmUp();
+    final replyTo = widget.replyTo;
+    if (replyTo != null) context.read<AskAiCubit>().draftReply(replyTo);
     final question = widget.initialQuestion?.trim();
     if (question != null && question.isNotEmpty) {
       // A beat's pause in the filming build, so the empty chat is seen first.
@@ -89,196 +97,33 @@ class _AskAiViewState extends State<_AskAiView> {
     }
   }
 
-  String? _userName;
-  Future<void> _loadUserName() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      if (mounted) setState(() => _userName = prefs.getString('user_name'));
-    } catch (_) {}
-  }
-
-  Future<void> _initAudio() async {
-    // Apply the voice + rate the user chose during onboarding (or in settings).
-    await EchoTts.applyVoicePreferences(_flutterTts);
-    await _flutterTts.setVolume(1.0);
-
-    _flutterTts.setCompletionHandler(() {
-      _isSpeaking = false;
-      _speakNextInQueue();
-    });
-  }
-
-  Future<bool> _initSpeech() async {
-    if (_speech.isAvailable) return true;
-    return await _speech.initialize(
-      // Only act on the terminal 'done' status. 'notListening' fires
-      // transiently mid-session (e.g. between phrases) and reacting to it
-      // caused the state to bounce out of listening prematurely.
-      onStatus: (status) {
-        if (status != 'done') return;
-        if (_audioState != AudioState.listening) return;
-        if (_userTranscription.trim().isNotEmpty) {
-          _submitTranscription();
-        } else if (mounted) {
-          setState(() => _audioState = AudioState.idle);
-        }
-      },
-      onError: (errorNotification) {
-        // A no-speech timeout isn't a real error — just return to idle quietly
-        // instead of surfacing it as a state change mid-listen.
-        if (_audioState == AudioState.listening && mounted) {
-          setState(() => _audioState = AudioState.idle);
-        }
-      },
-    );
-  }
-
-  void _startListening() async {
-    if (_desktop) return;
+  Future<void> _load() async {
+    final now = DateTime.now();
+    final prefs = await SharedPreferences.getInstance();
+    final name = prefs.getString('user_name')?.trim();
+    final forYou = kEchoDemo || _desktop ? null : await ForYou.load(now);
+    await ForYou.markLooked(now);
+    if (!mounted) return;
     setState(() {
-      _isAudioMode = true;
+      _name = (name?.isNotEmpty ?? false) ? name : null;
+      _forYou = forYou;
     });
-    bool available = await _initSpeech();
-    if (!available) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Microphone permission is required to use this feature.',
-            ),
-          ),
-        );
-        setState(() {
-          _isAudioMode = false;
-        });
-      }
-      return;
-    }
-
-    setState(() {
-      _audioState = AudioState.listening;
-      _userTranscription = '';
-      _voiceSourcesExpanded = false;
-      _spokenLength = 0;
-      _ttsQueue.clear();
-      _isSpeaking = false;
-      _answerComplete = false;
-    });
-    _flutterTts.stop();
-
-    _speech.listen(
-      onResult: (result) {
-        if (mounted) {
-          setState(() => _userTranscription = result.recognizedWords);
-        }
-        // Submit outside setState — it stops the recognizer and kicks off
-        // inference, which shouldn't run inside a build-triggering callback.
-        if (result.finalResult) _submitTranscription();
-      },
-      listenOptions: stt.SpeechListenOptions(
-        listenFor: const Duration(seconds: 60),
-        pauseFor: const Duration(seconds: 4),
-        cancelOnError: true,
-        partialResults: true,
-        listenMode: stt.ListenMode.dictation,
-      ),
-    );
-  }
-
-  void _submitTranscription() {
-    if (_userTranscription.trim().isEmpty) return;
-    if (_audioState != AudioState.listening) return;
-
-    _speech.stop();
-    setState(() {
-      _audioState = AudioState.processing;
-    });
-    context.read<AskAiCubit>().sendMessage(_userTranscription);
-  }
-
-  void _speakNextInQueue() async {
-    if (_ttsQueue.isNotEmpty && !_isSpeaking) {
-      _isSpeaking = true;
-      String textToSpeak = _ttsQueue.removeAt(0).replaceAll('*', '');
-      await _flutterTts.speak(textToSpeak);
-    } else if (_ttsQueue.isEmpty &&
-        !_isSpeaking &&
-        _answerComplete &&
-        _audioState == AudioState.speaking) {
-      // Only settle to idle once the whole answer has been generated AND fully
-      // spoken — not on the transient gaps between streamed sentences.
-      if (mounted) setState(() => _audioState = AudioState.idle);
-    }
-  }
-
-  void _handleAiStateChange(AskAiMessageReceived state) {
-    if (state.messages.isEmpty) return;
-    if (!_isAudioMode) return;
-
-    final lastMsg = state.messages.last;
-
-    if (lastMsg.sender == 'echo') {
-      if (state.isSearching) {
-        // Show "thinking" only until the first tokens arrive — never revert
-        // here once we've begun speaking.
-        if (_audioState != AudioState.speaking &&
-            _audioState != AudioState.processing) {
-          setState(() => _audioState = AudioState.processing);
-        }
-      } else {
-        if (_audioState != AudioState.speaking) {
-          setState(() => _audioState = AudioState.speaking);
-        }
-
-        String currentText = lastMsg.text;
-        if (currentText.length > _spokenLength) {
-          String newText = currentText.substring(_spokenLength);
-
-          final sentenceRegex = RegExp(r'[^.!?]+[.!?]+');
-          Iterable<Match> matches = sentenceRegex.allMatches(newText);
-
-          int lastMatchEnd = 0;
-          for (Match match in matches) {
-            _ttsQueue.add(match.group(0)!.trim());
-            lastMatchEnd = match.end;
-          }
-
-          _spokenLength += lastMatchEnd;
-          _speakNextInQueue();
-        }
-
-        if (!lastMsg.isGenerating) {
-          if (_spokenLength < currentText.length) {
-            String remainingText = currentText.substring(_spokenLength).trim();
-            if (remainingText.isNotEmpty) {
-              _ttsQueue.add(remainingText);
-              _spokenLength = currentText.length;
-            }
-          }
-          // The full answer is now in the queue (or already spoken); allow the
-          // return to idle once the queue drains.
-          _answerComplete = true;
-          _speakNextInQueue();
-        }
-      }
-    }
   }
 
   @override
   void dispose() {
-    _speech.cancel();
-    _flutterTts.stop();
-    _inputController.dispose();
-    _scrollController.dispose();
-    _focusNode.dispose();
+    EchoVoice.instance.stop();
+    _input.dispose();
+    _scroll.dispose();
+    _focus.dispose();
     super.dispose();
   }
 
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
+      if (_scroll.hasClients) {
+        _scroll.animateTo(
+          _scroll.position.maxScrollExtent,
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeOutCubic,
         );
@@ -286,84 +131,114 @@ class _AskAiViewState extends State<_AskAiView> {
     });
   }
 
+  void _send() {
+    final text = _input.text.trim();
+    if (text.isEmpty) return;
+    _input.clear();
+    _focus.unfocus();
+    context.read<AskAiCubit>().sendMessage(text);
+  }
+
+  void _ask(String question) =>
+      context.read<AskAiCubit>().sendMessage(question);
+
+  void _openSource(RawData source) async {
+    if (await ReplySender.open(source) || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("That app can't be opened from here.")),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: context.colors.background,
-      // Voice mode is a full-screen immersive experience — hide the app bar.
-      // Embedded (desktop tab) mode has no app bar either: the sidebar is
-      // already the navigation, so a back arrow here would have nothing to do.
-      appBar: (_isAudioMode || widget.embedded)
-          ? null
-          : const EchoAppBar(title: 'Ask Echo'),
+      appBar: widget.embedded ? null : const EchoAppBar(title: 'Ask Echo'),
       body: BlocConsumer<AskAiCubit, AskAiState>(
-        listener: (context, state) {
-          if (state is AskAiMessageReceived) {
-            _scrollToBottom();
-            _handleAiStateChange(state);
-          }
-        },
+        listenWhen: (previous, current) =>
+            current is AskAiMessageReceived &&
+            (previous is! AskAiMessageReceived ||
+                previous.messages.length != current.messages.length ||
+                current.messages.last.isGenerating),
+        listener: (context, state) => _scrollToBottom(),
         builder: (context, state) {
-          List<ChatMessage> messages = [];
-          bool isSearching = false;
+          final received = state is AskAiMessageReceived ? state : null;
+          final messages = received?.messages ?? const <ChatMessage>[];
+          final busy =
+              (received?.isSearching ?? false) ||
+              messages.any((m) => m.isGenerating);
+          final side = widget.embedded ? 4.0 : 20.0;
 
-          if (state is AskAiMessageReceived) {
-            messages = state.messages;
-            isSearching = state.isSearching;
-          }
-
-          final isDisabled = messages.any((m) => m.isGenerating) || isSearching;
-
-          // Immersive voice mode takes over the whole screen, full-bleed —
-          // never width-capped, unlike the normal chat view below.
-          if (_isAudioMode) {
-            return _buildVoiceOverlay(context, messages);
-          }
-
-          final chatStack = Stack(
+          final chat = Stack(
             children: [
               Positioned.fill(
                 child: messages.isEmpty
-                    ? _buildEmptyState()
+                    ? _opening(side)
                     : ListView.builder(
-                        controller: _scrollController,
+                        controller: _scroll,
                         physics: const BouncingScrollPhysics(),
-                        padding: EdgeInsets.only(
-                          left: widget.embedded ? 4 : 20,
-                          right: widget.embedded ? 4 : 20,
-                          top: widget.embedded ? 4 : 20,
-                          bottom: 120, // space for input field
-                        ),
+                        padding: EdgeInsets.fromLTRB(side, side, side, 170),
                         itemCount: messages.length,
-                        itemBuilder: (context, index) {
-                          return _AnimatedMessage(
-                            key: ValueKey('msg_$index'),
-                            message: messages[index],
-                          );
-                        },
+                        itemBuilder: (context, i) => _Entrance(
+                          key: ValueKey('msg_$i'),
+                          fromRight: messages[i].isUser,
+                          child: Padding(
+                            padding: EdgeInsets.only(
+                              bottom: _desktop ? 14 : 24,
+                            ),
+                            child: _message(
+                              messages,
+                              i,
+                              i == messages.length - 1
+                                  ? received?.progress
+                                  : null,
+                            ),
+                          ),
+                        ),
                       ),
               ),
               Positioned(
-                bottom: 20,
-                left: widget.embedded ? 4 : 16,
-                right: widget.embedded ? 4 : 16,
+                left: 0,
+                right: 0,
+                bottom: 0,
                 child: SafeArea(
                   top: false,
-                  child: _buildInputArea(context, isDisabled),
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      widget.embedded ? 4 : 16,
+                      0,
+                      widget.embedded ? 4 : 16,
+                      16,
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _Chips(chips: busy ? const [] : _chips(messages)),
+                        AskInputBar(
+                          controller: _input,
+                          focusNode: _focus,
+                          enabled: !busy,
+                          hint: messages.isEmpty
+                              ? 'Ask Echo anything…'
+                              : 'Ask a follow-up…',
+                          onSend: _send,
+                          dictation: !_desktop,
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ],
           );
 
-          if (!(Platform.isMacOS || Platform.isWindows)) return chatStack;
-
+          if (!_desktop) return chat;
           // Desktop: a comfortable, centered conversation column instead of
-          // message bubbles and the input bar stretching edge to edge across
-          // a much wider window.
+          // the chat stretching edge to edge across a much wider window.
           return Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 640),
-              child: chatStack,
+              child: chat,
             ),
           );
         },
@@ -371,1075 +246,303 @@ class _AskAiViewState extends State<_AskAiView> {
     );
   }
 
-  Widget _buildEmptyState() {
-    final name = (_userName?.trim().isNotEmpty ?? false)
-        ? _userName!.trim()
-        : null;
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: constraints.maxHeight),
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(
-                widget.embedded ? 8 : 24,
-                0,
-                widget.embedded ? 8 : 24,
-                118,
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const EchoMascot(state: EchoState.idle, size: 158),
-                  const SizedBox(height: 4),
-                  Text(
-                    name != null ? 'How can I help, $name?' : 'How can I help?',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.oldStandardTt(
-                      fontSize: 26,
-                      fontWeight: FontWeight.w700,
-                      color: context.colors.textPrimary,
-                      height: 1.2,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    'Ask about your schedule, messages, or anything in your local vault.',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.nunito(
-                      fontSize: 14.5,
-                      color: context.colors.textSecondary,
-                      height: 1.5,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+  Widget _message(List<ChatMessage> messages, int i, AskProgress? progress) {
+    final cubit = context.read<AskAiCubit>();
+    final m = messages[i];
+    if (m.isUser) return _UserBubble(m.text);
+    // Once Echo has said something newer, an earlier answer keeps its words
+    // but lets go of its cards and buttons, so the conversation reads cleanly.
+    final earlier = messages.skip(i + 1).any((n) => !n.isUser);
+    return switch (m.kind) {
+      MessageKind.text => EchoTurn(
+        message: m,
+        progress: progress,
+        earlier: earlier,
+        onAdd: m.addable ? () => cubit.addFromAnswer(i) : null,
+        onOpenSource: _openSource,
+      ),
+      MessageKind.notice => _NoticeBubble(m.text),
+      MessageKind.added => AddedCard(
+        message: m,
+        onUndo: () => cubit.undoAdded(i),
+      ),
+      MessageKind.draft => DraftCard(
+        draft: m.draft!,
+        onSend: () => cubit.sendDraft(i),
+        onEdit: (text) => cubit.editDraft(i, text),
+        onQuickReply: (emoji) => cubit.quickReply(i, emoji),
+      ),
+    };
+  }
+
+  /// Suggestions above the input: openers before anything is asked, then
+  /// replies to the people the last answer mentions.
+  List<(String, VoidCallback)> _chips(List<ChatMessage> messages) {
+    if (messages.isEmpty) {
+      final group = _forYou?.busiestGroup;
+      return [
+        ('What needs me today?', () => _ask('What needs me today?')),
+        group != null
+            ? ('Catch me up on $group', () => _ask('Catch me up on $group'))
+            : ("What's on tomorrow?", () => _ask("What's on tomorrow?")),
+      ];
+    }
+    final last = messages.last;
+    if (last.isUser || last.kind != MessageKind.text) return const [];
+    final cubit = context.read<AskAiCubit>();
+    final seen = <String>{};
+    String who(RawData e) =>
+        e.sender.isEmpty ? e.threadTitle ?? e.source : e.sender;
+    return [
+      // Chats that want the owner: offer to answer them.
+      for (final e in last.cited)
+        if (e.thread != null &&
+            Addressed.parse(e.addressed) != null &&
+            seen.add(e.thread ?? who(e)))
+          ('Draft a reply to ${who(e)}', () => cubit.draftReply(e)),
+      // Anyone else the answer drew on: ask more about them.
+      for (final e in last.cited)
+        if (seen.add(e.thread ?? who(e)))
+          (
+            'What else did ${who(e)} say?',
+            () => _ask('What else did ${who(e)} say?'),
           ),
-        );
-      },
-    );
+    ].take(2).toList();
   }
 
-  void _toggleAudioMode() {
-    if (_isAudioMode) {
-      _speech.stop();
-      _flutterTts.stop();
-      context.read<AskAiCubit>().cancelInference();
-      setState(() {
-        _isAudioMode = false;
-        _audioState = AudioState.idle;
-      });
-    } else {
-      _startListening();
+  /// The phone opens on what's new for the owner, even when that's
+  /// nothing; desktop, which hears no notifications itself, on a welcome.
+  Widget _opening(double side) {
+    if (_desktop || kEchoDemo) {
+      return _EmptyState(name: _name, embedded: widget.embedded);
     }
-  }
-
-  void _onWaveTap() {
-    if (_audioState == AudioState.idle) {
-      _startListening();
-    } else if (_audioState == AudioState.listening) {
-      _submitTranscription();
-    } else if (_audioState == AudioState.speaking ||
-        _audioState == AudioState.processing) {
-      _flutterTts.stop();
-      context.read<AskAiCubit>().cancelInference();
-      setState(() {
-        _audioState = AudioState.idle;
-      });
-    }
-  }
-
-  // ── Immersive full-screen voice mode ───────────────────────────────────────
-  // Echo becomes the whole screen and reacts to the audio state: listening
-  // (rings pull inward), thinking (orbital swirl), speaking (rings ripple out).
-  Widget _buildVoiceOverlay(BuildContext context, List<ChatMessage> messages) {
-    final EchoState mascotState;
-    final String statusLabel;
-    switch (_audioState) {
-      case AudioState.listening:
-        mascotState = EchoState.listening;
-        statusLabel = 'LISTENING';
-        break;
-      case AudioState.processing:
-        mascotState = EchoState.thinking;
-        statusLabel = 'THINKING';
-        break;
-      case AudioState.speaking:
-        mascotState = EchoState.speaking;
-        statusLabel = 'SPEAKING';
-        break;
-      case AudioState.initializing:
-        mascotState = EchoState.idle;
-        statusLabel = 'CONNECTING';
-        break;
-      case AudioState.idle:
-        mascotState = EchoState.idle;
-        statusLabel = 'TAP TO SPEAK';
-        break;
-    }
-
-    Widget body;
-    if (_audioState == AudioState.listening) {
-      final t = _userTranscription.trim();
-      body = Text(
-        t.isEmpty ? 'I’m listening…' : t,
-        textAlign: TextAlign.center,
-        style: GoogleFonts.oldStandardTt(
-          fontSize: 24,
-          height: 1.35,
-          fontWeight: FontWeight.w600,
-          color: const Color(0xFFF2F6EE),
-        ),
-      );
-    } else if (_audioState == AudioState.speaking) {
-      // Echo speaks the answer aloud — no typed text; the notifications it drew
-      // on sit in a collapsible dropdown, like the chat's sources.
-      final ai = messages.where((m) => m.sender != 'user');
-      final sources = ai.isEmpty ? const <RawData>[] : ai.last.ragSources;
-      body = sources.isEmpty
-          ? const SizedBox.shrink()
-          : Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: _voiceSources(sources),
-            );
-    } else if (_audioState == AudioState.processing) {
-      body = Text(
-        'One moment…',
-        style: GoogleFonts.nunito(
-          fontSize: 15,
-          fontStyle: FontStyle.italic,
-          color: const Color(0xFF9FB0A0),
-        ),
-      );
-    } else {
-      body = Text(
-        'Ask Echo about your schedule, messages, or anything in your vault.',
-        textAlign: TextAlign.center,
-        style: GoogleFonts.nunito(fontSize: 15, color: const Color(0xFF9FB0A0)),
-      );
-    }
-
-    final bool live = _audioState == AudioState.listening;
-    final IconData micIcon;
-    final String hint;
-    if (_audioState == AudioState.idle ||
-        _audioState == AudioState.initializing) {
-      micIcon = Icons.mic_none_rounded;
-      hint = 'Tap to speak';
-    } else if (live) {
-      micIcon = Icons.mic_rounded;
-      hint = 'Tap to stop';
-    } else if (_audioState == AudioState.speaking) {
-      micIcon = Icons.stop_rounded;
-      hint = 'Tap to interrupt';
-    } else {
-      micIcon = Icons.stop_rounded;
-      hint = 'One moment…';
-    }
-
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: RadialGradient(
-          center: Alignment(0, -0.32),
-          radius: 1.15,
-          colors: [Color(0xFF1A2B1E), Color(0xFF101810), Color(0xFF0A0F09)],
-          stops: [0.0, 0.46, 1.0],
-        ),
-      ),
-      child: SafeArea(
-        child: Stack(
-          children: [
-            Positioned(
-              top: 4,
-              right: 10,
-              child: GestureDetector(
-                onTap: _toggleAudioMode,
-                child: Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.white.withValues(alpha: 0.07),
-                  ),
-                  child: const Icon(
-                    Icons.close_rounded,
-                    color: Color(0xFFEAF1E6),
-                    size: 20,
-                  ),
-                ),
-              ),
-            ),
-            // Centered stage: mascot + status + content, floating above the mic.
-            Positioned.fill(
-              bottom: 168,
-              child: Center(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(vertical: 24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      GestureDetector(
-                        onTap: _onWaveTap,
-                        child: EchoMascot(
-                          state: mascotState,
-                          size: 230,
-                          isDark: false,
-                          voiceGlow: true,
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      Text(
-                        statusLabel,
-                        style: GoogleFonts.nunito(
-                          fontSize: 12,
-                          letterSpacing: 3,
-                          fontWeight: FontWeight.w800,
-                          color: const Color(0xFF83C193),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      body,
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            Positioned(
-              bottom: 44,
-              left: 0,
-              right: 0,
-              child: Column(
-                children: [
-                  GestureDetector(
-                    onTap: _onWaveTap,
-                    child: Container(
-                      width: 74,
-                      height: 74,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: live
-                            ? context.colors.primaryGreen
-                            : Colors.white.withValues(alpha: 0.10),
-                        border: live
-                            ? null
-                            : Border.all(
-                                color: Colors.white.withValues(alpha: 0.22),
-                                width: 1.5,
-                              ),
-                        boxShadow: live
-                            ? [
-                                BoxShadow(
-                                  color: context.colors.primaryGreen.withValues(
-                                    alpha: 0.5,
-                                  ),
-                                  blurRadius: 30,
-                                  spreadRadius: 2,
-                                ),
-                              ]
-                            : null,
-                      ),
-                      child: Icon(
-                        micIcon,
-                        color: const Color(0xFFEAF1E6),
-                        size: 26,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    hint,
-                    style: GoogleFonts.nunito(
-                      fontSize: 13,
-                      color: const Color(0xFF9FB0A0),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+    final forYou = _forYou;
+    if (forYou == null) return const SizedBox.shrink();
+    final cubit = context.read<AskAiCubit>();
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
+      padding: EdgeInsets.fromLTRB(side, 8, side, 170),
+      child: ForYouView(
+        forYou: forYou,
+        name: _name,
+        now: DateTime.now(),
+        onReply: (e) => cubit.draftReply(e),
+        onAdd: (e) => cubit.addEntries([e]),
+        onChatter: () => _ask('Catch me up on my group chats'),
       ),
     );
-  }
-
-  // Collapsible "N notifications used" dropdown for the voice answer — dark
-  // themed to sit on the immersive focus background.
-  Widget _voiceSources(List<RawData> sources) {
-    const green = Color(0xFF8FE0A6);
-    const chipText = Color(0xFFBFEECB);
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        GestureDetector(
-          onTap: () =>
-              setState(() => _voiceSourcesExpanded = !_voiceSourcesExpanded),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.06),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.graphic_eq_rounded, size: 15, color: green),
-                const SizedBox(width: 8),
-                Text(
-                  '${sources.length} notification${sources.length == 1 ? '' : 's'} used',
-                  style: GoogleFonts.nunito(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w700,
-                    color: chipText,
-                  ),
-                ),
-                const SizedBox(width: 2),
-                AnimatedRotation(
-                  turns: _voiceSourcesExpanded ? 0.5 : 0.0,
-                  duration: const Duration(milliseconds: 250),
-                  child: const Icon(
-                    Icons.keyboard_arrow_down_rounded,
-                    size: 18,
-                    color: chipText,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        AnimatedSize(
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOut,
-          alignment: Alignment.topCenter,
-          child: !_voiceSourcesExpanded
-              ? const SizedBox(width: double.infinity)
-              : Container(
-                  width: double.infinity,
-                  margin: const EdgeInsets.only(top: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.05),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Column(
-                    children: [
-                      for (int i = 0; i < sources.length; i++)
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            border: i == 0
-                                ? null
-                                : Border(
-                                    top: BorderSide(
-                                      color: Colors.white.withValues(
-                                        alpha: 0.06,
-                                      ),
-                                    ),
-                                  ),
-                          ),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Container(
-                                width: 26,
-                                height: 26,
-                                decoration: BoxDecoration(
-                                  color: const Color(
-                                    0xFF7FB98C,
-                                  ).withValues(alpha: 0.18),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: const Icon(
-                                  Icons.graphic_eq_rounded,
-                                  size: 13,
-                                  color: green,
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      sources[i].sender.isNotEmpty
-                                          ? sources[i].sender
-                                          : sources[i].source,
-                                      style: GoogleFonts.nunito(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w800,
-                                        color: const Color(0xFFEAF1E6),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 1),
-                                    Text(
-                                      sources[i].content,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: GoogleFonts.nunito(
-                                        fontSize: 12,
-                                        color: const Color(0xFF9FB0A0),
-                                        height: 1.35,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-        ),
-      ],
-    );
-  }
-
-  String _getTranscribedText() {
-    if (_audioState == AudioState.listening && _userTranscription.isNotEmpty) {
-      return _userTranscription;
-    }
-    switch (_audioState) {
-      case AudioState.initializing:
-        return 'Initializing...';
-      case AudioState.listening:
-        return 'Listening...';
-      case AudioState.processing:
-        return 'Thinking...';
-      case AudioState.speaking:
-        return 'Speaking...';
-      case AudioState.idle:
-        return 'Tap to speak...';
-    }
-  }
-
-  Widget _buildInputArea(BuildContext context, bool isDisabled) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      decoration: BoxDecoration(
-        color: _isAudioMode ? Colors.transparent : context.colors.surface,
-        borderRadius: BorderRadius.circular(34),
-        boxShadow: _isAudioMode
-            ? []
-            : [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
-                  blurRadius: 20,
-                  offset: const Offset(0, 6),
-                ),
-              ],
-      ),
-      child: Padding(
-        padding: EdgeInsets.symmetric(
-          horizontal: 8.0,
-          vertical: _desktop ? 6 : 8,
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Expanded(
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
-                transitionBuilder: (child, animation) =>
-                    FadeTransition(opacity: animation, child: child),
-                child: _isAudioMode
-                    ? _buildAudioContent()
-                    : _buildTextContent(isDisabled),
-              ),
-            ),
-            // Voice mode relies on speech_to_text's macOS/Windows backend,
-            // which crashes the app on entry (TCC speech-recognition
-            // violation with no reliable fix found) — hide the entry point
-            // entirely on desktop rather than ship a button that crashes.
-            if (!_desktop) ...[
-              const SizedBox(width: 8),
-              GestureDetector(
-                onTap: isDisabled && !_isAudioMode ? null : _toggleAudioMode,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  width: _isAudioMode ? 100 : 48,
-                  height: _isAudioMode ? 100 : 48,
-                  decoration: BoxDecoration(
-                    color: context.colors.background,
-                    shape: BoxShape.circle,
-                  ),
-                  child: _isAudioMode
-                      ? Icon(Icons.close_rounded, size: 22)
-                      : Padding(
-                          padding: const EdgeInsets.all(10.0),
-                          child: SvgPicture.asset(
-                            colorFilter: ColorFilter.mode(
-                              context.colors.textPrimary,
-                              BlendMode.srcIn,
-                            ),
-                            "assets/icons/audio_wave.svg",
-                            height: 22,
-                            width: 22,
-                          ),
-                        ),
-                ),
-              ),
-            ],
-            if (!_isAudioMode) ...[
-              const SizedBox(width: 8),
-              GestureDetector(
-                onTap: isDisabled ? null : () => _sendInput(context),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  width: _desktop ? 46 : 52,
-                  height: _desktop ? 46 : 52,
-                  decoration: BoxDecoration(
-                    color: isDisabled
-                        ? context.colors.dividerColor
-                        : context.colors.buttonDark,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.arrow_upward_rounded,
-                    color: isDisabled
-                        ? context.colors.textInverse.withValues(alpha: 0.7)
-                        : context.colors.textInverse,
-                    size: _desktop ? 20 : 24,
-                  ),
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAudioContent() {
-    return GestureDetector(
-      onTap: _onWaveTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        alignment: Alignment.center,
-        height: 100, // Fixed height to prevent jumping when wave appears
-        child: Row(
-          key: const ValueKey('audio_content'),
-          children: [
-            const SizedBox(width: 16),
-            Expanded(
-              child:
-                  _audioState == AudioState.speaking ||
-                      _audioState == AudioState.listening
-                  ? SizedBox(
-                      height: 100,
-                      child: SiriWaveformVisualizer(
-                        isPlaying: true,
-                        amplitude: 1.0,
-                        onTap: _onWaveTap,
-                        height: 100,
-                      ),
-                    )
-                  : Text(
-                      _getTranscribedText(),
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.nunito(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: context.colors.textPrimary.withValues(
-                          alpha: 0.5,
-                        ), // Darker text for transparent background
-                      ),
-                    ),
-            ),
-            const SizedBox(width: 16),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTextContent(bool isDisabled) {
-    return TextField(
-      key: const ValueKey('text_content'),
-      controller: _inputController,
-      enabled: !isDisabled,
-      focusNode: _focusNode,
-      minLines: 1,
-      maxLines: 5,
-      keyboardType: TextInputType.multiline,
-      textInputAction: TextInputAction.send,
-      style: GoogleFonts.nunito(
-        fontSize: 16,
-        color: context.colors.textPrimary,
-        fontWeight: FontWeight.w500,
-      ),
-      decoration: InputDecoration(
-        hintText: 'Type your question...',
-        hintStyle: GoogleFonts.nunito(
-          color: context.colors.textSecondary.withValues(alpha: 0.5),
-          fontSize: 16,
-        ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 14,
-        ),
-        border: InputBorder.none,
-      ),
-      onSubmitted: (val) {
-        if (!isDisabled) _sendInput(context);
-      },
-    );
-  }
-
-  void _sendInput(BuildContext context) {
-    final text = _inputController.text.trim();
-    if (text.isEmpty) return;
-
-    _inputController.clear();
-    _focusNode.unfocus();
-    context.read<AskAiCubit>().sendMessage(text);
   }
 }
 
-class _AnimatedMessage extends StatelessWidget {
-  final ChatMessage message;
-
-  const _AnimatedMessage({super.key, required this.message});
+/// How Ask Echo greets when there's nothing new for the owner.
+class _EmptyState extends StatelessWidget {
+  final String? name;
+  final bool embedded;
+  const _EmptyState({required this.name, required this.embedded});
 
   @override
   Widget build(BuildContext context) {
-    final isUser = message.sender == 'user';
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0.0, end: 1.0),
-      duration: const Duration(milliseconds: 400),
-      curve: Curves.easeOutBack,
-      builder: (context, value, child) {
-        return Transform.scale(
-          scale: value,
-          alignment: isUser ? Alignment.bottomRight : Alignment.bottomLeft,
-          child: child,
-        );
-      },
-      child: _MessageContent(message: message),
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              embedded ? 8 : 24,
+              0,
+              embedded ? 8 : 24,
+              170,
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const EchoMascot(state: EchoState.idle, size: 158),
+                const SizedBox(height: 4),
+                Text(
+                  name != null ? 'How can I help, $name?' : 'How can I help?',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.oldStandardTt(
+                    fontSize: 26,
+                    fontWeight: FontWeight.w700,
+                    color: context.colors.textPrimary,
+                    height: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Ask about your schedule, messages, or anything in your local vault.',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.nunito(
+                    fontSize: 14.5,
+                    color: context.colors.textSecondary,
+                    height: 1.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
 
-class _MessageContent extends StatelessWidget {
-  final ChatMessage message;
+/// Messages grow in from their own side, as they always have.
+class _Entrance extends StatelessWidget {
+  final bool fromRight;
+  final Widget child;
+  const _Entrance({super.key, required this.fromRight, required this.child});
 
-  const _MessageContent({required this.message});
+  @override
+  Widget build(BuildContext context) => TweenAnimationBuilder<double>(
+    tween: Tween(begin: 0, end: 1),
+    duration: const Duration(milliseconds: 400),
+    curve: Curves.easeOutBack,
+    builder: (context, value, child) => Transform.scale(
+      scale: value,
+      alignment: fromRight ? Alignment.bottomRight : Alignment.bottomLeft,
+      child: child,
+    ),
+    child: child,
+  );
+}
 
-  // Ask Echo's bubble sizing was tuned for a full-width phone screen; inside
-  // the desktop embedded chat pane (already a narrower column) the same
-  // padding/gaps read as oversized, so desktop trims them down.
+class _UserBubble extends StatelessWidget {
+  final String text;
+  const _UserBubble(this.text);
+
   static bool get _desktop => Platform.isMacOS || Platform.isWindows;
 
   @override
   Widget build(BuildContext context) {
-    final isUser = message.sender == 'user';
-    return Padding(
-      padding: EdgeInsets.only(bottom: _desktop ? 14.0 : 24.0),
-      child: Align(
-        alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-        child: isUser ? _buildUserMessage(context) : _buildAiMessage(context),
-      ),
-    );
-  }
-
-  Widget _buildUserMessage(BuildContext context) {
-    return Container(
-      constraints: BoxConstraints(
-        maxWidth: MediaQuery.of(context).size.width * 0.75,
-      ),
-      padding: EdgeInsets.symmetric(
-        horizontal: _desktop ? 15 : 20,
-        vertical: _desktop ? 9 : 14,
-      ),
-      decoration: BoxDecoration(
-        color: context.colors.buttonDark,
-        borderRadius: BorderRadius.circular(
-          _desktop ? 18 : 24,
-        ).copyWith(bottomRight: const Radius.circular(8)),
-      ),
-      child: Text(
-        message.text,
-        style: GoogleFonts.nunito(
-          color: context.colors.surface,
-          fontSize: _desktop ? 14 : 16,
-          fontWeight: FontWeight.w500,
-          height: 1.4,
+    return Align(
+      alignment: Alignment.centerRight,
+      child: Container(
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.sizeOf(context).width * 0.75,
         ),
-      ),
-    );
-  }
-
-  Widget _buildAiMessage(BuildContext context) {
-    final generating = message.text.isEmpty && message.isGenerating;
-
-    // Only the thinking state carries the mascot.
-    if (generating) {
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          EchoMascot(state: EchoState.thinking, size: _desktop ? 32 : 42),
-          const SizedBox(width: 8),
-          _thinkingBubble(context),
-        ],
-      );
-    }
-
-    if (message.isNotice) return _notice(context);
-
-    return Container(
-      constraints: BoxConstraints(
-        maxWidth: MediaQuery.of(context).size.width * 0.82,
-      ),
-      padding: EdgeInsets.fromLTRB(
-        _desktop ? 13 : 16,
-        _desktop ? 9 : 13,
-        _desktop ? 13 : 16,
-        _desktop ? 10 : 14,
-      ),
-      decoration: BoxDecoration(
-        color: context.colors.surface,
-        borderRadius: BorderRadius.circular(
-          _desktop ? 15 : 20,
-        ).copyWith(bottomLeft: const Radius.circular(6)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildEditorialText(message.text, context),
-          if (message.ragSources.isNotEmpty) ...[
-            SizedBox(height: _desktop ? 8 : 12),
-            RagSourcesWidget(sources: message.ragSources),
-          ],
-        ],
-      ),
-    );
-  }
-
-  /// A limit or error notice: plain words on amber, not an answer.
-  Widget _notice(BuildContext context) {
-    return Container(
-      constraints: BoxConstraints(
-        maxWidth: MediaQuery.of(context).size.width * 0.82,
-      ),
-      padding: EdgeInsets.symmetric(
-        horizontal: _desktop ? 13 : 16,
-        vertical: _desktop ? 9 : 13,
-      ),
-      decoration: BoxDecoration(
-        color: context.colors.amberBackground,
-        borderRadius: BorderRadius.circular(
-          _desktop ? 15 : 20,
-        ).copyWith(bottomLeft: const Radius.circular(6)),
-      ),
-      child: Text(
-        message.text,
-        style: GoogleFonts.nunito(
-          color: context.colors.textPrimary,
-          fontSize: _desktop ? 14 : 15,
-          fontWeight: FontWeight.w600,
-          height: 1.45,
+        padding: EdgeInsets.symmetric(
+          horizontal: _desktop ? 15 : 20,
+          vertical: _desktop ? 9 : 14,
         ),
-      ),
-    );
-  }
-
-  Widget _thinkingBubble(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: _desktop ? 12 : 15,
-        vertical: _desktop ? 7 : 10,
-      ),
-      decoration: BoxDecoration(
-        color: context.selectionFill,
-        borderRadius: BorderRadius.circular(
-          18,
-        ).copyWith(bottomLeft: const Radius.circular(6)),
-      ),
-      child: Text(
-        'Echo is thinking…',
-        style: GoogleFonts.nunito(
-          fontSize: 13.5,
-          fontStyle: FontStyle.italic,
-          fontWeight: FontWeight.w700,
-          color: context.onSelection,
+        decoration: BoxDecoration(
+          color: context.colors.buttonDark,
+          borderRadius: BorderRadius.circular(
+            _desktop ? 18 : 24,
+          ).copyWith(bottomRight: const Radius.circular(8)),
         ),
-      ),
-    );
-  }
-
-  Widget _buildEditorialText(String text, BuildContext context) {
-    final List<TextSpan> spans = [];
-    final RegExp regExp = RegExp(r'\*\*(.*?)\*\*');
-    int lastIndex = 0;
-
-    for (final match in regExp.allMatches(text)) {
-      if (match.start > lastIndex) {
-        spans.add(
-          TextSpan(
-            text: text.substring(lastIndex, match.start),
-            style: GoogleFonts.nunito(
-              color: context.colors.textPrimary,
-              fontSize: 15.5,
-              height: 1.5,
-            ),
-          ),
-        );
-      }
-      spans.add(
-        TextSpan(
-          text: match.group(1),
+        child: Text(
+          text,
           style: GoogleFonts.nunito(
-            color: context.colors.primaryGreen,
-            fontSize: 15.5,
-            fontWeight: FontWeight.w800,
-            height: 1.5,
+            color: context.colors.surface,
+            fontSize: _desktop ? 14 : 16,
+            fontWeight: FontWeight.w500,
+            height: 1.4,
           ),
         ),
-      );
-      lastIndex = match.end;
-    }
+      ),
+    );
+  }
+}
 
-    if (lastIndex < text.length) {
-      spans.add(
-        TextSpan(
-          text: text.substring(lastIndex),
-          style: GoogleFonts.oldStandardTt(
+/// A limit or error notice: plain words on amber, not an answer.
+class _NoticeBubble extends StatelessWidget {
+  final String text;
+  const _NoticeBubble(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.sizeOf(context).width * 0.82,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+        decoration: BoxDecoration(
+          color: context.colors.amberBackground,
+          borderRadius: BorderRadius.circular(
+            20,
+          ).copyWith(bottomLeft: const Radius.circular(6)),
+        ),
+        child: Text(
+          text,
+          style: GoogleFonts.nunito(
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+            height: 1.45,
             color: context.colors.textPrimary,
-            fontSize: 18,
-            height: 1.5,
           ),
         ),
-      );
-    }
-
-    return RichText(text: TextSpan(children: spans));
-  }
-}
-
-class _TypingDotAnimation extends StatefulWidget {
-  const _TypingDotAnimation();
-
-  @override
-  State<_TypingDotAnimation> createState() => _TypingDotAnimationState();
-}
-
-class _TypingDotAnimationState extends State<_TypingDotAnimation>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1000),
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _ctrl,
-      builder: (context, child) => Row(
-        mainAxisSize: MainAxisSize.min,
-        children: List.generate(3, (i) {
-          final offset = math.sin(
-            (_ctrl.value * 2 * math.pi) - (i * math.pi / 2),
-          );
-          final scale = 0.5 + 0.5 * (offset + 1) / 2;
-          return Padding(
-            padding: const EdgeInsets.only(right: 4.0),
-            child: Transform.scale(
-              scale: scale,
-              child: Container(
-                width: 6,
-                height: 6,
-                decoration: BoxDecoration(
-                  color: context.colors.textSecondary,
-                  shape: BoxShape.circle,
-                ),
-              ),
-            ),
-          );
-        }),
       ),
     );
   }
 }
 
-class RagSourcesWidget extends StatefulWidget {
-  final List<RawData> sources;
-  const RagSourcesWidget({super.key, required this.sources});
-
-  @override
-  State<RagSourcesWidget> createState() => RagSourcesWidgetState();
-}
-
-class RagSourcesWidgetState extends State<RagSourcesWidget> {
-  bool _expanded = false;
+/// Suggestions above the input, as the nav dock shows them.
+class _Chips extends StatelessWidget {
+  final List<(String, VoidCallback)> chips;
+  const _Chips({required this.chips});
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
+    final colors = context.colors;
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
-      decoration: BoxDecoration(
-        color: context.colors.background,
-        borderRadius: BorderRadius.circular(_expanded ? 16 : 24),
-        boxShadow: _expanded
-            ? [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.02),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
+      child: chips.isEmpty
+          ? const SizedBox(width: double.infinity)
+          : Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: SizedBox(
+                height: 40,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: chips.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 8),
+                  itemBuilder: (context, i) {
+                    final (label, onTap) = chips[i];
+                    return Pressable(
+                      child: Material(
+                        color: colors.surface,
+                        shape: StadiumBorder(
+                          side: BorderSide(
+                            color: colors.dividerColor.withValues(alpha: 0.8),
+                          ),
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: InkWell(
+                          onTap: onTap,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 14),
+                            child: Center(
+                              child: ConstrainedBox(
+                                // A long group name ends in "…" rather than
+                                // running off the screen.
+                                constraints: const BoxConstraints(
+                                  maxWidth: 240,
+                                ),
+                                child: Text(
+                                  label,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.nunito(
+                                    fontSize: 13.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: colors.textPrimary,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
                 ),
-              ]
-            : [],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          InkWell(
-            onTap: () {
-              setState(() {
-                _expanded = !_expanded;
-              });
-            },
-            borderRadius: BorderRadius.circular(_expanded ? 16 : 24),
-            child: Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: _MessageContent._desktop ? 11 : 14,
-                vertical: _MessageContent._desktop ? 6 : 10,
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.inventory_2_outlined,
-                    size: 14,
-                    color: context.colors.textSecondary,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    '${widget.sources.length} local notifications used',
-                    style: GoogleFonts.nunito(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: context.colors.textSecondary,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  AnimatedRotation(
-                    turns: _expanded ? 0.5 : 0.0,
-                    duration: const Duration(milliseconds: 300),
-                    curve: Curves.easeOutBack,
-                    child: Icon(
-                      Icons.keyboard_arrow_down_rounded,
-                      size: 16,
-                      color: context.colors.textSecondary,
-                    ),
-                  ),
-                ],
               ),
             ),
-          ),
-          AnimatedSize(
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOutCubic,
-            child: _expanded
-                ? Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(14).copyWith(top: 0),
-                    constraints: const BoxConstraints(maxHeight: 250),
-                    child: SingleChildScrollView(
-                      physics: const BouncingScrollPhysics(),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: widget.sources.map((src) {
-                          return Padding(
-                            padding: const EdgeInsets.only(top: 10.0),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                SourceIcon(
-                                  source: src.source,
-                                  size: 24,
-                                  fallback: Container(
-                                    padding: const EdgeInsets.all(6),
-                                    decoration: BoxDecoration(
-                                      color: context.colors.background,
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: Icon(
-                                      _getSourceIcon(src.source),
-                                      size: 12,
-                                      color: context.colors.textSecondary,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        src.sender,
-                                        style: GoogleFonts.nunito(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w800,
-                                          color: context.colors.textPrimary,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        src.content,
-                                        style: GoogleFonts.nunito(
-                                          fontSize: 12,
-                                          color: context.colors.textSecondary,
-                                          height: 1.4,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ),
-                  )
-                : const SizedBox.shrink(),
-          ),
-        ],
-      ),
     );
-  }
-
-  IconData _getSourceIcon(String source) {
-    switch (source.toLowerCase()) {
-      case 'slack':
-        return Icons.chat_bubble_outline_rounded;
-      case 'sms':
-        return Icons.sms_outlined;
-      case 'whatsapp':
-        return Icons.message_outlined;
-      case 'calendar':
-        return Icons.calendar_today_outlined;
-      case 'gmail':
-      case 'email':
-        return Icons.mail_outline_rounded;
-      default:
-        return Icons.notifications_none_rounded;
-    }
   }
 }

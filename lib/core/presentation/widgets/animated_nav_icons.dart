@@ -57,6 +57,8 @@ class _SpinInIconState extends State<SpinInIcon>
       },
       child: Icon(
         widget.isSelected ? widget.selectedIcon : widget.unselectedIcon,
+        // The selected tab's icon is filled, the others outlined.
+        fill: widget.isSelected ? 1 : 0,
         size: widget.size,
         color: widget.color,
       ),
@@ -64,16 +66,17 @@ class _SpinInIconState extends State<SpinInIcon>
   }
 }
 
-/// An icon that does a playful tilt-and-pop bounce whenever it becomes
-/// selected — like something just landed in the tray.
-class BounceInIcon extends StatefulWidget {
+/// An icon that lands when it becomes selected: squashed tall as the dock's
+/// pill stretches to it, then wide, then settled — like something soft
+/// dropping into place.
+class SquashInIcon extends StatefulWidget {
   final bool isSelected;
   final IconData selectedIcon;
   final IconData unselectedIcon;
   final Color color;
   final double size;
 
-  const BounceInIcon({
+  const SquashInIcon({
     super.key,
     required this.isSelected,
     required this.selectedIcon,
@@ -83,29 +86,31 @@ class BounceInIcon extends StatefulWidget {
   });
 
   @override
-  State<BounceInIcon> createState() => _BounceInIconState();
+  State<SquashInIcon> createState() => _SquashInIconState();
 }
 
-class _BounceInIconState extends State<BounceInIcon>
+class _SquashInIconState extends State<SquashInIcon>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 550),
+    duration: const Duration(milliseconds: 460),
   );
 
-  late final Animation<double> _wiggle = TweenSequence<double>([
-    TweenSequenceItem(tween: Tween(begin: 0.0, end: -0.22), weight: 25),
-    TweenSequenceItem(tween: Tween(begin: -0.22, end: 0.22), weight: 50),
-    TweenSequenceItem(tween: Tween(begin: 0.22, end: 0.0), weight: 25),
-  ]).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+  /// (width, height) scale: tall, then wide, then itself.
+  late final Animation<double> _x = TweenSequence<double>([
+    TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.8), weight: 20),
+    TweenSequenceItem(tween: Tween(begin: 0.8, end: 1.12), weight: 35),
+    TweenSequenceItem(tween: Tween(begin: 1.12, end: 1.0), weight: 45),
+  ]).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
 
-  late final Animation<double> _scale = TweenSequence<double>([
-    TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.28), weight: 40),
-    TweenSequenceItem(tween: Tween(begin: 1.28, end: 1.0), weight: 60),
+  late final Animation<double> _y = TweenSequence<double>([
+    TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.15), weight: 20),
+    TweenSequenceItem(tween: Tween(begin: 1.15, end: 0.92), weight: 35),
+    TweenSequenceItem(tween: Tween(begin: 0.92, end: 1.0), weight: 45),
   ]).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
 
   @override
-  void didUpdateWidget(covariant BounceInIcon oldWidget) {
+  void didUpdateWidget(covariant SquashInIcon oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.isSelected && !oldWidget.isSelected) {
       _controller.forward(from: 0);
@@ -122,14 +127,15 @@ class _BounceInIconState extends State<BounceInIcon>
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: _controller,
-      builder: (context, child) {
-        return Transform.rotate(
-          angle: _wiggle.value,
-          child: Transform.scale(scale: _scale.value, child: child),
-        );
-      },
+      builder: (context, child) => Transform(
+        alignment: Alignment.bottomCenter,
+        transform: Matrix4.diagonal3Values(_x.value, _y.value, 1),
+        child: child,
+      ),
       child: Icon(
         widget.isSelected ? widget.selectedIcon : widget.unselectedIcon,
+        // The selected tab's icon is filled, the others outlined.
+        fill: widget.isSelected ? 1 : 0,
         size: widget.size,
         color: widget.color,
       ),

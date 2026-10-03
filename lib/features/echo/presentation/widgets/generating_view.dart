@@ -17,11 +17,10 @@ class _GeneratingViewState extends State<GeneratingView> {
   int _currentStepIndex = 0;
 
   static const List<String> _reasoningSteps = [
-    'Accessing secure local vault…',
-    'Analyzing semantic priority contexts…',
-    'Ranking notification signals…',
-    'Synthesizing summary briefings…',
-    'Polishing output commentary…',
+    'Reading today’s notifications…',
+    'Picking out what’s meant for you…',
+    'Putting the day in order…',
+    'Writing your briefing…',
   ];
 
   @override

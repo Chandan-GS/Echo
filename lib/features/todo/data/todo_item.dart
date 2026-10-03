@@ -59,6 +59,9 @@ class TodoItem {
 
   static const noTimeSort = 24 * 60;
 
+  /// When it starts, if it names a time.
+  DateTime? get startsAt => time == null ? null : startOfTime(time!, day);
+
   TodoItem copyWith({
     String? title,
     DateTime? day,
@@ -180,4 +183,22 @@ String dayKey(DateTime d) =>
 DateTime parseDayKey(String key) {
   final parts = key.split('-').map(int.parse).toList();
   return DateTime(parts[0], parts[1], parts[2]);
+}
+
+/// "6:30 PM" or "4 PM to 6 PM" on [day] → the start as a DateTime.
+DateTime? startOfTime(String time, DateTime day) {
+  final m = RegExp(
+    r'^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)',
+    caseSensitive: false,
+  ).firstMatch(time.trim());
+  if (m == null) return null;
+  var hour = int.parse(m.group(1)!) % 12;
+  if (m.group(3)!.toUpperCase() == 'PM') hour += 12;
+  return DateTime(
+    day.year,
+    day.month,
+    day.day,
+    hour,
+    int.parse(m.group(2) ?? '0'),
+  );
 }

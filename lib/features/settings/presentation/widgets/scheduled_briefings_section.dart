@@ -4,6 +4,7 @@ import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/features/settings/presentation/cubit/settings_cubit.dart';
 import 'package:project_echo/features/settings/presentation/cubit/settings_state.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 class ScheduledBriefingsSection extends StatelessWidget {
   const ScheduledBriefingsSection({super.key});
@@ -70,7 +71,7 @@ class ScheduledBriefingsSection extends StatelessWidget {
               padding: const EdgeInsets.all(2),
               decoration: const BoxDecoration(shape: BoxShape.circle),
               child: Icon(
-                Icons.close_rounded,
+                Symbols.close_rounded,
                 size: 20,
                 color: context.colors.textPrimary,
               ),
@@ -131,7 +132,11 @@ class ScheduledBriefingsSection extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.add, size: 20, color: context.colors.textSecondary),
+            Icon(
+              Symbols.add_rounded,
+              size: 20,
+              color: context.colors.textSecondary,
+            ),
             const SizedBox(width: 16),
             Text(
               'Add Time',
