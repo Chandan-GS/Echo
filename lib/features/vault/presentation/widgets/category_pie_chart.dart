@@ -9,6 +9,7 @@ import 'package:project_echo/features/vault/presentation/cubit/vault_cubit.dart'
 import 'package:project_echo/features/vault/presentation/widgets/pie_chart_geometry.dart';
 import 'package:project_echo/features/vault/presentation/widgets/source_icon.dart';
 import 'package:project_echo/features/vault/presentation/widgets/vault_utils.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 class CategoryPieChart extends StatefulWidget {
   final Map<String, int> categoryCounts;
@@ -347,7 +348,7 @@ class _CategoryPieChartState extends State<CategoryPieChart>
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(
-                            Icons.touch_app_rounded,
+                            Symbols.touch_app_rounded,
                             color: context.colors.textSecondary,
                             size: 32,
                           ),

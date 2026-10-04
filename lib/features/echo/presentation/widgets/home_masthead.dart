@@ -5,7 +5,8 @@ import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/features/todo/presentation/cubit/todo_cubit.dart';
 
 /// The top of Home: the day set large like a newspaper's masthead, then the
-/// greeting and one plain line about the day from the to-do list.
+/// greeting and one plain line about the day: who's waiting on the owner,
+/// and what's left on the to-do list.
 class HomeMasthead extends StatelessWidget {
   final String greeting;
   final String name;
@@ -14,11 +15,15 @@ class HomeMasthead extends StatelessWidget {
   /// state: "Your briefing is ready." and so on).
   final String fallback;
 
+  /// How many chats are waiting on the owner.
+  final int waiting;
+
   const HomeMasthead({
     super.key,
     required this.greeting,
     required this.name,
     required this.fallback,
+    this.waiting = 0,
   });
 
   static const _weekdays = [
@@ -129,18 +134,30 @@ class HomeMasthead extends StatelessWidget {
 
   static String _count(int n) => n < _words.length ? _words[n] : '$n';
 
-  /// "Three things left today, the next at 8 PM. Two on tomorrow's list."
+  /// "Two people are waiting on you. Three things left today, the next at
+  /// 8 PM. Two on tomorrow's list."
   List<InlineSpan> _glance(BuildContext context, TodoState todo) {
+    final people = waiting == 0
+        ? null
+        : TextSpan(
+            text:
+                '${_count(waiting)} ${waiting == 1 ? 'person is' : 'people are'}'
+                ' waiting on you. ',
+          );
     if (!todo.hasList || todo.phase == TodoPhase.writing) {
-      return [TextSpan(text: fallback)];
+      return [?people, TextSpan(text: fallback)];
     }
     final today = todo.today;
     final left = today.where((i) => !i.done).toList()
       ..sort((a, b) => a.sort.compareTo(b.sort));
-    final next = left.where((i) => i.time != null).firstOrNull;
+    // The next one still to come, not one whose time has passed.
+    final minutes = todo.now.hour * 60 + todo.now.minute;
+    final next = left
+        .where((i) => i.time != null && i.sort >= minutes)
+        .firstOrNull;
     final tomorrow = todo.tomorrow.length;
 
-    final spans = <InlineSpan>[];
+    final spans = <InlineSpan>[?people];
     if (today.isEmpty) {
       spans.add(const TextSpan(text: "Nothing on today's list."));
     } else if (left.isEmpty) {

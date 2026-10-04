@@ -7,9 +7,12 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/core/services/echo_tts.dart';
+import 'package:project_echo/core/services/voice/echo_voice.dart';
+import 'package:project_echo/core/services/voice/natural_voice.dart';
 import 'package:project_echo/core/services/voice_catalog.dart';
 import 'package:project_echo/features/onboarding/data/voice_preference.dart';
 import 'package:project_echo/features/onboarding/presentation/widgets/voice_studio.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 /// Settings ▸ Voice — lets the user re-tune the briefing voice (gender · accent ·
 /// speed · character) at any time, using the same [VoiceStudio] surface as
@@ -104,6 +107,18 @@ class _VoiceSettingsSectionState extends State<VoiceSettingsSection> {
 
   Future<void> _audition() async {
     if (!_ready) return;
+    // With the natural voice downloaded, that's the voice Echo speaks in.
+    if (!_isDesktop && await NaturalVoice.instance.modelDir(_pref) != null) {
+      await _tts.stop();
+      await _persist();
+      final voice = EchoVoice.instance;
+      await voice.stop();
+      if (mounted) setState(() => _playing = true);
+      voice.say(_pref.previewLine);
+      await voice.finished;
+      if (mounted) setState(() => _playing = false);
+      return;
+    }
     try {
       await _tts.stop();
       await EchoTts.applyPreference(_tts, _pref);
@@ -117,6 +132,7 @@ class _VoiceSettingsSectionState extends State<VoiceSettingsSection> {
   Future<void> _togglePlay() async {
     if (_playing) {
       await _tts.stop();
+      await EchoVoice.instance.stop();
       if (mounted) setState(() => _playing = false);
     } else {
       await _audition();
@@ -134,6 +150,7 @@ class _VoiceSettingsSectionState extends State<VoiceSettingsSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (!_isDesktop) _NaturalVoiceTile(pref: _pref),
         if (Platform.isMacOS && !_hasHighQualityVoice) const _BetterVoicesHint(),
         if (_isDesktop)
           Padding(
@@ -149,6 +166,144 @@ class _VoiceSettingsSectionState extends State<VoiceSettingsSection> {
           installedVoices: _installedVoices,
         ),
       ],
+    );
+  }
+}
+
+/// Echo's natural voice: a download that makes him sound like a person
+/// rather than the phone's reader. Without it, the phone's voice is used.
+class _NaturalVoiceTile extends StatefulWidget {
+  /// The voice the owner has chosen; each has its own download.
+  final VoicePreference pref;
+  const _NaturalVoiceTile({required this.pref});
+
+  @override
+  State<_NaturalVoiceTile> createState() => _NaturalVoiceTileState();
+}
+
+class _NaturalVoiceTileState extends State<_NaturalVoiceTile> {
+  final _voice = NaturalVoice.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    EchoVoice.instance.warmUp();
+  }
+
+  @override
+  void didUpdateWidget(_NaturalVoiceTile old) {
+    super.didUpdateWidget(old);
+    // Another voice or accent: is that one downloaded?
+    if (piperVoice(old.pref) != piperVoice(widget.pref)) {
+      _voice.modelDir(widget.pref);
+    }
+  }
+
+  Future<void> _install() async {
+    try {
+      await _voice.install(widget.pref);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            "The natural voice didn't download. Try again on Wi-Fi.",
+          ),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: colors.dividerColor.withValues(alpha: 0.6)),
+      ),
+      child: ListenableBuilder(
+        listenable: Listenable.merge([_voice.installed, _voice.progress]),
+        builder: (context, _) {
+          final installed = _voice.installed.value;
+          final progress = _voice.progress.value;
+          return Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Natural voice',
+                      style: GoogleFonts.nunito(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: colors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      progress == null
+                          ? (installed
+                                ? '${widget.pref.voice.label} speaks with it, on '
+                                      'your phone.'
+                                : 'A more human ${widget.pref.voice.label} that '
+                                      'runs on your phone. '
+                                      '${NaturalVoice.downloadLabel} download.')
+                          : progress < 0.9
+                          ? 'Downloading · ${(progress / 0.9 * 100).round()}%'
+                          : 'Unpacking…',
+                      style: GoogleFonts.nunito(
+                        fontSize: 13,
+                        height: 1.4,
+                        color: colors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              if (progress != null)
+                IconButton(
+                  tooltip: 'Cancel',
+                  onPressed: _voice.cancelInstall,
+                  icon: Icon(Symbols.close_rounded, color: colors.textSecondary),
+                )
+              else if (installed)
+                TextButton(
+                  onPressed: _voice.remove,
+                  child: Text(
+                    'Remove',
+                    style: GoogleFonts.nunito(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: colors.textSecondary,
+                    ),
+                  ),
+                )
+              else
+                FilledButton(
+                  onPressed: _install,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: colors.textPrimary,
+                    foregroundColor: colors.background,
+                    shape: const StadiumBorder(),
+                  ),
+                  child: Text(
+                    'Download',
+                    style: GoogleFonts.nunito(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
     );
   }
 }
@@ -176,7 +331,7 @@ class _RescanButton extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.refresh_rounded, size: 16, color: colors.primaryGreen),
+                Icon(Symbols.refresh_rounded, size: 16, color: colors.primaryGreen),
                 const SizedBox(width: 8),
                 Text(
                   'Rescan installed voices',
@@ -223,7 +378,7 @@ class _BetterVoicesHint extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.record_voice_over_rounded, size: 18, color: colors.primaryGreen),
+          Icon(Symbols.record_voice_over_rounded, size: 18, color: colors.primaryGreen),
           const SizedBox(width: 10),
           Expanded(
             child: RichText(

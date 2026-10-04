@@ -4,6 +4,7 @@ import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/features/vault/data/installed_apps.dart';
 import 'package:project_echo/features/vault/presentation/widgets/source_icon.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 /// Pieces shared by Vault → Apps Echo hears and the onboarding step.
 
@@ -76,7 +77,7 @@ class AppSearchField extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(Icons.search_rounded, size: 20, color: colors.textSecondary),
+          Icon(Symbols.search_rounded, size: 20, color: colors.textSecondary),
           const SizedBox(width: 10),
           Expanded(
             child: TextField(
@@ -329,7 +330,7 @@ class AppTile extends StatelessWidget {
                         ),
                       ),
                       child: const Icon(
-                        Icons.check_rounded,
+                        Symbols.check_rounded,
                         size: 13,
                         color: Colors.white,
                       ),

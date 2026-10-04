@@ -149,4 +149,49 @@ void main() {
   test('horizon ends at the end of tomorrow', () {
     expect(briefingHorizonEnd(at(26, 21)), endOfDay(at(27, 0)));
   });
+
+  test('a bare hour with "tonight" or "this evening" is in the evening', () {
+    final at2pm = DateTime(2026, 9, 26, 14);
+    for (final text in [
+      'need to know by 8 tonight',
+      'tonight at 8',
+      '8 this evening',
+    ]) {
+      final w = relevanceWindows(text, at2pm).first;
+      expect(w.start, DateTime(2026, 9, 26, 20), reason: text);
+      expect(w.hasTime, isTrue, reason: text);
+    }
+    expect(
+      relevanceWindows('dinner at 8:30 tonight', at2pm).first.start,
+      DateTime(2026, 9, 26, 20, 30),
+    );
+  });
+  test('a bare hour after "at" or "by" is the next time it comes round', () {
+    final at3pm = DateTime(2026, 9, 26, 15);
+    final at8am = DateTime(2026, 9, 26, 8);
+    expect(
+      relevanceWindows('I’ll send it by 6', at3pm).first.start,
+      DateTime(2026, 9, 26, 18),
+    );
+    expect(
+      relevanceWindows('will call you at 9', at3pm).first.start,
+      DateTime(2026, 9, 26, 21),
+    );
+    expect(
+      relevanceWindows('meet at 9', at8am).first.start,
+      DateTime(2026, 9, 26, 9),
+    );
+    expect(relevanceWindows('send it by 6', at3pm).first.hasTime, isTrue);
+    expect(
+      relevanceWindows('call the plumber at 11 tomorrow', at3pm).first.start,
+      DateTime(2026, 9, 27, 11),
+    );
+    for (final text in ['up by 5%', 'done in by 3 days', 'at 2 people max']) {
+      expect(
+        relevanceWindows(text, at3pm).first.hasTime,
+        isFalse,
+        reason: text,
+      );
+    }
+  });
 }

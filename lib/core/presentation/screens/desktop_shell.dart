@@ -5,6 +5,7 @@ import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/presentation/animations/pressable.dart';
 import 'package:project_echo/features/settings/presentation/cubit/settings_cubit.dart';
 import 'package:project_echo/features/settings/presentation/cubit/settings_state.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 /// The desktop-class app frame: a persistent left sidebar for navigation
 /// instead of the phone's floating bottom nav bar. Wraps the exact same
@@ -117,19 +118,19 @@ class _Sidebar extends StatelessWidget {
               // Ask Echo isn't a sidebar tab — it lives inside Today (the home
               // ask bar opens it inline), so Today stays selected while chatting.
               _SidebarItem(
-                icon: Icons.home_rounded,
+                icon: Symbols.home_rounded,
                 label: 'Today',
                 selected: selectedIndex == 0,
                 onTap: () => onItemSelected(0),
               ),
               _SidebarItem(
-                icon: Icons.inbox_rounded,
+                icon: Symbols.inbox_rounded,
                 label: 'The Vault',
                 selected: selectedIndex == 1,
                 onTap: () => onItemSelected(1),
               ),
               _SidebarItem(
-                icon: Icons.person_rounded,
+                icon: Symbols.person_rounded,
                 label: 'Profile',
                 selected: selectedIndex == 2,
                 onTap: () => onItemSelected(2),
@@ -178,6 +179,7 @@ class _SidebarItem extends StatelessWidget {
                 Icon(
                   icon,
                   size: 20,
+                  fill: selected ? 1 : 0,
                   color: selected ? _sidebarOnSelection : colors.textSecondary,
                 ),
                 const SizedBox(width: 12),

@@ -5,6 +5,7 @@ import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/core/presentation/animations/app_motion.dart';
 import 'package:project_echo/core/presentation/animations/fade_slide_in.dart';
 import 'package:project_echo/features/onboarding/presentation/widgets/onboarding_progress.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 /// The persistent frame around every warm/light onboarding step.
 ///
@@ -202,7 +203,7 @@ class _IosBackButton extends StatelessWidget {
           height: 44,
           child: Center(
             child: Icon(
-              Icons.arrow_back_ios_new_rounded,
+              Symbols.arrow_back_ios_new_rounded,
               size: 22,
               color: colors.textPrimary,
             ),

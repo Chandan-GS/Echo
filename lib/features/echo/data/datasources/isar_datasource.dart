@@ -81,6 +81,21 @@ class IsarDataSource {
     return isar.rawDatas.where().sortByTimestampDesc().findAll();
   }
 
+  /// The message a to-do or reminder was made from, by its source key
+  /// ("sender|timestamp", see sourceKeyOf; a split part's "#n" is ignored).
+  static Future<RawData?> entryForKey(String key) async {
+    final base = key.split('#').first;
+    final bar = base.lastIndexOf('|');
+    final at = bar < 0 ? null : int.tryParse(base.substring(bar + 1));
+    if (at == null) return null;
+    final isar = await instance;
+    return isar.rawDatas
+        .filter()
+        .senderEqualTo(base.substring(0, bar))
+        .timestampEqualTo(DateTime.fromMillisecondsSinceEpoch(at))
+        .findFirst();
+  }
+
   /// Replaces the entire notification set with [entries] in one transaction —
   /// used by the desktop mirror when it receives a fresh snapshot from the
   /// phone (the phone is the source of truth; the desktop just reflects it).

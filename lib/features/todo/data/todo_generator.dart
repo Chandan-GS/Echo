@@ -1,12 +1,14 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
-import 'package:project_echo/core/services/gemini_service.dart';
+import 'package:project_echo/core/services/gemini_json.dart';
+import 'package:project_echo/features/echo/data/context/chat_context_store.dart';
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
 import 'package:project_echo/features/echo/data/datasources/priority_query_embedding.dart';
+import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:project_echo/features/echo/data/relevance/briefing_selection.dart';
 import 'package:project_echo/features/echo/data/relevance/temporal_relevance.dart';
+import 'package:project_echo/features/todo/data/todo_item.dart';
 import 'package:project_echo/features/todo/data/todo_planner.dart';
 import 'package:project_echo/features/todo/data/todo_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -46,6 +48,7 @@ class TodoGenerator {
       aliases: aliases,
       blockedCategories: excluded.toList(),
       priorityVector: isDesktop ? null : priorityQueryEmbedding,
+      affinity: (await ChatContextStore.loadEngagement()).affinity,
       limit: 25,
     );
   }
@@ -60,13 +63,16 @@ class TodoGenerator {
     final picked = await candidates(now);
 
     List<NewTodo> todos;
-    final reply = await _ask(makeInstruction, numberedLines(picked, now));
+    final reply = await _ask(
+      makeInstruction,
+      numberedLines(picked, now, myTurns: await ChatContextStore.loadMyTurns()),
+    );
     if (reply != null) {
       todos = parseMakeReply(reply);
     } else {
       todos = [
         for (final i in localPicks(picked))
-          (title: localTitle(picked[i].entry, now), source: i + 1),
+          (title: localTitle(picked[i].entry, now), source: i + 1, when: null),
       ];
     }
 
@@ -105,7 +111,7 @@ class TodoGenerator {
     final reply = await _ask(
       updateInstruction,
       'Open items:\n${open.isEmpty ? '(none)' : openItemLines(open, now)}\n\n'
-      'New notifications:\n${numberedLines(fresh, now)}',
+      'New notifications:\n${numberedLines(fresh, now, myTurns: await ChatContextStore.loadMyTurns())}',
     );
     if (reply != null) {
       final parsed = parseUpdateReply(reply);
@@ -114,7 +120,7 @@ class TodoGenerator {
     } else {
       add = [
         for (final i in localPicks(fresh))
-          (title: localTitle(fresh[i].entry, now), source: i + 1),
+          (title: localTitle(fresh[i].entry, now), source: i + 1, when: null),
       ];
       change = const [];
     }
@@ -135,43 +141,50 @@ class TodoGenerator {
     return added + change.length;
   }
 
+  /// Puts [entries] (chosen in Ask Echo) on the list and returns what was
+  /// added: nothing for messages already on it or with nothing to do.
+  Future<List<TodoItem>> addFrom(List<RawData> entries, DateTime now) async {
+    final candidates = [
+      for (final e in entries)
+        BriefingItem(
+          e,
+          relevanceWindows('${e.sender} ${e.content}', e.timestamp).first,
+        ),
+    ];
+    final (items, meta) = await store.load();
+    final reply = await _ask(
+      makeInstruction,
+      numberedLines(
+        candidates,
+        now,
+        myTurns: await ChatContextStore.loadMyTurns(),
+      ),
+    );
+    final todos = reply != null
+        ? parseMakeReply(reply)
+        : [
+            for (var i = 0; i < candidates.length; i++)
+              (
+                title: localTitle(candidates[i].entry, now),
+                source: i + 1,
+                when: null,
+              ),
+          ];
+    final next = applyMake(
+      existing: items,
+      candidates: candidates,
+      todos: todos,
+      firstId: meta.nextId,
+      now: now,
+    );
+    final added = next.sublist(items.length);
+    await store.save(next, meta.copyWith(nextId: meta.nextId + added.length));
+    TodoStore.changed.value++;
+    return added;
+  }
+
   /// Gemini's reply, or null when the cloud engine isn't in use or the call
   /// fails — the caller then builds titles locally.
-  Future<String?> _ask(String instruction, String prompt) async {
-    final prefs = await SharedPreferences.getInstance();
-    final offline = prefs.getBool('is_offline_engine') ?? true;
-    final key = prefs.getString('gemini_api_key') ?? '';
-    if (offline || key.isEmpty) return null;
-    debugPrint('=== TODO PROMPT ===\n$prompt\n==================');
-    try {
-      final reply = await GeminiService.instance.generateJson(
-        key,
-        prompt,
-        systemInstruction: instruction,
-      );
-      debugPrint('=== TODO REPLY (json) ===\n$reply\n==================');
-      if (reply.trim().isNotEmpty) return reply;
-    } catch (e) {
-      debugPrint(
-        'To-do JSON call failed, retrying with the streaming call: $e',
-      );
-    }
-    // The streaming call is the one briefings and Ask Echo already rely on.
-    try {
-      final buffer = StringBuffer();
-      await for (final chunk in GeminiService.instance.generateStream(
-        key,
-        '$prompt\n\nReply with the JSON only.',
-        systemInstruction: instruction,
-      )) {
-        buffer.write(chunk.text ?? '');
-      }
-      final reply = buffer.toString();
-      debugPrint('=== TODO REPLY (stream) ===\n$reply\n==================');
-      return reply.trim().isEmpty ? null : reply;
-    } catch (e) {
-      debugPrint('To-do generation fell back to local titles: $e');
-      return null;
-    }
-  }
+  Future<String?> _ask(String instruction, String prompt) =>
+      askGeminiJson(instruction, prompt, label: 'TODO');
 }

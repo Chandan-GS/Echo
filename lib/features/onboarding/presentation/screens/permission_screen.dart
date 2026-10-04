@@ -4,6 +4,7 @@ import 'package:project_echo/core/presentation/widgets/echo_button.dart';
 import 'package:project_echo/features/onboarding/presentation/cubit/on_boarding_cubit.dart';
 import 'package:project_echo/features/onboarding/presentation/widgets/permission_tile.dart';
 import 'package:project_echo/features/onboarding/presentation/widgets/onboarding_scaffold.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 class PermissionScreen extends StatefulWidget {
   const PermissionScreen({super.key});
@@ -59,14 +60,14 @@ class _PermissionScreenState extends State<PermissionScreen>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               PermissionTile(
-                icon: Icons.notifications_active_outlined,
+                icon: Symbols.notifications_active_rounded,
                 title: 'Notification access',
                 subtitle: 'Reads incoming alerts',
                 isGranted: state.notificationGranted,
                 onChanged: (val) => cubit.toggleNotification(),
               ),
               PermissionTile(
-                icon: Icons.calendar_today_outlined,
+                icon: Symbols.calendar_today_rounded,
                 title: 'Calendar',
                 subtitle: "Reads today's schedule",
                 isGranted: state.calendarGranted,

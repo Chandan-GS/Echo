@@ -1,3 +1,7 @@
+import 'package:project_echo/features/echo/data/context/addressed.dart';
+import 'package:project_echo/features/echo/data/context/chat_context_store.dart';
+import 'package:project_echo/features/echo/data/models/raw_data.dart';
+
 /// Builds the briefing system instruction.
 ///
 /// [includeExample] controls whether the concrete few-shot example briefing is
@@ -38,6 +42,7 @@ String getBriefingSystemInstruction(
       'Focus heavily on ACTIONABLE items and FUTURE events for today or tomorrow. Completely IGNORE any events or notifications that have already passed. '
       'It is now ${describeNow(current)}. Each notification starts with a label in square brackets saying when it applies, already worked out against the current time — for example [Tomorrow (Sun 27 Sep), 11:00 AM] — or, when it names no time, when it arrived. '
       'Words like "today" or "tomorrow" INSIDE a notification were written when it arrived and may now be out of date, so ALWAYS go by the bracketed label and never by the notification\'s own wording. '
+      '$chatAddressingNote '
       'Cover today first, then tomorrow, and make clear which day each item is on. '
       'Start with a brief "$greeting $name". \n'
       '$tone '
@@ -81,17 +86,42 @@ String buildQwenPrompt(
       '<|im_start|>assistant\n';
 }
 
-/// One notification line for a prompt. [when] is the briefing's resolved
-/// time label (see `describeWhen`); Ask Echo passes none.
-String formatNotification({
-  required String source,
-  required String sender,
+/// A stored notification as a prompt line: who sent it and where, and for
+/// chats, who it was meant for — "Rahul in "College gang" (WhatsApp group,
+/// replying to you, after you wrote "who's driving?"): I can". [content] is
+/// the text as the caller wants it shown (clipped, days rewritten).
+String formatEntry(
+  RawData e, {
   required String content,
   String? when,
+  MyTurns? myTurns,
 }) {
-  final line = '$sender ($source): $content';
+  final addressed = Addressed.parse(e.addressed);
+  final inGroup = e.isGroup && (e.threadTitle?.isNotEmpty ?? false);
+  final who = inGroup
+      ? '${e.sender.isEmpty ? 'Someone' : e.sender} in "${e.threadTitle}"'
+      : e.sender;
+  final notes = [
+    inGroup ? '${e.source} group' : e.source,
+    if (addressed != null) addressed.promptNote,
+  ];
+  if (addressed == Addressed.reply) {
+    final said = myTurns?.lastBefore(e.thread, e.timestamp);
+    if (said != null && said.text.isNotEmpty) {
+      notes.add('after you wrote "${said.text}"');
+    }
+  }
+  final line = '$who (${notes.join(', ')}): $content';
   return when == null ? line : '[$when] $line';
 }
+
+/// How [formatEntry]'s notes read, for the instructions that use them.
+const chatAddressingNote =
+    'Chat messages say who they were meant for: "to you", "mentions you" and '
+    '"replying to you" are for the user. Group messages "not addressed to '
+    'you" are background chatter, so bring one up only when it clearly '
+    'affects the user, such as a plan, a change of time or place, or a '
+    'deadline for everyone.';
 
 const _weekdayNames = [
   'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday',
@@ -366,8 +396,16 @@ String getAskAiSystemInstruction(String userName, {DateTime? now}) {
       'It is now ${describeNow(now ?? DateTime.now())}. Each notification starts with a label in square brackets saying when it applies, '
       'already worked out against the current time — or, if it names no time, when it arrived. Words like "today" or "tomorrow" INSIDE a '
       'notification were written when it arrived and may be out of date, so always go by the label; "already over" means it has passed. '
+      'Chat messages also say who they were meant for: "to you", "mentions you", "replying to you", or "not addressed to you" for group chatter. '
+      'When the user asks what needs them, what they missed or who wants something, put what was meant for them first. '
       'If an "Earlier today" exchange is included, use it only to work out what the new question refers to (who "she" is, what "that" means), '
       'then answer the new question. '
+      'The notifications are numbered. Right after a sentence that uses one, '
+      'put its number in square brackets, like "… by 4 PM [2]." or "[1, 3]", '
+      'and only use numbers from the list. '
+      'If your reply mentions things $name has to do (a task, a reply someone '
+      'is waiting for, a deadline), end the whole reply with [todo:N], N being '
+      'how many separate things; otherwise add nothing. '
       'Keep every reply to one or two short sentences.';
 }
 

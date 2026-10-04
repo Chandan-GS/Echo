@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:fllama/fllama.dart';
+import 'package:project_echo/features/echo/data/context/chat_context_store.dart';
 import 'package:project_echo/features/echo/data/datasources/briefing_prompt.dart';
 import 'package:project_echo/features/onboarding/data/onboarding_personalization.dart';
 import 'package:project_echo/features/echo/data/datasources/priority_query_embedding.dart';
@@ -98,7 +99,7 @@ class BriefingCubit extends Cubit<BriefingState> {
       }
 
       // ── 3. REDUCE PHASE: Final briefing generation ────────────────────────
-      emit(BriefingGenerating(partial: 'Synthesizing briefing...'));
+      emit(BriefingGenerating(partial: 'Writing your briefing…'));
 
       final prefs = await SharedPreferences.getInstance();
       final isOfflineEngine = prefs.getBool('is_offline_engine') ?? true;
@@ -334,21 +335,23 @@ class BriefingCubit extends Cubit<BriefingState> {
       aliases: aliases,
       blockedCategories: excluded.toList(),
       priorityVector: isDesktop ? null : priorityQueryEmbedding,
+      affinity: (await ChatContextStore.loadEngagement()).affinity,
       limit: onDevice ? 15 : 25,
     );
     if (items.isEmpty) return null;
 
+    final myTurns = await ChatContextStore.loadMyTurns();
     return items
         .map(
-          (i) => formatNotification(
-            source: i.entry.source,
-            sender: i.entry.sender,
+          (i) => formatEntry(
+            i.entry,
             content: rewriteRelativeDays(
               i.entry.content,
               i.entry.timestamp,
               now,
             ),
             when: describeEntry(i.entry, i.window, now),
+            myTurns: myTurns,
           ),
         )
         .join('\n');

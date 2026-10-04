@@ -12,6 +12,7 @@ import 'package:project_echo/core/services/model_download_service.dart';
 import 'package:project_echo/features/settings/presentation/cubit/settings_cubit.dart';
 import 'package:project_echo/features/settings/presentation/cubit/settings_state.dart';
 import 'package:project_echo/features/settings/presentation/widgets/cloud_engine_card.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 class AiModeScreen extends StatefulWidget {
   const AiModeScreen({super.key});
@@ -135,7 +136,7 @@ class _EngineChoices extends StatelessWidget {
         final sizeStr = snapshot.data ?? offlineModelSizeLabel();
         return AiModeCard(
           isSelected: settingsState.isOfflineEngine,
-          icon: Icons.laptop_mac,
+          icon: Symbols.laptop_mac_rounded,
           title: 'Private (on this device)',
           tags: const [
             'Runs offline',
@@ -150,7 +151,7 @@ class _EngineChoices extends StatelessWidget {
           expandedContent: Row(
             children: [
               Icon(
-                Icons.memory_rounded,
+                Symbols.memory_rounded,
                 size: 16,
                 color: context.colors.textSecondary,
               ),
@@ -268,7 +269,7 @@ class _Footer extends StatelessWidget {
                       : 'Continue',
                   showArrow: !(isOffline && !isDownloaded),
                   icon: (isOffline && !isDownloaded)
-                      ? Icons.download_rounded
+                      ? Symbols.download_rounded
                       : null,
                   onPressed: (isOffline && !isDownloaded)
                       ? onDownload

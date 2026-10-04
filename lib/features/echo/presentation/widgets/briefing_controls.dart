@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 class BriefingControls extends StatelessWidget {
   final bool isPlaying;
@@ -41,7 +42,7 @@ class BriefingControls extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             IconButton(
-              icon: const Icon(Icons.replay_10_rounded, size: 30),
+              icon: const Icon(Symbols.replay_10_rounded, size: 30),
               color: context.colors.textSecondary,
               onPressed: () {},
             ),
@@ -63,7 +64,10 @@ class BriefingControls extends StatelessWidget {
                   ],
                 ),
                 child: Icon(
-                  isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                  isPlaying
+                      ? Symbols.pause_rounded
+                      : Symbols.play_arrow_rounded,
+                  fill: 1,
                   size: 36,
                   color: context.colors.background,
                 ),
@@ -71,7 +75,7 @@ class BriefingControls extends StatelessWidget {
             ),
             const SizedBox(width: 32),
             IconButton(
-              icon: const Icon(Icons.forward_10_rounded, size: 30),
+              icon: const Icon(Symbols.forward_10_rounded, size: 30),
               color: context.colors.textSecondary,
               onPressed: () {},
             ),

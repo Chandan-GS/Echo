@@ -48,7 +48,9 @@ void main() {
       const reply =
           'Here you go:\n```json\n[{"t": "Prep the deck", "s": 2},'
           ' {"t": "", "s": 1}, {"x": 1}, {"t": "Call Didi", "s": "3"}]\n```';
-      expect(parseMakeReply(reply), [(title: 'Prep the deck', source: 2)]);
+      expect(parseMakeReply(reply), [
+        (title: 'Prep the deck', source: 2, when: null),
+      ]);
       expect(parseMakeReply('not json'), isEmpty);
     });
 
@@ -56,7 +58,7 @@ void main() {
       final r = parseUpdateReply(
         '{"add": [{"t": "Gym session", "s": 2}], "change": [{"id": 3, "s": 1}]}',
       );
-      expect(r.add, [(title: 'Gym session', source: 2)]);
+      expect(r.add, [(title: 'Gym session', source: 2, when: null)]);
       expect(r.change, [(id: 3, source: 1)]);
       expect(parseUpdateReply('{}').add, isEmpty);
     });
@@ -75,10 +77,23 @@ void main() {
           (
             title: 'Prep the deck for the client demo',
             source: bySender['Neha']!,
+            when: null,
           ),
-          (title: 'Be home for the plumber', source: bySender['Landlord']!),
-          (title: 'Pick up medicines for dad', source: bySender['Didi']!),
-          (title: 'Dentist appointment', source: bySender['Dr Mehta']!),
+          (
+            title: 'Be home for the plumber',
+            source: bySender['Landlord']!,
+            when: null,
+          ),
+          (
+            title: 'Pick up medicines for dad',
+            source: bySender['Didi']!,
+            when: null,
+          ),
+          (
+            title: 'Dentist appointment',
+            source: bySender['Dr Mehta']!,
+            when: null,
+          ),
         ],
         firstId: 1,
         now: now,
@@ -108,9 +123,9 @@ void main() {
           existing: const [],
           candidates: cands,
           todos: [
-            (title: 'A', source: 1),
-            (title: 'B', source: 1),
-            (title: 'C', source: 9),
+            (title: 'A', source: 1, when: null),
+            (title: 'B', source: 1, when: null),
+            (title: 'C', source: 9, when: null),
           ],
           firstId: 1,
           now: now,
@@ -130,8 +145,12 @@ void main() {
         existing: const [],
         candidates: cands,
         todos: [
-          (title: 'Prep the deck for the client demo', source: nehaIdx),
-          (title: 'Pick up medicines for dad', source: didiIdx),
+          (
+            title: 'Prep the deck for the client demo',
+            source: nehaIdx,
+            when: null,
+          ),
+          (title: 'Pick up medicines for dad', source: didiIdx, when: null),
         ],
         firstId: 1,
         now: now,
@@ -163,7 +182,9 @@ void main() {
       final next = applyUpdate(
         existing: list,
         candidates: fresh,
-        add: [(title: 'Gym session with your trainer', source: gymIdx)],
+        add: [
+          (title: 'Gym session with your trainer', source: gymIdx, when: null),
+        ],
         change: [(id: demoId, source: movedIdx)],
         firstId: 3,
         now: at(26, 14, 30),
@@ -185,7 +206,7 @@ void main() {
       final next = applyUpdate(
         existing: list,
         candidates: pick([didi]),
-        add: [(title: 'Medicines again', source: 1)],
+        add: [(title: 'Medicines again', source: 1, when: null)],
         change: const [],
         firstId: 3,
         now: now,
@@ -197,7 +218,7 @@ void main() {
       final first = applyUpdate(
         existing: list,
         candidates: pick([dentist]),
-        add: [(title: 'Dentist', source: 1)],
+        add: [(title: 'Dentist', source: 1, when: null)],
         change: const [],
         firstId: 3,
         now: now,
@@ -261,11 +282,97 @@ void main() {
     final item = applyMake(
       existing: const [],
       candidates: pick([neha]),
-      todos: [(title: 'Prep the deck', source: 1)],
+      todos: [(title: 'Prep the deck', source: 1, when: null)],
       firstId: 7,
       now: now,
     ).single.copyWith(done: true, movedFrom: '6 PM');
     final back = TodoItem.fromJson(item.toJson());
     expect(back.toJson(), item.toJson());
+  });
+
+  group('a message with many tasks', () {
+    // Received Friday evening, about Saturday.
+    final list = note(
+      'Neha',
+      'For tomorrow: send me the deck by 4 PM, call the vendor at 11 AM, '
+          'book the room, and remind Priya about the invoice',
+      at(25, 19),
+      source: 'Slack',
+    );
+
+    List<TodoItem> make(List<NewTodo> todos) => applyMake(
+      existing: const [],
+      candidates: pick([list]),
+      todos: todos,
+      firstId: 1,
+      now: now,
+    );
+
+    test(
+      'more than three tasks become one item each, with their own times',
+      () {
+        final items = make([
+          (title: 'Send Neha the deck', source: 1, when: 'by 4 PM'),
+          (title: 'Call the vendor', source: 1, when: 'at 11 AM'),
+          (title: 'Book the room', source: 1, when: null),
+          (title: 'Remind Priya about the invoice', source: 1, when: null),
+        ]);
+        expect(items.map((i) => i.title), [
+          'Send Neha the deck',
+          'Call the vendor',
+          'Book the room',
+          'Remind Priya about the invoice',
+        ]);
+        expect(items.map((i) => i.time), ['4 PM', '11 AM', null, null]);
+        // "by 4 PM" names no day, so it's on the day the message is about.
+        expect(items.every((i) => i.day == DateTime(2026, 9, 26)), isTrue);
+        expect(items.map((i) => i.sourceKey).toSet(), hasLength(4));
+      },
+    );
+
+    test('three tasks or fewer stay one item, timed by the whole message', () {
+      final items = make([
+        (title: 'Send Neha the deck', source: 1, when: 'by 4 PM'),
+        (title: 'Call the vendor', source: 1, when: 'at 11 AM'),
+      ]);
+      expect(items.single.title, 'Send Neha the deck');
+    });
+
+    test('a split message already on the list is not added again', () {
+      final first = make([
+        for (final t in ['A', 'B', 'C', 'D']) (title: t, source: 1, when: null),
+      ]);
+      final again = applyMake(
+        existing: first,
+        candidates: pick([list]),
+        todos: [(title: 'E', source: 1, when: null)],
+        firstId: 5,
+        now: now,
+      );
+      expect(again, hasLength(4));
+    });
+
+    test('the cap counts messages, not items', () {
+      final reply =
+          '[${[for (var i = 0; i < 5; i++) '{"t": "Part $i", "s": 1}'].join(',')},'
+          '${[for (var s = 2; s <= 9; s++) '{"t": "Other $s", "s": $s}'].join(',')}]';
+      final todos = parseMakeReply(reply);
+      expect(todos.where((t) => t.source == 1), hasLength(5));
+      expect(todos.map((t) => t.source).toSet(), hasLength(maxListItems));
+    });
+
+    test('a time with its own day keeps that day', () {
+      final w = partWindow(
+        'Monday at 9 AM',
+        at(25, 19),
+        pick([list]).single.window,
+      )!;
+      expect(w.start, DateTime(2026, 9, 28, 9));
+    });
+
+    test('long list-like messages reach the model in full', () {
+      expect(looksLikeList('1. deck\n2. vendor\n3. room\n4. invoice'), isTrue);
+      expect(looksLikeList('call me when you can'), isFalse);
+    });
   });
 }

@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:project_echo/features/todo/data/todo_item.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -9,6 +10,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 class TodoStore {
   static const itemsKey = 'todo_items_v1';
   static const metaKey = 'todo_meta_v1';
+
+  /// Ticks when something other than the to-do card changes the list (Ask
+  /// Echo adding or undoing items), so the card can re-read it.
+  static final changed = ValueNotifier<int>(0);
 
   Future<(List<TodoItem>, TodoMeta)> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -42,5 +47,12 @@ class TodoStore {
       jsonEncode(items.map((i) => i.toJson()).toList()),
     );
     await prefs.setString(metaKey, jsonEncode(meta.toJson()));
+  }
+
+  /// Removes the items with [ids] (undoing an add).
+  Future<void> remove(Set<int> ids) async {
+    final (items, meta) = await load();
+    await save(items.where((i) => !ids.contains(i.id)).toList(), meta);
+    changed.value++;
   }
 }

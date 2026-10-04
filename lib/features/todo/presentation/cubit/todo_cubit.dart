@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:project_echo/core/services/analytics_service.dart';
+import 'package:project_echo/core/services/reminders.dart';
 import 'package:project_echo/core/services/widget_refresh_service.dart';
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
@@ -120,6 +121,7 @@ class TodoCubit extends Cubit<TodoState> {
       _generator = generator ?? TodoGenerator(store: store),
       super(TodoState(now: DateTime.now())) {
     _lifecycle = AppLifecycleListener(onResume: load);
+    TodoStore.changed.addListener(load);
     load();
     _watchNotifications();
   }
@@ -238,6 +240,74 @@ class TodoCubit extends Cubit<TodoState> {
     return allDone && !wasAllDone;
   }
 
+  /// Adds what the owner typed ("call the plumber at 11 tomorrow"). Returns
+  /// the new item.
+  Future<TodoItem?> addTyped(String text) async {
+    if (text.trim().isEmpty) return null;
+    final now = DateTime.now();
+    final (items, meta) = await _store.load();
+    final item = typedItem(text, meta.nextId, now);
+    await _save(
+      [...items, item],
+      meta.copyWith(nextId: meta.nextId + 1),
+      {item.id},
+    );
+    return item;
+  }
+
+  /// Moves an item to [day] (Today ⇄ Tomorrow).
+  Future<void> moveTo(int id, DateTime day) async {
+    final (items, meta) = await _store.load();
+    await _save(
+      [for (final i in items) i.id == id ? i.copyWith(day: day) : i],
+      meta,
+      {id},
+    );
+  }
+
+  /// Deletes an item and its reminder. Returns it, for undoing.
+  Future<TodoItem?> remove(int id) async {
+    final (items, meta) = await _store.load();
+    final gone = items.where((i) => i.id == id).firstOrNull;
+    if (gone == null) return null;
+    await Reminders.cancel(gone.sourceKey);
+    await _save(
+      [
+        for (final i in items)
+          if (i.id != id) i,
+      ],
+      meta,
+      const {},
+    );
+    return gone;
+  }
+
+  /// Puts back an item [remove] took away.
+  Future<void> restore(TodoItem item) async {
+    final (items, meta) = await _store.load();
+    if (items.any((i) => i.id == item.id)) return;
+    await _save([...items, item], meta, {item.id});
+  }
+
+  Future<void> _save(
+    List<TodoItem> items,
+    TodoMeta meta,
+    Set<int> added,
+  ) async {
+    await _store.save(items, meta);
+    if (isClosed) return;
+    emit(
+      state.copyWith(
+        items: items,
+        meta: meta,
+        now: DateTime.now(),
+        justAdded: added,
+        justChanged: {},
+      ),
+    );
+    WidgetRefreshService.refresh();
+  }
+
   void _watchNotifications() {
     IsarDataSource.instance
         .then((isar) {
@@ -278,6 +348,7 @@ class TodoCubit extends Cubit<TodoState> {
     _isarWatch?.cancel();
     _recount?.cancel();
     _lifecycle.dispose();
+    TodoStore.changed.removeListener(load);
     return super.close();
   }
 }

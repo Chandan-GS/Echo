@@ -9,6 +9,7 @@ import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/features/settings/presentation/cubit/settings_cubit.dart';
 import 'package:project_echo/features/settings/presentation/cubit/settings_state.dart';
 import 'package:project_echo/features/onboarding/presentation/widgets/ai_mode_card.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 class CloudEngineCard extends StatefulWidget {
   const CloudEngineCard({super.key});
@@ -96,7 +97,7 @@ class _CloudEngineCardState extends State<CloudEngineCard> {
       builder: (context, state) {
         return AiModeCard(
           isSelected: !state.isOfflineEngine,
-          icon: Icons.cloud_queue,
+          icon: Symbols.cloud_queue_rounded,
           title: 'Cloud AI (Gemini)',
           tags: [
             modelLabel(RemoteConfigService.instance.geminiModel),
@@ -228,11 +229,15 @@ class _CloudEngineCardState extends State<CloudEngineCard> {
                                     )
                                   : _isValid == true
                                   ? const Icon(
-                                      Icons.check_circle,
+                                      Symbols.check_circle_rounded,
+                                      fill: 1,
                                       color: Colors.green,
                                     )
                                   : _isValid == false
-                                  ? const Icon(Icons.error, color: Colors.red)
+                                  ? const Icon(
+                                      Symbols.error_rounded,
+                                      color: Colors.red,
+                                    )
                                   : null,
                             ),
                           ),

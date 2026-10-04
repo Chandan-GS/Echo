@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.provider.Settings
 import androidx.annotation.NonNull
+import com.chandangs.echo_native.NotificationBuffer
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
@@ -19,6 +20,8 @@ class MainActivity : FlutterActivity() {
     private val NOTIFICATIONS_EVENT_CHANNEL = "project_echo/notification_stream"
     private val WIDGET_CHANNEL = "project_echo/widget"
     private val APP_ICONS_CHANNEL = "project_echo/app_icons"
+    private val REPLY_CHANNEL = "project_echo/reply"
+    private val REMINDERS_CHANNEL = "project_echo/reminders"
 
     // Drawing and PNG-encoding icons stays off the main thread.
     private val iconExecutor = Executors.newFixedThreadPool(2)
@@ -140,6 +143,57 @@ class MainActivity : FlutterActivity() {
             }
         }
 
+        // Answering chats: through the notification's Reply button, or by
+        // opening the chat app (see ReplySender.dart).
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, REPLY_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "route" -> result.success(ReplyActions.route(applicationContext, call.argument<String>("thread") ?: ""))
+                "send" -> result.success(
+                    ReplyActions.send(applicationContext, call.argument<String>("thread") ?: "", call.argument<String>("text") ?: ""),
+                )
+                "write" -> result.success(
+                    ReplyActions.write(this, call.argument<String>("thread") ?: "", call.argument<String>("text") ?: ""),
+                )
+                "openChat" -> result.success(ReplyActions.openChat(this, call.argument<String>("thread") ?: ""))
+                "openApp" -> {
+                    val launch = call.argument<String>("package")?.let { packageManager.getLaunchIntentForPackage(it) }
+                    if (launch == null) {
+                        result.success(false)
+                    } else {
+                        startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        result.success(true)
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, REMINDERS_CHANNEL).setMethodCallHandler { call, result ->
+            val id = call.argument<Int>("id") ?: 0
+            when (call.method) {
+                "set" -> {
+                    Reminders.set(
+                        applicationContext,
+                        Reminders.Reminder(
+                            id = id,
+                            key = call.argument<String>("key") ?: "",
+                            title = call.argument<String>("title") ?: "",
+                            body = call.argument<String>("body") ?: "",
+                            todoId = call.argument<Int>("todoId") ?: -1,
+                            thread = call.argument<String>("thread"),
+                        ),
+                        call.argument<Number>("at")?.toLong() ?: 0L,
+                    )
+                    result.success(null)
+                }
+                "cancel" -> {
+                    Reminders.cancel(applicationContext, id)
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, PERMISSIONS_CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "checkNotificationPermission" -> {
@@ -174,9 +228,11 @@ class MainActivity : FlutterActivity() {
         notificationReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
                 val data = intent?.getStringExtra(EchoNotificationListenerService.EXTRA_NOTIFICATION_DATA)
-                if (data != null) {
-                    eventSink?.success(data)
-                }
+                    ?: return
+                // Until Dart has subscribed (just after the app opens), keep
+                // it for the buffer Dart drains once it has.
+                eventSink?.success(data)
+                    ?: context?.let { NotificationBuffer.append(it, data) }
             }
         }
         val filter = IntentFilter(EchoNotificationListenerService.ACTION_NEW_NOTIFICATION)

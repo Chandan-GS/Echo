@@ -6,11 +6,13 @@ import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/features/echo/presentation/widgets/echo_mascot.dart';
 import 'package:project_echo/core/services/echo_says.dart';
+import 'package:material_symbols_icons/symbols.dart';
+import 'package:project_echo/core/presentation/widgets/pressable.dart';
 
 /// Height of the dock's pill and of Echo beside it.
 const double kNavDockHeight = 56;
 
-/// The phone's bottom navigation: the three tabs in one floating pill, and
+/// The phone's bottom navigation: the four tabs in one floating pill, and
 /// Echo beside it as the way to ask him something. Tapping Echo turns the dock
 /// into the question bar — the tabs fold into a close button and Echo grows
 /// into a text field.
@@ -37,10 +39,19 @@ class NavDock extends StatefulWidget {
 }
 
 class _NavDockState extends State<NavDock> {
-  static const _tabWidth = 70.0;
-  static const _gap = 18.0;
+  static const _tabItems = [
+    (Symbols.home_rounded, Symbols.home_rounded, 'Home'),
+    (Symbols.checklist_rounded, Symbols.checklist_rounded, 'To-do'),
+    (Symbols.inbox_rounded, Symbols.inbox_rounded, 'Vault'),
+    (Symbols.person_rounded, Symbols.person_rounded, 'Profile'),
+  ];
+
+  /// Each tab's width: roomy on most phones, narrower on small ones so the
+  /// pill and Echo always fit side by side.
+  static const _maxTabWidth = 66.0;
+  static const _minTabWidth = 52.0;
+  static const _gap = 16.0;
   static const _pillPadding = 6.0;
-  static const _tabsWidth = _tabWidth * 3 + _pillPadding * 2;
   static const _motion = Duration(milliseconds: 380);
   static const _curve = Cubic(0.3, 1.15, 0.4, 1);
 
@@ -68,10 +79,9 @@ class _NavDockState extends State<NavDock> {
     super.dispose();
   }
 
-  void _submit() {
-    final q = _controller.text.trim();
-    if (q.isNotEmpty) widget.onAsk(q);
-  }
+  /// Sends the question; with nothing typed, opens Ask Echo itself, which
+  /// leads with what's come in for the owner.
+  void _submit() => widget.onAsk(_controller.text.trim());
 
   /// Light mode only: a soft, wide shadow that melts into the page. In dark
   /// mode the dock holds its edge with the hairline alone.
@@ -111,11 +121,16 @@ class _NavDockState extends State<NavDock> {
           curve: _curve,
           builder: (context, t, _) {
             final full = constraints.maxWidth;
+            final tabWidth =
+                ((full - kNavDockHeight - _gap - _pillPadding * 2) /
+                        _tabItems.length)
+                    .clamp(_minTabWidth, _maxTabWidth);
+            final tabsWidth = tabWidth * _tabItems.length + _pillPadding * 2;
             final tabsW = lerpDouble(
-              _tabsWidth,
+              tabsWidth,
               kNavDockHeight,
               t,
-            )!.clamp(kNavDockHeight, _tabsWidth);
+            )!.clamp(kNavDockHeight, tabsWidth);
             final echoW = lerpDouble(
               kNavDockHeight,
               full - kNavDockHeight - _gap,
@@ -126,7 +141,10 @@ class _NavDockState extends State<NavDock> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  SizedBox(width: tabsW, child: _tabs(context)),
+                  SizedBox(
+                    width: tabsW,
+                    child: _tabs(context, tabWidth, tabsWidth),
+                  ),
                   const SizedBox(width: _gap),
                   SizedBox(width: echoW, child: _echo(context, t)),
                 ],
@@ -138,13 +156,8 @@ class _NavDockState extends State<NavDock> {
     );
   }
 
-  Widget _tabs(BuildContext context) {
+  Widget _tabs(BuildContext context, double tabWidth, double tabsWidth) {
     final c = context.colors;
-    const icons = [
-      (Icons.home_outlined, Icons.home_rounded, 'Today'),
-      (Icons.inbox_outlined, Icons.inbox, 'Vault'),
-      (Icons.person_outline, Icons.person, 'Profile'),
-    ];
     return Container(
       height: kNavDockHeight,
       decoration: _surface(context),
@@ -159,52 +172,47 @@ class _NavDockState extends State<NavDock> {
               opacity: widget.asking ? 0 : 1,
               child: OverflowBox(
                 alignment: Alignment.centerLeft,
-                minWidth: _tabsWidth,
-                maxWidth: _tabsWidth,
+                minWidth: tabsWidth,
+                maxWidth: tabsWidth,
                 child: Padding(
                   padding: const EdgeInsets.all(_pillPadding),
                   child: Stack(
                     children: [
-                      AnimatedPositioned(
-                        duration: const Duration(milliseconds: 300),
-                        curve: const Cubic(0.34, 1.4, 0.64, 1),
-                        left: widget.selectedIndex * _tabWidth,
-                        top: 0,
-                        bottom: 0,
-                        width: _tabWidth,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: c.primaryGreen,
-                            borderRadius: BorderRadius.circular(22),
-                          ),
-                        ),
+                      _StretchPill(
+                        index: widget.selectedIndex,
+                        tabWidth: tabWidth,
+                        color: c.primaryGreen,
                       ),
                       Row(
                         children: [
-                          for (final (i, (off, on, label)) in icons.indexed)
+                          for (final (i, (off, on, label)) in _tabItems.indexed)
                             Semantics(
                               button: true,
                               selected: widget.selectedIndex == i,
                               label: label,
-                              child: GestureDetector(
-                                behavior: HitTestBehavior.opaque,
-                                onTap: () => widget.onTabSelected(i),
-                                child: SizedBox(
-                                  width: _tabWidth,
-                                  height: kNavDockHeight - _pillPadding * 2,
-                                  child: Center(
-                                    child: BounceInIcon(
-                                      isSelected: widget.selectedIndex == i,
-                                      selectedIcon: on,
-                                      unselectedIcon: off,
-                                      // Black on the green in dark mode,
-                                      // white in light.
-                                      color: widget.selectedIndex == i
-                                          ? (context.isDarkMode
-                                                ? c.textInverse
-                                                : Colors.white)
-                                          : c.textSecondary,
-                                      size: 24,
+                              child: Pressable(
+                                scale: 0.88,
+                                haptic: false,
+                                child: GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
+                                  onTap: () => widget.onTabSelected(i),
+                                  child: SizedBox(
+                                    width: tabWidth,
+                                    height: kNavDockHeight - _pillPadding * 2,
+                                    child: Center(
+                                      child: SquashInIcon(
+                                        isSelected: widget.selectedIndex == i,
+                                        selectedIcon: on,
+                                        unselectedIcon: off,
+                                        // Black on the green in dark mode,
+                                        // white in light.
+                                        color: widget.selectedIndex == i
+                                            ? (context.isDarkMode
+                                                  ? c.textInverse
+                                                  : Colors.white)
+                                            : c.textSecondary,
+                                        size: 24,
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -234,7 +242,7 @@ class _NavDockState extends State<NavDock> {
                     width: kNavDockHeight,
                     height: kNavDockHeight,
                     child: Icon(
-                      Icons.close_rounded,
+                      Symbols.close_rounded,
                       size: 22,
                       color: c.textPrimary,
                     ),
@@ -260,108 +268,117 @@ class _NavDockState extends State<NavDock> {
     return Semantics(
       button: !widget.asking,
       label: widget.asking ? null : 'Ask Echo',
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: widget.asking ? null : widget.onOpenAsk,
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: Opacity(
-                opacity: bar,
-                child: DecoratedBox(decoration: _surface(context)),
+      child: Pressable(
+        scale: 0.92,
+        enabled: !widget.asking,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: widget.asking ? null : widget.onOpenAsk,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: Opacity(
+                  opacity: bar,
+                  child: DecoratedBox(decoration: _surface(context)),
+                ),
               ),
-            ),
-            LayoutBuilder(
-              builder: (context, box) {
-                // The field and send button only once there's room for them.
-                final open = widget.asking && box.maxWidth > 150;
-                return SizedBox(
-                  height: kNavDockHeight,
-                  child: Row(
-                    children: [
-                      SizedBox(width: lerpDouble(1, 7, bar)),
-                      SizedBox(
-                        width: body,
-                        height: kNavDockHeight,
-                        child: OverflowBox(
-                          maxWidth: canvas,
-                          maxHeight: canvas,
-                          child: IgnorePointer(
-                            // His face matches what he's saying, if anything.
-                            child: ValueListenableBuilder<EchoLine?>(
-                              valueListenable: EchoSays.instance.current,
-                              builder: (context, line, _) => EchoMascot(
-                                state: line?.mood ?? EchoState.idle,
-                                size: canvas,
-                                showRings: false,
-                                glow: false,
-                                followTouchAnywhere: true,
-                                gazeReach: 2.2,
-                                gazeReachY: 4,
+              LayoutBuilder(
+                builder: (context, box) {
+                  // The field and send button only once there's room for them.
+                  final open = widget.asking && box.maxWidth > 150;
+                  return SizedBox(
+                    height: kNavDockHeight,
+                    child: Row(
+                      children: [
+                        SizedBox(width: lerpDouble(1, 7, bar)),
+                        SizedBox(
+                          width: body,
+                          height: kNavDockHeight,
+                          child: OverflowBox(
+                            maxWidth: canvas,
+                            maxHeight: canvas,
+                            child: IgnorePointer(
+                              // His face matches what he's saying, if anything.
+                              child: ValueListenableBuilder<EchoLine?>(
+                                valueListenable: EchoSays.instance.current,
+                                builder: (context, line, _) => EchoMascot(
+                                  state: line?.mood ?? EchoState.idle,
+                                  size: canvas,
+                                  showRings: false,
+                                  glow: false,
+                                  followTouchAnywhere: true,
+                                  gazeReach: 2.2,
+                                  gazeReachY: 4,
+                                ),
                               ),
                             ),
                           ),
                         ),
-                      ),
-                      if (open) ...[
-                        Expanded(
-                          child: TextField(
-                            controller: _controller,
-                            focusNode: _focus,
-                            textInputAction: TextInputAction.send,
-                            onSubmitted: (_) => _submit(),
-                            cursorColor: c.primaryGreen,
-                            style: GoogleFonts.nunito(
-                              fontSize: 15.5,
-                              fontWeight: FontWeight.w600,
-                              color: c.textPrimary,
-                            ),
-                            decoration: InputDecoration(
-                              isCollapsed: true,
-                              filled: false,
-                              border: InputBorder.none,
-                              enabledBorder: InputBorder.none,
-                              focusedBorder: InputBorder.none,
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                              ),
-                              hintText: 'Ask Echo anything',
-                              hintStyle: GoogleFonts.nunito(
+                        if (open) ...[
+                          Expanded(
+                            child: TextField(
+                              controller: _controller,
+                              focusNode: _focus,
+                              textInputAction: TextInputAction.send,
+                              onSubmitted: (_) => _submit(),
+                              cursorColor: c.primaryGreen,
+                              style: GoogleFonts.nunito(
                                 fontSize: 15.5,
                                 fontWeight: FontWeight.w600,
-                                color: c.textSecondary,
+                                color: c.textPrimary,
+                              ),
+                              decoration: InputDecoration(
+                                isCollapsed: true,
+                                filled: false,
+                                border: InputBorder.none,
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                ),
+                                hintText: 'Ask Echo anything',
+                                hintStyle: GoogleFonts.nunito(
+                                  fontSize: 15.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: c.textSecondary,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                        Semantics(
-                          button: true,
-                          label: 'Send',
-                          child: GestureDetector(
-                            onTap: _submit,
-                            child: Container(
-                              width: 40,
-                              height: 40,
-                              decoration: BoxDecoration(
-                                color: c.primaryGreen,
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.arrow_upward_rounded,
-                                size: 20,
-                                color: Colors.white,
+                          Semantics(
+                            button: true,
+                            label: 'Send',
+                            child: Pressable(
+                              scale: 0.88,
+                              child: GestureDetector(
+                                onTap: _submit,
+                                child: Container(
+                                  width: 44,
+                                  height: 44,
+                                  decoration: BoxDecoration(
+                                    color: c.primaryGreen,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    Symbols.arrow_upward_rounded,
+                                    size: 24,
+                                    color: context.isDarkMode
+                                        ? c.textInverse
+                                        : Colors.white,
+                                  ),
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 8),
+                          const SizedBox(width: 6),
+                        ],
                       ],
-                    ],
-                  ),
-                );
-              },
-            ),
-          ],
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -398,26 +415,90 @@ class AskSuggestionChips extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 20),
         itemCount: questions.length,
         separatorBuilder: (_, _) => const SizedBox(width: 8),
-        itemBuilder: (context, i) => Material(
-          color: c.surface,
-          shape: StadiumBorder(
-            side: BorderSide(color: c.dividerColor.withValues(alpha: 0.8)),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: () => onAsk(questions[i]),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              child: Center(
-                child: Text(
-                  questions[i],
-                  style: GoogleFonts.nunito(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w700,
-                    color: c.textPrimary,
+        itemBuilder: (context, i) => Pressable(
+          child: Material(
+            color: c.surface,
+            shape: StadiumBorder(
+              side: BorderSide(color: c.dividerColor.withValues(alpha: 0.8)),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: () => onAsk(questions[i]),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                child: Center(
+                  child: Text(
+                    questions[i],
+                    style: GoogleFonts.nunito(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                      color: c.textPrimary,
+                    ),
                   ),
                 ),
               ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The green pill under the chosen tab. Moving to another tab it stretches:
+/// the edge on the way leaves first and the other catches up, like a drop
+/// of liquid, then it settles to one tab wide.
+class _StretchPill extends StatefulWidget {
+  final int index;
+  final double tabWidth;
+  final Color color;
+
+  const _StretchPill({
+    required this.index,
+    required this.tabWidth,
+    required this.color,
+  });
+
+  @override
+  State<_StretchPill> createState() => _StretchPillState();
+}
+
+class _StretchPillState extends State<_StretchPill> {
+  static const _lead = Duration(milliseconds: 240);
+  static const _trail = Duration(milliseconds: 420);
+  static const _curve = Cubic(0.3, 1.2, 0.4, 1);
+
+  /// Which way it last moved: right (to a later tab) or left.
+  bool _right = true;
+
+  @override
+  void didUpdateWidget(_StretchPill old) {
+    super.didUpdateWidget(old);
+    if (widget.index != old.index) _right = widget.index > old.index;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final left = widget.index * widget.tabWidth;
+    final right = left + widget.tabWidth;
+    return TweenAnimationBuilder<double>(
+      tween: Tween(end: left),
+      duration: _right ? _trail : _lead,
+      curve: _curve,
+      builder: (context, l, _) => TweenAnimationBuilder<double>(
+        tween: Tween(end: right),
+        duration: _right ? _lead : _trail,
+        curve: _curve,
+        builder: (context, r, _) => Positioned(
+          left: l,
+          top: 0,
+          bottom: 0,
+          // The overshoot can briefly cross the edges; never inside out.
+          width: (r - l).clamp(widget.tabWidth * 0.6, double.infinity),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: widget.color,
+              borderRadius: BorderRadius.circular(22),
             ),
           ),
         ),

@@ -36,7 +36,8 @@ class EchoMascot extends StatefulWidget {
   /// e.g. voice mode's tap-to-speak — keeps working while Echo winks back).
   final VoidCallback? onTap;
 
-  /// Draws the soft rings around Echo. With them off, Echo itself fills more of
+  /// Draws the soft rings around Echo (and the ripples while he listens or
+  /// speaks). With them off, Echo itself fills more of
   /// [size] — used for the home hero, where Echo should read large and clear.
   final bool showRings;
 
@@ -415,10 +416,10 @@ class _EchoPainter extends CustomPainter {
         }
         break;
       case EchoState.listening:
-        _rippleRings(canvas, orbC, s(76), k, inward: true);
+        if (showRings) _rippleRings(canvas, orbC, s(76), k, inward: true);
         break;
       case EchoState.speaking:
-        _rippleRings(canvas, orbC, s(76), k, inward: false);
+        if (showRings) _rippleRings(canvas, orbC, s(76), k, inward: false);
         break;
       case EchoState.thinking:
         _band(canvas, orbC, k, front: false);

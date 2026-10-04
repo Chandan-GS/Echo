@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/widgets.dart';
 import 'package:project_echo/demo/demo_mode.dart';
 import 'package:go_router/go_router.dart';
+import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:project_echo/features/echo/presentation/screens/ask_ai_screen.dart';
 import 'package:project_echo/features/onboarding/presentation/screens/start_screen.dart';
 import 'package:project_echo/core/presentation/screens/main_scaffold.dart';
@@ -24,7 +25,11 @@ GoRouter createRouter(bool isOnboardingFinished) => GoRouter(
       path: '/echo/chat',
       pageBuilder: (context, state) => slideUpPage(
         key: state.pageKey,
-        child: AskAiScreen(initialQuestion: state.extra as String?),
+        // A question to ask, or a message to draft a reply to.
+        child: AskAiScreen(
+          initialQuestion: state.extra is String ? state.extra as String : null,
+          replyTo: state.extra is RawData ? state.extra as RawData : null,
+        ),
       ),
     ),
     GoRoute(
@@ -32,7 +37,7 @@ GoRouter createRouter(bool isOnboardingFinished) => GoRouter(
       pageBuilder: (context, state) =>
           slideUpPage(key: state.pageKey, child: const ScanDesktopScreen()),
     ),
-    // MainScaffold draws the three tabs itself (a FadeIndexedStack keyed
+    // MainScaffold draws the tabs itself (a FadeIndexedStack keyed
     // off the location), so these pages are empty: they only give the shell
     // Navigator a route per tab. That Navigator must still be mounted —
     // go_router looks it up on every back press and pop.
@@ -43,6 +48,11 @@ GoRouter createRouter(bool isOnboardingFinished) => GoRouter(
       routes: [
         GoRoute(
           path: '/echo',
+          pageBuilder: (context, state) =>
+              NoTransitionPage(key: state.pageKey, child: const SizedBox()),
+        ),
+        GoRoute(
+          path: '/todo',
           pageBuilder: (context, state) =>
               NoTransitionPage(key: state.pageKey, child: const SizedBox()),
         ),
