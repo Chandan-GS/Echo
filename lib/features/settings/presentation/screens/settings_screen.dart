@@ -27,16 +27,21 @@ bool get _isDesktop => Platform.isMacOS || Platform.isWindows;
 /// The Profile tab: your streak calendar up top, then all app settings merged
 /// into the same screen (appearance, voice, tone, AI engine, schedule, debug).
 class SettingsScreen extends StatelessWidget {
-  const SettingsScreen({super.key});
+  /// Shown up top in place of the streak calendar, with the settings under
+  /// a "Settings" heading: the computer's Profile (see DesktopProfile).
+  final Widget? profile;
+
+  const SettingsScreen({super.key, this.profile});
 
   @override
   Widget build(BuildContext context) {
-    return const _ProfileView();
+    return _ProfileView(profile: profile);
   }
 }
 
 class _ProfileView extends StatefulWidget {
-  const _ProfileView();
+  final Widget? profile;
+  const _ProfileView({this.profile});
 
   @override
   State<_ProfileView> createState() => _ProfileViewState();
@@ -109,10 +114,23 @@ class _ProfileViewState extends State<_ProfileView>
 
                   const SizedBox(height: 20),
 
-                  // Streak — the default view is the calendar, not the animation.
-                  FadeSlideIn(child: StreakCalendar(key: _calendarKey)),
-
-                  const SizedBox(height: 32),
+                  if (widget.profile case final profile?) ...[
+                    FadeSlideIn(child: profile),
+                    const SizedBox(height: 40),
+                    Text(
+                      'Settings',
+                      style: GoogleFonts.oldStandardTt(
+                        fontSize: 30,
+                        fontWeight: FontWeight.w700,
+                        color: context.colors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                  ] else ...[
+                    // Streak — the default view is the calendar, not the animation.
+                    FadeSlideIn(child: StreakCalendar(key: _calendarKey)),
+                    const SizedBox(height: 32),
+                  ],
 
                   if (HomeWidgetsService.supported) ...[
                     _widgetsSection(context),

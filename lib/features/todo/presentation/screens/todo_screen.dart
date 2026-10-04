@@ -18,7 +18,6 @@ import 'package:project_echo/features/echo/data/reply/reply_sender.dart';
 import 'package:project_echo/features/echo/presentation/cubit/briefing_cubit.dart';
 import 'package:project_echo/features/echo/presentation/widgets/ask/ask_parts.dart';
 import 'package:project_echo/features/echo/presentation/widgets/ask/reading_echo.dart';
-import 'package:project_echo/features/echo/presentation/widgets/echo_mascot.dart';
 import 'package:project_echo/features/todo/data/todo_item.dart';
 import 'package:project_echo/features/todo/presentation/cubit/todo_cubit.dart';
 import 'package:project_echo/features/todo/presentation/widgets/reminder_sheet.dart';
@@ -836,21 +835,6 @@ class _OfferCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SizedBox(
-                width: 34,
-                height: 34,
-                child: OverflowBox(
-                  maxWidth: 56,
-                  maxHeight: 56,
-                  child: EchoMascot(
-                    size: 56,
-                    state: done ? EchoState.happy : EchoState.idle,
-                    showRings: false,
-                    glow: false,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
               Expanded(
                 child: done
                     ? Text(

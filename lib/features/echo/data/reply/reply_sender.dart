@@ -1,5 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:project_echo/demo/demo_mode.dart';
 import 'package:project_echo/features/echo/data/context/chat_context_store.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:project_echo/features/profile/data/week_stats.dart';
@@ -33,11 +34,6 @@ class ReplySender {
     final thread = to.thread;
     return thread == null ? ReplyRoute.pick : _route(thread);
   }
-
-  /// How a reply in [thread] would go right now, by name ("send", "write",
-  /// "pick", "copy"), for a paired computer to say so.
-  static Future<String> routeName(String thread) async =>
-      (await _route(thread)).name;
 
   static Future<ReplyRoute> _route(String thread) async =>
       switch (await _call<String>('route', {'thread': thread})) {
@@ -92,6 +88,15 @@ class ReplySender {
   }
 
   static Future<T?> _call<T>(String method, Map<String, Object?> args) async {
+    // The filming build never reaches a real chat: replies "go out" and
+    // nothing is opened.
+    if (kEchoDemo) {
+      return switch (method) {
+        'route' => 'send',
+        'send' => true,
+        _ => false,
+      } as T?;
+    }
     try {
       return await _channel.invokeMethod<T>(method, args);
     } on PlatformException {

@@ -7,7 +7,6 @@ import 'package:project_echo/core/services/reminders.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/features/echo/presentation/widgets/ask/ask_parts.dart';
-import 'package:project_echo/features/echo/presentation/widgets/echo_mascot.dart';
 import 'package:project_echo/features/todo/data/todo_item.dart';
 import 'package:project_echo/core/presentation/widgets/press_feedback.dart';
 
@@ -244,18 +243,11 @@ class _ReminderSheetState extends State<_ReminderSheet> {
               _OptionTile(
                 selected: _choice == o.id,
                 leading: o.icon == null
-                    ? const SizedBox(
-                        width: 30,
-                        height: 30,
-                        child: OverflowBox(
-                          maxWidth: 48,
-                          maxHeight: 48,
-                          child: EchoMascot(
-                            size: 48,
-                            showRings: false,
-                            glow: false,
-                          ),
-                        ),
+                    ? Icon(
+                        Symbols.auto_awesome_rounded,
+                        size: 22,
+                        fill: 1,
+                        color: c.primaryGreen,
                       )
                     : Icon(o.icon, size: 22, color: c.textSecondary),
                 title: _label(o.at),

@@ -65,8 +65,8 @@ class EchoServerService {
   /// When the phone last sent a snapshot (ms since epoch).
   static const lastPhoneSyncKey = 'desktop_last_phone_sync';
 
-  /// How a reply to each chat would go on the phone, by thread.
-  static const replyRoutesKey = 'desktop_reply_routes_v1';
+  /// When the owner first opened Echo on the phone (ISO 8601).
+  static const phoneFirstLaunchKey = 'desktop_phone_first_launch';
 
   /// Bumped each time a phone snapshot is received via `/sync`, so the desktop
   /// mirror (Today/Vault) can listen and reload. A plain counter is enough —
@@ -369,12 +369,14 @@ class EchoServerService {
         await AppIconService.storeSynced(icons.cast<String, dynamic>());
       }
 
-      // For Today: who's been answered and promised to, what's set to
-      // remind, how a reply to each chat would go, and the owner's name.
+      // For Today: who's been answered and promised to, and what's set to
+      // remind; for Profile, the owner's name and since when (the phone's
+      // first launch, not this computer's).
       for (final (field, key) in [
         ('myTurns', ChatContextStore.turnsKey),
         ('reminders', Reminders.storeKey),
         ('userName', 'user_name'),
+        ('firstLaunch', phoneFirstLaunchKey),
       ]) {
         final value = body[field];
         if (value is String) await prefs.setString(key, value);
@@ -389,10 +391,6 @@ class EchoServerService {
           'vault_blocked_categories',
           blocked.whereType<String>().toList(),
         );
-      }
-      final routes = body['routes'];
-      if (routes is Map) {
-        await prefs.setString(replyRoutesKey, jsonEncode(routes));
       }
       final lead = body['reminderLead'], suggest = body['reminderSuggest'];
       if (lead is int) {

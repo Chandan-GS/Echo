@@ -58,6 +58,38 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(minutes: 1));
   });
+
+  testWidgets('typing ? in a text field types it, not the shortcut sheet', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MultiBlocProvider(
+        providers: [
+          BlocProvider(create: (_) => SettingsCubit()),
+          BlocProvider<TodoCubit>(create: (_) => _Empty()),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.lightTheme,
+          home: const DesktopWorkspace(),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.sendKeyEvent(LogicalKeyboardKey.digit3, character: '3');
+    await tester.pump(const Duration(milliseconds: 500));
+    final field = find.byType(TextField).hitTestable().first;
+    await tester.tap(field);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.slash, character: '?');
+    await tester.pump();
+    expect(find.text('Keyboard'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(minutes: 1));
+  });
 }
 
 class _Empty extends Cubit<TodoState> implements TodoCubit {

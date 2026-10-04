@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:project_echo/core/services/reminders.dart';
+import 'package:project_echo/demo/demo_mode.dart';
 import 'package:project_echo/features/todo/data/todo_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -104,6 +105,14 @@ class PhoneActions {
     await _update((list) => [...list, action]);
     // Shown at once, before the phone has it.
     await applyToMirror();
+    // The filming build has no phone: it "does" everything a moment later.
+    if (kEchoDemo) {
+      Future<void>.delayed(const Duration(milliseconds: 1200), () {
+        report([
+          {'id': action.id, 'ok': true, 'outcome': body['kind'] == 'reply' ? 'sent' : 'done'},
+        ]);
+      });
+    }
     return action.id;
   }
 

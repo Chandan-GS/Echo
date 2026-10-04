@@ -451,9 +451,6 @@ class DesktopVaultTableState extends State<DesktopVaultTable> {
               onAsk: widget.onAsk == null
                   ? null
                   : () => widget.onAsk!('What else did ${open.who} say?'),
-              onOpenOnPhone: () => ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Opens on your phone')),
-              ),
             ),
     );
   }

@@ -57,6 +57,34 @@ class AskAiCubit extends Cubit<AskAiState> {
   /// The filming build: a scripted answer, found and streamed in the same
   /// rhythm as a real one.
   Future<void> _demoAnswer(String question) async {
+    final draft = await DemoAsk.draft(question);
+    if (draft != null) {
+      await Future<void>.delayed(const Duration(milliseconds: 700));
+      if (isClosed) return;
+      final (to, text) = draft;
+      _messages.add(
+        ChatMessage(
+          sender: 'echo',
+          text: '',
+          kind: MessageKind.draft,
+          draft: ReplyDraft(
+            to: to,
+            text: '',
+            route: ReplyRoute.send,
+            status: DraftStatus.writing,
+          ),
+        ),
+      );
+      final index = _messages.length - 1;
+      _emit();
+      await Future<void>.delayed(const Duration(milliseconds: 1100));
+      if (isClosed) return;
+      _updateDraft(
+        index,
+        (d) => d.copyWith(text: text, status: DraftStatus.ready),
+      );
+      return;
+    }
     final (answer, sources) = await DemoAsk.answer(question);
     await Future<void>.delayed(const Duration(milliseconds: 900));
     if (isClosed) return;
@@ -486,7 +514,7 @@ class AskAiCubit extends Cubit<AskAiState> {
     if (draft == null || !draft.open || draft.text.trim().isEmpty) return;
     _updateDraft(index, (d) => d.copyWith(status: DraftStatus.sending));
     // A computer can't reach the chat app; the phone sends it.
-    if (Platform.isMacOS || Platform.isWindows) {
+    if ((Platform.isMacOS || Platform.isWindows) && !kEchoDemo) {
       return _sendThroughPhone(index, draft);
     }
     final outcome = await ReplySender.send(draft.to, draft.text.trim());

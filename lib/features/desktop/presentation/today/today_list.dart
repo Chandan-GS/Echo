@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:material_symbols_icons/symbols.dart';
 import 'package:project_echo/core/presentation/animations/app_motion.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/features/desktop/presentation/today/today_logic.dart';
 import 'package:project_echo/features/desktop/presentation/today/today_parts.dart';
-import 'package:project_echo/features/echo/data/context/addressed.dart';
 import 'package:project_echo/features/echo/presentation/widgets/ask/ask_parts.dart';
 
 /// The left column: everything that wants the owner today, grouped, one
@@ -136,123 +134,57 @@ class _Row extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
-          child: Stack(
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 11,
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
-                    item.kind == TriageKind.group
-                        ? _GroupBadge(color: muted)
-                        : SourceBadge(e, size: 28),
-                    const SizedBox(width: 10),
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text.rich(
-                            TextSpan(
-                              children: [
-                                TextSpan(
-                                  text: item.kind == TriageKind.promise
-                                      ? 'You'
-                                      : item.name,
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w800,
-                                    color: ink,
-                                  ),
-                                ),
-                                TextSpan(text: ' · ${item.where}'),
-                              ],
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.nunito(
-                              fontSize: 13.5,
-                              color: muted,
-                            ),
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            text,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.nunito(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              height: 1.35,
-                              color: ink,
-                            ),
-                          ),
-                        ],
+                      child: Text(
+                        item.kind == TriageKind.promise
+                            ? 'You promised'
+                            : item.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.nunito(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: ink,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 10),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          clockLabel(e.timestamp),
-                          style: GoogleFonts.nunito(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w700,
-                            color: muted,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        switch (item.kind) {
-                          TriageKind.waiting => ForYouTag(
-                            Addressed.parse(e.addressed) ?? Addressed.direct,
-                          ),
-                          TriageKind.promise => const QuietTag('your promise'),
-                          TriageKind.group => const SizedBox.shrink(),
-                        },
-                      ],
+                    Text(
+                      clockLabel(e.timestamp),
+                      style: GoogleFonts.nunito(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: muted,
+                      ),
                     ),
                   ],
                 ),
-              ),
-              if (selected)
-                Positioned(
-                  left: 0,
-                  top: 10,
-                  bottom: 10,
-                  child: Container(
-                    width: 3,
-                    decoration: BoxDecoration(
-                      color: c.primaryGreen,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
+                const SizedBox(height: 3),
+                Text(
+                  text,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.nunito(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w500,
+                    height: 1.4,
+                    color: muted,
                   ),
                 ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
     );
   }
-}
-
-/// A busy group's badge: it's many people, not one app's message.
-class _GroupBadge extends StatelessWidget {
-  final Color color;
-  const _GroupBadge({required this.color});
-
-  @override
-  Widget build(BuildContext context) => Container(
-    width: 28,
-    height: 28,
-    decoration: BoxDecoration(
-      color: context.colors.background,
-      shape: BoxShape.circle,
-      border: Border.all(color: context.colors.dividerColor),
-    ),
-    child: Icon(Symbols.forum_rounded, size: 15, color: color),
-  );
 }
 
 class _Empty extends StatelessWidget {

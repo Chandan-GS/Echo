@@ -378,8 +378,13 @@ class _EmptyState extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const EchoMascot(state: EchoState.idle, size: 158),
-                const SizedBox(height: 4),
+                const EchoMascot(
+                  state: EchoState.idle,
+                  size: 120,
+                  showRings: false,
+                  glow: false,
+                ),
+                const SizedBox(height: 18),
                 Text(
                   name != null ? 'How can I help, $name?' : 'How can I help?',
                   textAlign: TextAlign.center,

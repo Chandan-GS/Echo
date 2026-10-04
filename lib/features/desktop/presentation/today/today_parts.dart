@@ -194,30 +194,3 @@ class PanelLabel extends StatelessWidget {
     );
   }
 }
-
-/// "your promise": a quiet grey tag.
-class QuietTag extends StatelessWidget {
-  final String text;
-  const QuietTag(this.text, {super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-      decoration: BoxDecoration(
-        color: c.background,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: c.dividerColor),
-      ),
-      child: Text(
-        text,
-        style: GoogleFonts.nunito(
-          fontSize: 11,
-          fontWeight: FontWeight.w800,
-          color: c.textSecondary,
-        ),
-      ),
-    );
-  }
-}

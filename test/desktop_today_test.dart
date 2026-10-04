@@ -10,7 +10,6 @@ import 'package:project_echo/features/desktop/presentation/today/today_rail.dart
 import 'package:project_echo/features/echo/data/context/chat_context_store.dart';
 import 'package:project_echo/features/echo/data/home/home_feed.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
-import 'package:project_echo/features/echo/data/reply/reply_sender.dart';
 import 'package:project_echo/features/todo/data/todo_item.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -302,7 +301,6 @@ void main() {
                       now: now,
                       marked: false,
                       reply: null,
-                      route: ReplyRoute.send,
                       remindAt: now.add(const Duration(hours: 3)),
                       reminding: null,
                       onList: false,
@@ -337,6 +335,6 @@ void main() {
         expect(tester.takeException(), isNull);
       }
     }
-    expect(find.text('Catch me up in Ask'), findsOneWidget);
+    expect(find.text('Catch me up'), findsOneWidget);
   });
 }

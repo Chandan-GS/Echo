@@ -1,13 +1,8 @@
-import 'dart:convert';
-
-import 'package:project_echo/core/services/echo_server_service.dart';
 import 'package:project_echo/core/services/phone_actions.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
-import 'package:project_echo/features/echo/data/reply/reply_sender.dart';
 import 'package:project_echo/features/todo/data/todo_item.dart';
 import 'package:project_echo/features/todo/data/todo_planner.dart';
 import 'package:project_echo/features/todo/data/todo_store.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 /// Everything the computer does to the owner's chats, list and reminders,
 /// done through the phone (see PhoneActions). The computer's copy updates
@@ -28,32 +23,6 @@ class DesktopActions {
         ? to.threadTitle
         : to.sender,
   });
-
-  /// Asks the phone to open [entry]'s chat: it shows a notification that
-  /// opens it when tapped.
-  static Future<String> openChat(RawData entry) => PhoneActions.send({
-    'kind': 'open_chat',
-    'thread': entry.thread,
-    'to': entry.isGroup && (entry.threadTitle?.isNotEmpty ?? false)
-        ? entry.threadTitle
-        : entry.sender,
-  });
-
-  /// How a reply to [entry]'s chat would go on the phone right now, as the
-  /// phone last said: [ReplyRoute.send] goes out at once; the others wait
-  /// for a tap on the phone.
-  static Future<ReplyRoute> routeFor(RawData entry) async {
-    final prefs = await SharedPreferences.getInstance();
-    try {
-      final routes =
-          jsonDecode(prefs.getString(EchoServerService.replyRoutesKey) ?? '{}')
-              as Map;
-      return ReplyRoute.values.asNameMap()[routes[entry.thread]] ??
-          ReplyRoute.pick;
-    } catch (_) {
-      return ReplyRoute.pick;
-    }
-  }
 
   static Future<String> tick(TodoItem item, {required bool done}) =>
       PhoneActions.send({'kind': 'todo_done', 'id': item.id, 'done': done});

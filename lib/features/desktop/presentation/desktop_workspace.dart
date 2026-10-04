@@ -7,12 +7,13 @@ import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/features/desktop/presentation/ask/desktop_ask_screen.dart';
 import 'package:project_echo/features/desktop/presentation/command_palette.dart';
 import 'package:project_echo/features/desktop/presentation/desktop_sidebar.dart';
+import 'package:project_echo/features/desktop/presentation/profile/desktop_profile.dart';
 import 'package:project_echo/features/desktop/presentation/reminder_banner.dart';
+import 'package:project_echo/features/desktop/presentation/typing.dart';
 import 'package:project_echo/features/desktop/presentation/today/desktop_today_screen.dart';
 import 'package:project_echo/features/desktop/presentation/todo/desktop_todo_board.dart';
 import 'package:project_echo/features/desktop/presentation/vault/desktop_vault_table.dart';
 import 'package:project_echo/features/echo/data/home/home_feed.dart';
-import 'package:project_echo/features/settings/presentation/screens/settings_screen.dart';
 import 'package:project_echo/features/todo/presentation/cubit/todo_cubit.dart';
 
 /// The sections of the desktop app, in sidebar order.
@@ -25,6 +26,7 @@ enum DesktopSection { today, todo, ask, vault, profile }
 class DesktopWorkspace extends StatefulWidget {
   /// Opens on Ask Echo with this question.
   final String? initialQuestion;
+
   const DesktopWorkspace({super.key, this.initialQuestion});
 
   @override
@@ -54,6 +56,7 @@ class _DesktopWorkspaceState extends State<DesktopWorkspace> {
   @override
   void initState() {
     super.initState();
+    _section = DesktopSection.today;
     final question = widget.initialQuestion;
     if (question != null) {
       _firstQuestion = question;
@@ -156,10 +159,7 @@ class _DesktopWorkspaceState extends State<DesktopWorkspace> {
   }
 
   /// Whether a text field has the keyboard.
-  bool get _typing {
-    final focused = FocusManager.instance.primaryFocus?.context?.widget;
-    return focused is EditableText;
-  }
+  bool get _typing => typingInAField();
 
   @override
   Widget build(BuildContext context) {
@@ -171,7 +171,7 @@ class _DesktopWorkspaceState extends State<DesktopWorkspace> {
       DesktopTodoBoard(key: _todoKey),
       DesktopAskScreen(key: _askKey, initialQuestion: _firstQuestion),
       DesktopVaultTable(key: _vaultKey, onAsk: _ask),
-      const SettingsScreen(),
+      const DesktopProfile(),
     ];
     return FocusScope(
       node: _focus,

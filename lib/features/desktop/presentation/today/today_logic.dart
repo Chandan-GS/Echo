@@ -103,7 +103,7 @@ class HandledMarks {
   }
 }
 
-/// One message in "The conversation".
+/// One message of a chat, for reply suggestions.
 class ChatLine {
   final String who;
   final String text;

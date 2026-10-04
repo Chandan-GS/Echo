@@ -334,14 +334,12 @@ class VaultDetailPanel extends StatelessWidget {
   final DateTime now;
   final VoidCallback onClose;
   final VoidCallback? onAsk;
-  final VoidCallback onOpenOnPhone;
   const VaultDetailPanel({
     super.key,
     required this.item,
     required this.now,
     required this.onClose,
     required this.onAsk,
-    required this.onOpenOnPhone,
   });
 
   static const width = 380.0;
@@ -446,25 +444,15 @@ class VaultDetailPanel extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                if (onAsk != null)
-                  AskPill(
-                    label: 'Ask about this',
-                    icon: Symbols.forum_rounded,
-                    filled: true,
-                    onTap: onAsk,
-                  ),
-                AskPill(
-                  label: 'Open on phone',
-                  icon: Symbols.open_in_new_rounded,
-                  onTap: onOpenOnPhone,
-                ),
-              ],
-            ),
+            if (onAsk != null) ...[
+              const SizedBox(height: 16),
+              AskPill(
+                label: 'Ask about this',
+                icon: Symbols.forum_rounded,
+                filled: true,
+                onTap: onAsk,
+              ),
+            ],
           ],
         ),
       ),

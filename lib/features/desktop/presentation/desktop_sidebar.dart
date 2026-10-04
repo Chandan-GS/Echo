@@ -67,7 +67,7 @@ class DesktopSidebar extends StatelessWidget {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(7),
                     child: Image.asset(
-                      'assets/app_icon_source.png',
+                      'assets/logo.png',
                       width: 26,
                       height: 26,
                       fit: BoxFit.cover,
@@ -155,7 +155,6 @@ class DesktopSidebar extends StatelessWidget {
             item(DesktopSection.profile, Symbols.person_rounded, 'Profile'),
             const Spacer(),
             const _PhoneStatus(),
-            const SizedBox(height: 8),
             const _EngineStatus(),
           ],
         ),
@@ -279,15 +278,15 @@ class _PhoneStatusState extends State<_PhoneStatus> {
     // The phone sends every 25 seconds while Echo is open on it.
     final live = ago != null && ago < const Duration(minutes: 2);
     final line = last == null
-        ? 'Not connected yet. Pair it from Profile → This computer.'
+        ? 'not connected yet'
         : ago!.inMinutes < 1
-        ? 'Synced just now · replies go through it'
+        ? 'synced just now'
         : ago.inMinutes < 60
-        ? 'Synced ${ago.inMinutes} min ago · replies go through it'
-        : 'Last synced ${ago.inHours} h ago. Open Echo on your phone.';
+        ? 'synced ${ago.inMinutes} min ago'
+        : 'synced ${ago.inHours} h ago';
     return _StatusCard(
       dot: live ? _Rail.green : _Rail.muted,
-      title: 'Your phone',
+      title: 'Phone',
       line: line,
     );
   }
@@ -302,22 +301,19 @@ class _EngineStatus extends StatelessWidget {
       (SettingsCubit s) => s.state.runDesktopEngineHere,
     );
     return _StatusCard(
-      icon: Symbols.memory_rounded,
       dot: on ? _Rail.green : _Rail.muted,
-      title: 'Echo Engine',
-      line: on ? 'Running here for your phone' : 'Off',
+      title: 'Engine',
+      line: on ? 'running' : 'off',
     );
   }
 }
 
 class _StatusCard extends StatelessWidget {
-  final IconData? icon;
   final Color dot;
   final String title;
   final String line;
 
   const _StatusCard({
-    this.icon,
     required this.dot,
     required this.title,
     required this.line,
@@ -325,53 +321,38 @@ class _StatusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: _Rail.hover,
-        borderRadius: BorderRadius.circular(12),
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: icon != null
-                ? Icon(icon, size: 17, color: dot)
-                : Container(
-                    width: 8,
-                    height: 8,
-                    margin: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: dot,
-                      shape: BoxShape.circle,
+          Container(
+            width: 7,
+            height: 7,
+            margin: const EdgeInsets.only(top: 6),
+            decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: title,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: _Rail.ink,
                     ),
                   ),
-          ),
-          const SizedBox(width: 9),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: GoogleFonts.nunito(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    color: _Rail.ink,
-                  ),
-                ),
-                const SizedBox(height: 1),
-                Text(
-                  line,
-                  style: GoogleFonts.nunito(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    height: 1.3,
-                    color: _Rail.muted,
-                  ),
-                ),
-              ],
+                  TextSpan(text: '  $line'),
+                ],
+              ),
+              style: GoogleFonts.nunito(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                height: 1.4,
+                color: _Rail.muted,
+              ),
             ),
           ),
         ],

@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:project_echo/core/services/source_packages.dart';
+import 'package:project_echo/demo/demo_mode.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Real launcher icons of other apps, for Vault categories and for the app
@@ -45,22 +46,52 @@ class AppIconService {
   static Uint8List? cachedPackage(String pkg) => _resolved[_packageKey(pkg)];
 
   /// PNG of the busiest app behind the Vault category [source], or null.
-  static Future<Uint8List?> iconFor(String source) => _desktop
-      ? _synced(source)
-      : _lookUp(_sourceKey(source), () async {
-          final packages = await SourcePackages.load(source);
-          final busiest = packages.isEmpty
-              ? null
-              : packages.entries
-                    .reduce((a, b) => b.value > a.value ? b : a)
-                    .key;
-          return {'package': busiest, 'label': source.trim()};
-        });
+  static Future<Uint8List?> iconFor(String source) async =>
+      (kEchoDemo ? await _demo(source) : null) ??
+      await (_desktop
+          ? _synced(source)
+          : _lookUp(_sourceKey(source), () async {
+              final packages = await SourcePackages.load(source);
+              final busiest = packages.isEmpty
+                  ? null
+                  : packages.entries
+                        .reduce((a, b) => b.value > a.value ? b : a)
+                        .key;
+              return {'package': busiest, 'label': source.trim()};
+            }));
 
   /// PNG of the app [pkg]'s icon, or null when it isn't installed.
-  static Future<Uint8List?> iconForPackage(String pkg) => _desktop
-      ? Future.value(null)
-      : _lookUp(_packageKey(pkg), () async => {'package': pkg});
+  static Future<Uint8List?> iconForPackage(String pkg) async =>
+      (kEchoDemo
+          ? await _demo(
+              DemoDay.packages.entries
+                      .where((e) => e.value == pkg)
+                      .firstOrNull
+                      ?.key ??
+                  pkg,
+            )
+          : null) ??
+      await (_desktop
+          ? Future<Uint8List?>.value(null)
+          : _lookUp(_packageKey(pkg), () async => {'package': pkg}));
+
+  /// The filming build: the bundled icon for [source] (its apps needn't be
+  /// installed, or synced, for their icons to show).
+  static final Map<String, Uint8List?> _demoIcons = {};
+
+  static Future<Uint8List?> _demo(String source) async {
+    final name = SourcePackages.normalise(source);
+    if (_demoIcons.containsKey(name)) return _demoIcons[name];
+    try {
+      final data = await rootBundle.load('assets/demo_icons/$name.png');
+      final png = data.buffer.asUint8List();
+      // Painted straight away on the next build, as a looked-up icon is.
+      _resolved[_sourceKey(source)] = png;
+      return _demoIcons[name] = png;
+    } catch (_) {
+      return _demoIcons[name] = null;
+    }
+  }
 
   /// Desktop: the icon the phone synced for [source], if any. A miss isn't
   /// cached — the phone may send it on its next sync.

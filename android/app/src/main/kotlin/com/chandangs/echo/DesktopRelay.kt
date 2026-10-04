@@ -74,7 +74,6 @@ class DesktopRelay(private val context: Context) {
     private fun run(a: JSONObject): String = try {
         when (a.optString("kind")) {
             "reply" -> reply(a.getString("thread"), a.getString("text"), a.optString("to"))
-            "open_chat" -> openChat(a.getString("thread"), a.optString("to"))
             "todo_done" -> {
                 TodoWidgetData.setDone(context, a.getInt("id"), a.optBoolean("done", true))
                 refreshWidgets()
@@ -132,32 +131,6 @@ class DesktopRelay(private val context: Context) {
                 .setContentTitle(if (to.isEmpty()) "Your reply is ready" else "Your reply to $to is ready")
                 .setContentText("Tap to open the chat with it typed: “$text”")
                 .setStyle(Notification.BigTextStyle().bigText("Tap to open the chat with it typed: “$text”"))
-                .setContentIntent(open)
-                .setAutoCancel(true)
-                .build(),
-        )
-        return "ready"
-    }
-
-    /**
-     * "Open on phone" from the computer: a notification that opens the chat
-     * when tapped. Android won't let Echo bring a chat up by itself from the
-     * background, and the owner may not be holding the phone anyway.
-     */
-    private fun openChat(thread: String, to: String): String {
-        val id = REPLY_NOTIFICATION + (thread.hashCode() and 0xffff)
-        val open = ReplyActions.openChatIntent(context, thread, id) ?: return "failed"
-        val manager = context.getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(
-            NotificationChannel(CHANNEL, "From your computer", NotificationManager.IMPORTANCE_HIGH)
-                .apply { description = "Replies written on your computer, ready to send" },
-        )
-        manager.notify(
-            id,
-            Notification.Builder(context, CHANNEL)
-                .setSmallIcon(R.drawable.ic_notification)
-                .setContentTitle(if (to.isEmpty()) "Open the chat" else "Open your chat with $to")
-                .setContentText("Sent from your computer. Tap to open it.")
                 .setContentIntent(open)
                 .setAutoCancel(true)
                 .build(),

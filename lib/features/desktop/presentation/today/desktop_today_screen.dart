@@ -23,12 +23,12 @@ import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart
 import 'package:project_echo/features/echo/data/home/group_summaries.dart';
 import 'package:project_echo/features/echo/data/home/home_feed.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
-import 'package:project_echo/features/echo/data/reply/reply_sender.dart';
 import 'package:project_echo/features/echo/data/relevance/temporal_relevance.dart';
 import 'package:project_echo/features/echo/presentation/widgets/ask/ask_parts.dart';
 import 'package:project_echo/features/profile/data/week_stats.dart';
 import 'package:project_echo/features/todo/data/todo_item.dart';
 import 'package:project_echo/features/todo/data/todo_store.dart';
+import 'package:project_echo/features/desktop/presentation/typing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Today on the computer: a triage inbox. Everything that wants the owner
@@ -60,7 +60,6 @@ class _DesktopTodayScreenState extends State<DesktopTodayScreen> {
   var _reminderTitles = <String, String>{};
   var _actions = <PhoneAction>[];
   var _marked = <String>{};
-  var _routes = <String, ReplyRoute>{};
   var _summaries = <String, String>{};
   String? _name;
   String? _briefing;
@@ -141,11 +140,6 @@ class _DesktopTodayScreenState extends State<DesktopTodayScreen> {
     final marked = await HandledMarks.load(now);
     final summaries = await GroupSummaries.cached();
     final items = TriageItem.fromFeed(feed);
-    final routes = {
-      for (final i in items)
-        if (i.kind == TriageKind.waiting)
-          i.id: await DesktopActions.routeFor(i.entry),
-    };
     WeekStats? week;
     try {
       week = await WeekStats.load(now);
@@ -172,7 +166,6 @@ class _DesktopTodayScreenState extends State<DesktopTodayScreen> {
       _reminderTitles = reminderTitles(prefs.getString(Reminders.storeKey));
       _actions = actions;
       _marked = sameDay ? {...marked, ..._marked} : marked;
-      _routes = routes;
       _summaries = {..._summaries, ...summaries};
       _name = prefs.getString('user_name')?.trim();
       _briefing = (briefing?.isEmpty ?? true) ? null : briefing;
@@ -381,12 +374,7 @@ class _DesktopTodayScreenState extends State<DesktopTodayScreen> {
   // ── Keys ───────────────────────────────────────────────────────────────
 
   /// Whether the owner is typing somewhere, when letters are letters.
-  bool get _typing {
-    final focus = FocusManager.instance.primaryFocus?.context;
-    return focus != null &&
-        (focus.widget is EditableText ||
-            focus.findAncestorWidgetOfExactType<EditableText>() != null);
-  }
+  bool get _typing => typingInAField();
 
   KeyEventResult _onKey(FocusNode _, KeyEvent event) {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
@@ -543,7 +531,6 @@ class _DesktopTodayScreenState extends State<DesktopTodayScreen> {
         now: _now,
         marked: _marked.contains(item.id),
         reply: _replyFor(item),
-        route: _routes[item.id] ?? ReplyRoute.pick,
         remindAt: item.kind == TriageKind.group
             ? null
             : reminderTimeFor(item.entry, _now),
