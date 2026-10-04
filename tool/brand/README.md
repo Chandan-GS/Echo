@@ -18,7 +18,7 @@ It opens the page in headless Chrome (set `CHROME` if it isn't at the usual macO
 | `windows/runner/resources/app_icon.ico` | 16 to 256 px in one file |
 | `assets/logo.png` | the desktop sidebar's logo |
 | `store_assets/` | the Play Store icon (512 px) and the 1024 px original |
-| `docs/logo.png` | the README's logo |
+| `docs/logo.png` | the README's logo: Echo round, on a transparent ground |
 | the website's `public/` | `logo.png` and the two favicons (bump their `?v=` in its `app/layout.tsx`) |
 
 Open `echo_icons.html` in a browser to see them all.

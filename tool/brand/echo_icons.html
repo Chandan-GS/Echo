@@ -78,6 +78,12 @@ function full(n, { rounded = false } = {}) {
   eyes(ctx, n / 2, n / 2, n / 2);
   return c;
 }
+/** Echo round, on nothing: his orb and face, for the README. */
+function round(n) {
+  const [c, ctx] = canvas(n);
+  echo(ctx, n / 2, n / 2, n / 2);
+  return c;
+}
 /** Android adaptive layers: 108 dp, of which the middle 72 dp is seen. */
 const ADAPTIVE = { canvas: 108, seen: 72 };
 /** Behind: his body, filling the layer. In front: his eyes (they shift a
@@ -115,7 +121,7 @@ function render() {
   add('store_assets/echo_icon_1024.png', full(1024));
   add('store_assets/play_store_icon_512.png', full(512));
   add('assets/logo.png', full(1024));
-  add('docs/logo.png', full(512));
+  add('docs/logo.png', round(512));
   for (const n of [16, 32, 64, 128, 256, 512, 1024]) add(`macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_${n}.png`, full(n));
   for (const [pt, x] of IOS) add(`ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-${pt}x${pt}@${x}x.png`, full(Math.round(pt * x)));
   for (const n of [16, 24, 32, 48, 64, 128, 256]) add(`windows-ico/${n}.png`, full(n));
