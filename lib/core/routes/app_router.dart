@@ -18,8 +18,10 @@ GoRouter createRouter(bool isOnboardingFinished) => GoRouter(
   routes: [
     GoRoute(
       path: '/',
+      // No transition: the phone's splash already shows its first frame (see
+      // LaunchEcho), so it must simply be there when the splash lifts.
       pageBuilder: (context, state) =>
-          fadeThroughPage(key: state.pageKey, child: const StartScreen()),
+          NoTransitionPage(key: state.pageKey, child: const StartScreen()),
     ),
     GoRoute(
       path: '/echo/chat',

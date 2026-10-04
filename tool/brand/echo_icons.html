@@ -1,0 +1,138 @@
+<!doctype html>
+<!--
+  Echo's icons, drawn with the mascot's own drawing (EchoMascot, as ported for
+  the website): Echo himself fills the icon, edge to edge — his pearl body,
+  gloss and face, looking up — so whatever shape a launcher crops, it's him.
+  render.mjs opens this in headless Chrome, calls render(), and writes the
+  files. Open it in a browser to see every icon it makes.
+-->
+<meta charset="utf-8">
+<title>Echo icons</title>
+<style>
+  body { margin: 24px; background: #1a1a1a; color: #a0a0a0; font: 13px system-ui; display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-end; }
+  figure { margin: 0; display: grid; gap: 6px; justify-items: center; }
+  canvas { background: repeating-conic-gradient(#2a2a2a 0 25%, #333 0 50%) 50% / 16px 16px; max-width: 256px; height: auto; }
+</style>
+<body>
+<script>
+const TAU = Math.PI * 2;
+const EYE = '#222F27';
+/** Where he looks: up and a little to his right, as in the chosen mockup. */
+const LOOK = [-0.15, -0.55];
+
+/** Echo (EchoMascot's 240-unit design: orb r=56 at 120,120), looking up. */
+function echo(ctx, cx, cy, r) { body(ctx, cx, cy, r); eyes(ctx, cx, cy, r); }
+
+/**
+ * His pearl body, sheen and catchlight. With `fill`, the body's gradient
+ * carries on past his edge to fill the whole canvas, so he is the icon.
+ */
+function body(ctx, cx, cy, r, { fill = false } = {}) {
+  const shape = () => { ctx.beginPath(); if (fill) ctx.rect(0, 0, ctx.canvas.width, ctx.canvas.height); else ctx.arc(cx, cy, r, 0, TAU); };
+  const bx = cx - .1 * r, by = cy + .14 * r;
+  const g = ctx.createRadialGradient(bx, by, 0, bx, by, 1.44 * r);
+  g.addColorStop(0, '#FFFFFF'); g.addColorStop(.3, '#F4F9F0'); g.addColorStop(.6, '#D9E8DB'); g.addColorStop(.84, '#B4D1BA'); g.addColorStop(1, '#9EC0A6');
+  shape(); ctx.fillStyle = g; ctx.fill();
+  const shade = ctx.createRadialGradient(cx, cy + .6 * r, 0, cx, cy + .6 * r, 1.24 * r);
+  shade.addColorStop(0, 'rgba(94,133,104,0)'); shade.addColorStop(.72, 'rgba(94,133,104,0)'); shade.addColorStop(1, 'rgba(94,133,104,.3)');
+  shape(); ctx.fillStyle = shade; ctx.fill();
+  ctx.save(); ctx.translate(cx - r * .32, cy - r * .46); ctx.rotate(-.42); ctx.scale(1, .54 / .86);
+  const sp = ctx.createRadialGradient(0, 0, 0, 0, 0, r * .55);
+  sp.addColorStop(0, 'rgba(255,255,255,.95)'); sp.addColorStop(.45, 'rgba(255,255,255,.55)'); sp.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = sp; ctx.beginPath(); ctx.arc(0, 0, r * .55, 0, TAU); ctx.fill(); ctx.restore();
+  const cr = r * .14, clx = cx - r * .39, cly = cy - r * .54;
+  const cl = ctx.createRadialGradient(clx, cly, 0, clx, cly, cr);
+  cl.addColorStop(0, 'rgba(255,255,255,.95)'); cl.addColorStop(.6, 'rgba(255,255,255,.9)'); cl.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = cl; ctx.beginPath(); ctx.arc(clx, cly, cr, 0, TAU); ctx.fill();
+}
+
+/** His eyes, looking up, each with its glint. */
+function eyes(ctx, cx, cy, r) {
+  const k = r / 56;
+  const P = (x, y) => [cx + (x - 120) * k, cy + (y - 120) * k];
+  const s = (v) => v * k;
+  ctx.save(); ctx.translate(s(6) * LOOK[0], s(4.2) * LOOK[1]);
+  for (const ex of [108, 132]) {
+    ctx.beginPath(); ctx.ellipse(...P(ex, 120), s(5.5), s(8.5), 0, 0, TAU); ctx.fillStyle = EYE; ctx.fill();
+    ctx.beginPath(); ctx.arc(...P(ex + 2 - 1.6 * LOOK[0], 120 - 3.6 - 1.3 * LOOK[1]), s(2), 0, TAU); ctx.fillStyle = 'rgba(255,255,255,.95)'; ctx.fill();
+  }
+  ctx.restore();
+}
+
+/** His head as one colour with his eyes cut out (status bar, themed icon). */
+function glyph(ctx, cx, cy, r, color) {
+  ctx.fillStyle = color; ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU); ctx.fill();
+  ctx.globalCompositeOperation = 'destination-out';
+  const k = r / 56 * 1.45; // eyes a touch larger, to read small
+  for (const x of [cx - 12 * k, cx + 12 * k]) { ctx.beginPath(); ctx.ellipse(x, cy, 5.5 * k, 8.5 * k, 0, 0, TAU); ctx.fill(); }
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+function canvas(n) { const c = document.createElement('canvas'); c.width = c.height = n; return [c, c.getContext('2d')]; }
+
+/** The whole icon, square: Echo, his face as wide as the icon. */
+function full(n, { rounded = false } = {}) {
+  const [c, ctx] = canvas(n);
+  if (rounded) { ctx.beginPath(); ctx.roundRect(0, 0, n, n, n * .22); ctx.clip(); }
+  body(ctx, n / 2, n / 2, n / 2, { fill: true });
+  eyes(ctx, n / 2, n / 2, n / 2);
+  return c;
+}
+/** Android adaptive layers: 108 dp, of which the middle 72 dp is seen. */
+const ADAPTIVE = { canvas: 108, seen: 72 };
+/** Behind: his body, filling the layer. In front: his eyes (they shift a
+    little against it as launchers tilt the layers). */
+function adaptiveBackground(n) {
+  const [c, ctx] = canvas(n); const v = n * ADAPTIVE.seen / ADAPTIVE.canvas;
+  body(ctx, n / 2, n / 2, v / 2, { fill: true }); return c;
+}
+function adaptiveForeground(n) {
+  const [c, ctx] = canvas(n); const v = n * ADAPTIVE.seen / ADAPTIVE.canvas;
+  eyes(ctx, n / 2, n / 2, v / 2); return c;
+}
+function adaptiveMonochrome(n) {
+  const [c, ctx] = canvas(n); const v = n * ADAPTIVE.seen / ADAPTIVE.canvas;
+  glyph(ctx, n / 2, n / 2, v * .6 / 2, '#fff'); return c;
+}
+/** Status-bar icon: 24 dp, white, his head filling all but a dp each side. */
+function notification(n) { const [c, ctx] = canvas(n); glyph(ctx, n / 2, n / 2, n * .46, '#fff'); return c; }
+
+const DENS = { mdpi: 1, hdpi: 1.5, xhdpi: 2, xxhdpi: 3, xxxhdpi: 4 };
+const IOS = [[20, 1], [20, 2], [20, 3], [29, 1], [29, 2], [29, 3], [40, 1], [40, 2], [40, 3], [50, 1], [50, 2], [57, 1], [57, 2], [60, 2], [60, 3], [72, 1], [72, 2], [76, 1], [76, 2], [83.5, 2], [1024, 1]];
+
+/** Every file, by path from the repo root (web: from the website's root). */
+function render() {
+  const out = {};
+  const add = (path, c) => { out[path] = c.toDataURL('image/png'); show(path, c); };
+  const res = 'android/app/src/main/res';
+  for (const [d, x] of Object.entries(DENS)) {
+    add(`${res}/drawable-${d}/ic_launcher_background.png`, adaptiveBackground(Math.round(108 * x)));
+    add(`${res}/drawable-${d}/ic_launcher_foreground.png`, adaptiveForeground(Math.round(108 * x)));
+    add(`${res}/drawable-${d}/ic_launcher_monochrome.png`, adaptiveMonochrome(Math.round(108 * x)));
+    add(`${res}/drawable-${d}/ic_notification.png`, notification(Math.round(24 * x)));
+    add(`${res}/mipmap-${d}/ic_launcher.png`, full(Math.round(48 * x)));
+  }
+  add('store_assets/echo_icon_1024.png', full(1024));
+  add('store_assets/play_store_icon_512.png', full(512));
+  add('assets/logo.png', full(1024));
+  add('docs/logo.png', full(512));
+  for (const n of [16, 32, 64, 128, 256, 512, 1024]) add(`macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_${n}.png`, full(n));
+  for (const [pt, x] of IOS) add(`ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-${pt}x${pt}@${x}x.png`, full(Math.round(pt * x)));
+  for (const n of [16, 24, 32, 48, 64, 128, 256]) add(`windows-ico/${n}.png`, full(n));
+  add('web/logo.png', full(512));
+  add('web/favicon-32.png', full(32, { rounded: true }));
+  add('web/favicon-256.png', full(256, { rounded: true }));
+  return out;
+}
+
+function show(path, c) {
+  const f = document.createElement('figure');
+  const shown = document.createElement('canvas'); shown.width = c.width; shown.height = c.height;
+  shown.getContext('2d').drawImage(c, 0, 0);
+  shown.style.width = Math.min(c.width, 128) + 'px';
+  f.append(shown, Object.assign(document.createElement('figcaption'), { textContent: path.split('/').slice(-2).join('/') }));
+  document.body.append(f);
+}
+if (!navigator.webdriver && !location.hash.includes('quiet')) addEventListener('load', render);
+</script>
+</body>

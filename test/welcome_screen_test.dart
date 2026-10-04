@@ -22,19 +22,20 @@ void main() {
         )
         .opacity;
 
+    // The storyboard plays at two-thirds speed: 4.5 seconds in all.
     // Asleep, with the words still hidden.
-    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 600));
     expect(stateNow(), EchoState.sleeping);
     expect(opacityOf('Echo'), 0);
 
     // Awake, then happy.
-    await tester.pump(const Duration(milliseconds: 1000));
+    await tester.pump(const Duration(milliseconds: 1500));
     expect(stateNow(), EchoState.idle);
-    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 600));
     expect(stateNow(), EchoState.happy);
 
     // Risen, and saying hello.
-    await tester.pump(const Duration(milliseconds: 1300));
+    await tester.pump(const Duration(milliseconds: 1950));
     expect(stateNow(), EchoState.idle);
     expect(opacityOf('Echo'), 1);
     expect(find.text('Get Started'), findsOneWidget);
