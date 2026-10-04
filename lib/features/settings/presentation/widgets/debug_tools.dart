@@ -134,8 +134,8 @@ class DebugTools extends StatelessWidget {
     );
 
     // Give a clear, honest signal instead of a silent no-op: on Android 13+
-    // the OS requires POST_NOTIFICATIONS to be granted, which `init()` now
-    // requests — but the user may still have denied it.
+    // the OS requires POST_NOTIFICATIONS, asked for in onboarding and when a
+    // reminder or briefing time is set — but the user may have said no.
     final androidPlugin = service.flutterLocalNotificationsPlugin
         .resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin

@@ -6,12 +6,17 @@ sealed class OnBoardingState {}
 final class OnBoardingInitial extends OnBoardingState {}
 
 final class PermissionsStep extends OnBoardingState {
+  /// Notification access: reading other apps' notifications.
   final bool notificationGranted;
   final bool calendarGranted;
+
+  /// Posting Echo's own notifications (its briefing and reminders). Optional.
+  final bool alertsGranted;
 
   PermissionsStep({
     required this.notificationGranted,
     required this.calendarGranted,
+    required this.alertsGranted,
   });
 
   bool get canContinue => notificationGranted && calendarGranted;

@@ -35,11 +35,13 @@ class OnBoardingCubit extends Cubit<OnBoardingState> {
   Future<void> checkPermissions() async {
     final notificationStatus = await _checkNotificationPermission();
     final calendarStatus = await Permission.calendarFullAccess.status;
+    final alertsStatus = await Permission.notification.status;
 
     emit(
       PermissionsStep(
         notificationGranted: notificationStatus,
         calendarGranted: calendarStatus.isGranted,
+        alertsGranted: alertsStatus.isGranted,
       ),
     );
   }
@@ -87,6 +89,22 @@ class OnBoardingCubit extends Cubit<OnBoardingState> {
       }
       await checkPermissions();
     }
+  }
+
+  /// Asks to post Echo's briefing and reminders; once Android stops asking
+  /// (denied for good), or to turn it off, that's in system settings.
+  Future<void> toggleAlerts() async {
+    final currentState = state;
+    if (currentState is! PermissionsStep) return;
+    final status = await Permission.notification.status;
+    if (currentState.alertsGranted || status.isPermanentlyDenied) {
+      await openAppSettings();
+    } else if (!(await Permission.notification.request()).isGranted) {
+      // Said no, or Android 12 and older (no question to show, notifications
+      // switched off): the switch is in system settings.
+      await openAppSettings();
+    }
+    await checkPermissions();
   }
 
   void completePermissions() {

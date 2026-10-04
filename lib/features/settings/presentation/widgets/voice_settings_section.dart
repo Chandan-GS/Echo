@@ -12,6 +12,7 @@ import 'package:project_echo/core/services/voice/natural_voice.dart';
 import 'package:project_echo/core/services/voice_catalog.dart';
 import 'package:project_echo/features/onboarding/data/voice_preference.dart';
 import 'package:project_echo/features/onboarding/presentation/widgets/voice_studio.dart';
+import 'package:project_echo/features/settings/presentation/widgets/natural_voice_tile.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
 /// Settings ▸ Voice — lets the user re-tune the briefing voice (gender · accent ·
@@ -50,8 +51,9 @@ class _VoiceSettingsSectionState extends State<VoiceSettingsSection> {
     final restored = VoicePreference.read(prefs);
     final accents = await VoiceCatalog.instance.availableAccents(_tts);
     final hasGoodVoice = await VoiceCatalog.instance.hasHighQualityVoice(_tts);
-    final installedVoices =
-        _isDesktop ? await VoiceCatalog.instance.listInstalledVoices(_tts) : null;
+    final installedVoices = _isDesktop
+        ? await VoiceCatalog.instance.listInstalledVoices(_tts)
+        : null;
 
     _tts.setCompletionHandler(() {
       if (mounted) setState(() => _playing = false);
@@ -66,18 +68,21 @@ class _VoiceSettingsSectionState extends State<VoiceSettingsSection> {
     if (!mounted) return;
     setState(() {
       if (installedVoices != null) {
-        final stillInstalled = restored.hasDirectVoice &&
-            installedVoices.any((v) =>
-                v['name'] == restored.directVoiceName &&
-                v['locale'] == restored.directVoiceLocale);
+        final stillInstalled =
+            restored.hasDirectVoice &&
+            installedVoices.any(
+              (v) =>
+                  v['name'] == restored.directVoiceName &&
+                  v['locale'] == restored.directVoiceLocale,
+            );
         _pref = stillInstalled
             ? restored
             : (installedVoices.isNotEmpty
-                ? restored.withDirectVoice(
-                    name: installedVoices.first['name']!,
-                    locale: installedVoices.first['locale']!,
-                  )
-                : restored);
+                  ? restored.withDirectVoice(
+                      name: installedVoices.first['name']!,
+                      locale: installedVoices.first['locale']!,
+                    )
+                  : restored);
         if (!stillInstalled) _persist();
       } else {
         _pref = accents.contains(restored.accent)
@@ -150,8 +155,9 @@ class _VoiceSettingsSectionState extends State<VoiceSettingsSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (!_isDesktop) _NaturalVoiceTile(pref: _pref),
-        if (Platform.isMacOS && !_hasHighQualityVoice) const _BetterVoicesHint(),
+        if (!_isDesktop) NaturalVoiceTile(pref: _pref),
+        if (Platform.isMacOS && !_hasHighQualityVoice)
+          const _BetterVoicesHint(),
         if (_isDesktop)
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
@@ -166,144 +172,6 @@ class _VoiceSettingsSectionState extends State<VoiceSettingsSection> {
           installedVoices: _installedVoices,
         ),
       ],
-    );
-  }
-}
-
-/// Echo's natural voice: a download that makes him sound like a person
-/// rather than the phone's reader. Without it, the phone's voice is used.
-class _NaturalVoiceTile extends StatefulWidget {
-  /// The voice the owner has chosen; each has its own download.
-  final VoicePreference pref;
-  const _NaturalVoiceTile({required this.pref});
-
-  @override
-  State<_NaturalVoiceTile> createState() => _NaturalVoiceTileState();
-}
-
-class _NaturalVoiceTileState extends State<_NaturalVoiceTile> {
-  final _voice = NaturalVoice.instance;
-
-  @override
-  void initState() {
-    super.initState();
-    EchoVoice.instance.warmUp();
-  }
-
-  @override
-  void didUpdateWidget(_NaturalVoiceTile old) {
-    super.didUpdateWidget(old);
-    // Another voice or accent: is that one downloaded?
-    if (piperVoice(old.pref) != piperVoice(widget.pref)) {
-      _voice.modelDir(widget.pref);
-    }
-  }
-
-  Future<void> _install() async {
-    try {
-      await _voice.install(widget.pref);
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            "The natural voice didn't download. Try again on Wi-Fi.",
-          ),
-        ),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.colors;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
-      decoration: BoxDecoration(
-        color: colors.surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: colors.dividerColor.withValues(alpha: 0.6)),
-      ),
-      child: ListenableBuilder(
-        listenable: Listenable.merge([_voice.installed, _voice.progress]),
-        builder: (context, _) {
-          final installed = _voice.installed.value;
-          final progress = _voice.progress.value;
-          return Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Natural voice',
-                      style: GoogleFonts.nunito(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                        color: colors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      progress == null
-                          ? (installed
-                                ? '${widget.pref.voice.label} speaks with it, on '
-                                      'your phone.'
-                                : 'A more human ${widget.pref.voice.label} that '
-                                      'runs on your phone. '
-                                      '${NaturalVoice.downloadLabel} download.')
-                          : progress < 0.9
-                          ? 'Downloading · ${(progress / 0.9 * 100).round()}%'
-                          : 'Unpacking…',
-                      style: GoogleFonts.nunito(
-                        fontSize: 13,
-                        height: 1.4,
-                        color: colors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12),
-              if (progress != null)
-                IconButton(
-                  tooltip: 'Cancel',
-                  onPressed: _voice.cancelInstall,
-                  icon: Icon(Symbols.close_rounded, color: colors.textSecondary),
-                )
-              else if (installed)
-                TextButton(
-                  onPressed: _voice.remove,
-                  child: Text(
-                    'Remove',
-                    style: GoogleFonts.nunito(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                      color: colors.textSecondary,
-                    ),
-                  ),
-                )
-              else
-                FilledButton(
-                  onPressed: _install,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: colors.textPrimary,
-                    foregroundColor: colors.background,
-                    shape: const StadiumBorder(),
-                  ),
-                  child: Text(
-                    'Download',
-                    style: GoogleFonts.nunito(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-            ],
-          );
-        },
-      ),
     );
   }
 }
@@ -331,7 +199,11 @@ class _RescanButton extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Symbols.refresh_rounded, size: 16, color: colors.primaryGreen),
+                Icon(
+                  Symbols.refresh_rounded,
+                  size: 16,
+                  color: colors.primaryGreen,
+                ),
                 const SizedBox(width: 8),
                 Text(
                   'Rescan installed voices',
@@ -378,24 +250,37 @@ class _BetterVoicesHint extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Symbols.record_voice_over_rounded, size: 18, color: colors.primaryGreen),
+          Icon(
+            Symbols.record_voice_over_rounded,
+            size: 18,
+            color: colors.primaryGreen,
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: RichText(
               text: TextSpan(
-                style: GoogleFonts.nunito(fontSize: 12.5, height: 1.45, color: colors.textPrimary),
+                style: GoogleFonts.nunito(
+                  fontSize: 12.5,
+                  height: 1.45,
+                  color: colors.textPrimary,
+                ),
                 children: [
                   const TextSpan(
-                    text: 'These are macOS\'s default-quality voices. For much more '
+                    text:
+                        'These are macOS\'s default-quality voices. For much more '
                         'natural speech, download a free ',
                   ),
                   TextSpan(
                     text: 'Premium',
-                    style: GoogleFonts.nunito(fontSize: 12.5, fontWeight: FontWeight.w800),
+                    style: GoogleFonts.nunito(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                   const TextSpan(text: ' (or Enhanced) voice in '),
                   TextSpan(
-                    text: 'System Settings → Accessibility → Spoken Content → '
+                    text:
+                        'System Settings → Accessibility → Spoken Content → '
                         'System Voice → Manage Voices',
                     style: GoogleFonts.nunito(
                       fontSize: 12.5,
@@ -405,15 +290,17 @@ class _BetterVoicesHint extends StatelessWidget {
                     recognizer: TapGestureRecognizer()
                       ..onTap = () => _openSystemSettings(),
                   ),
-                  const TextSpan(
-                    text: ', then tap Rescan. Note: ',
-                  ),
+                  const TextSpan(text: ', then tap Rescan. Note: '),
                   TextSpan(
                     text: 'Siri\'s own voice can\'t be used',
-                    style: GoogleFonts.nunito(fontSize: 12.5, fontWeight: FontWeight.w800),
+                    style: GoogleFonts.nunito(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                   const TextSpan(
-                    text: ' — Apple locks it to Siri, so pick a Premium voice instead.',
+                    text:
+                        ' — Apple locks it to Siri, so pick a Premium voice instead.',
                   ),
                 ],
               ),

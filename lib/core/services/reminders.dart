@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -6,6 +7,7 @@ import 'package:project_echo/core/services/reminder_settings.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:project_echo/features/echo/data/relevance/temporal_relevance.dart';
 import 'package:project_echo/features/todo/data/todo_item.dart';
+import 'package:project_echo/core/services/notify_permission.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// "Remind me at 7:40": a notification about a message or a to-do, at that
@@ -58,6 +60,7 @@ class Reminders {
     int? todoId,
     String? thread,
   }) async {
+    unawaited(NotifyPermission.askIfNeeded());
     final all = await _load()
       ..removeWhere(
         (_, r) => DateTime.fromMillisecondsSinceEpoch(

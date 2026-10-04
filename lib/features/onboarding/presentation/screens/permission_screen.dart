@@ -62,7 +62,7 @@ class _PermissionScreenState extends State<PermissionScreen>
               PermissionTile(
                 icon: Symbols.notifications_active_rounded,
                 title: 'Notification access',
-                subtitle: 'Reads incoming alerts',
+                subtitle: 'Reads your incoming notifications',
                 isGranted: state.notificationGranted,
                 onChanged: (val) => cubit.toggleNotification(),
               ),
@@ -72,6 +72,13 @@ class _PermissionScreenState extends State<PermissionScreen>
                 subtitle: "Reads today's schedule",
                 isGranted: state.calendarGranted,
                 onChanged: (val) => cubit.toggleCalendar(),
+              ),
+              PermissionTile(
+                icon: Symbols.alarm_rounded,
+                title: 'Briefing and reminders',
+                subtitle: 'Lets Echo notify you on time',
+                isGranted: state.alertsGranted,
+                onChanged: (val) => cubit.toggleAlerts(),
               ),
               const SizedBox(height: 24),
             ],

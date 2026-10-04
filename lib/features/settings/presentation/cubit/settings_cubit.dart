@@ -5,6 +5,7 @@ import 'package:project_echo/core/services/analytics_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'settings_state.dart';
 import 'package:project_echo/core/services/schedule_service.dart';
+import 'package:project_echo/core/services/notify_permission.dart';
 import 'package:project_echo/core/services/echo_server_service.dart';
 
 class SettingsCubit extends Cubit<SettingsState> {
@@ -19,8 +20,8 @@ class SettingsCubit extends Cubit<SettingsState> {
       // Load theme — clamp against corrupted/out-of-range persisted values so
       // ThemeMode.values[...] can't throw a RangeError and abort loading.
       final themeIndex = prefs.getInt('theme_mode') ?? 0;
-      final themeMode = ThemeMode
-          .values[themeIndex.clamp(0, ThemeMode.values.length - 1)];
+      final themeMode =
+          ThemeMode.values[themeIndex.clamp(0, ThemeMode.values.length - 1)];
 
       // Load speech rate
       final speechRate = prefs.getDouble('speech_rate') ?? 0.5;
@@ -115,7 +116,9 @@ class SettingsCubit extends Cubit<SettingsState> {
         briefingTimes: state.briefingTimes,
         preferDesktopEngine: state.preferDesktopEngine,
         desktopEngineHost: (host == null || host.isEmpty) ? null : host,
-        desktopEngineName: (host == null || host.isEmpty) ? null : state.desktopEngineName,
+        desktopEngineName: (host == null || host.isEmpty)
+            ? null
+            : state.desktopEngineName,
         runDesktopEngineHere: state.runDesktopEngineHere,
       ),
     );
@@ -160,6 +163,8 @@ class SettingsCubit extends Cubit<SettingsState> {
   }
 
   Future<void> addBriefingTime(String time) async {
+    // A briefing is a notification: make sure Echo may post one.
+    await NotifyPermission.askIfNeeded();
     final prefs = await SharedPreferences.getInstance();
     final times = List<String>.from(state.briefingTimes);
     if (!times.contains(time)) {
