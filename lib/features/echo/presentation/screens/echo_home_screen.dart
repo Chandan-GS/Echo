@@ -28,7 +28,7 @@ import 'package:project_echo/core/presentation/animations/page_transitions.dart'
 import 'package:project_echo/core/presentation/animations/app_motion.dart';
 import 'package:project_echo/core/presentation/animations/fade_slide_in.dart';
 import 'package:material_symbols_icons/symbols.dart';
-import 'package:project_echo/core/presentation/widgets/pressable.dart';
+import 'package:project_echo/core/presentation/widgets/press_feedback.dart';
 
 /// The phone's Home tab. Ask Echo lives in the nav dock (see NavDock).
 class EchoHomeScreen extends StatelessWidget {
@@ -643,7 +643,7 @@ class _RegenerateRowState extends State<_RegenerateRow> {
   Widget build(BuildContext context) {
     final c = context.colors;
     final at = _madeAt;
-    return Pressable(
+    return PressFeedback(
       scale: 0.98,
       child: Material(
         color: c.surface,

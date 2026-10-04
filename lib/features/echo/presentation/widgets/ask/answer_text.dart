@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:project_echo/core/presentation/animations/app_motion.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/features/echo/data/ask/citations.dart';
@@ -15,7 +16,19 @@ class AnswerText extends StatefulWidget {
   final int sources;
   final void Function(int number)? onCite;
 
-  const AnswerText(this.text, {super.key, required this.sources, this.onCite});
+  /// Desktop: the pointer resting on a citation, and the one lit to match a
+  /// source picked beside the chat.
+  final void Function(int number)? onCiteHover;
+  final int? litCite;
+
+  const AnswerText(
+    this.text, {
+    super.key,
+    required this.sources,
+    this.onCite,
+    this.onCiteHover,
+    this.litCite,
+  });
 
   @override
   State<AnswerText> createState() => _AnswerTextState();
@@ -100,12 +113,7 @@ class _AnswerTextState extends State<AnswerText>
                       for (final n in numbers)
                         Padding(
                           padding: const EdgeInsets.only(left: 3),
-                          child: CiteDot(
-                            n,
-                            onTap: widget.onCite == null
-                                ? null
-                                : () => widget.onCite!(n),
-                          ),
+                          child: _dot(n),
                         ),
                     ],
                   ),
@@ -118,6 +126,35 @@ class _AnswerTextState extends State<AnswerText>
         fontSize: 15.5,
         height: 1.55,
         color: colors.textPrimary,
+      ),
+    );
+  }
+
+  Widget _dot(int n) {
+    final dot = CiteDot(
+      n,
+      onTap: widget.onCite == null ? null : () => widget.onCite!(n),
+    );
+    final hover = widget.onCiteHover;
+    if (hover == null) return dot;
+    final lit = n == widget.litCite;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => hover(n),
+      child: AnimatedScale(
+        scale: lit ? 1.25 : 1,
+        duration: AppMotion.fast,
+        curve: AppMotion.spring,
+        child: DecoratedBox(
+          position: DecorationPosition.foreground,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: lit
+                ? Border.all(color: context.colors.primaryGreen, width: 1.5)
+                : null,
+          ),
+          child: dot,
+        ),
       ),
     );
   }

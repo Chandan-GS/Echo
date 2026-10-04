@@ -11,7 +11,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 class ChatContextStore {
   ChatContextStore._();
 
-  static const _turnsKey = 'echo_my_turns_v1';
+  /// Synced to a paired computer as is (see PhoneSyncService).
+  static const turnsKey = 'echo_my_turns_v1';
   static const _namesKey = 'echo_self_names_v1';
   static const _engagementKey = 'echo_engagement_v1';
 
@@ -26,7 +27,7 @@ class ChatContextStore {
   ) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.reload();
-    final all = _decode(prefs.getString(_turnsKey));
+    final all = _decode(prefs.getString(turnsKey));
     final turns = [
       ...((all[thread] as List?) ?? const []),
       {'t': at.millisecondsSinceEpoch, 'x': _clip(text, 140)},
@@ -35,12 +36,12 @@ class ChatContextStore {
       turns.length > _turnsPerThread ? turns.length - _turnsPerThread : 0,
     );
     _prune(all, (v) => ((v as List).last as Map)['t'] as int);
-    await prefs.setString(_turnsKey, jsonEncode(all));
+    await prefs.setString(turnsKey, jsonEncode(all));
   }
 
   static Future<MyTurns> loadMyTurns() async {
     final prefs = await SharedPreferences.getInstance();
-    return MyTurns.fromJson(_decode(prefs.getString(_turnsKey)));
+    return MyTurns.fromJson(_decode(prefs.getString(turnsKey)));
   }
 
   /// Keeps a name a chat app gives the owner, for spotting mentions.

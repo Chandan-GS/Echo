@@ -19,6 +19,10 @@ import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:project_echo/core/services/app_icon_service.dart';
 import 'package:project_echo/features/todo/data/todo_store.dart';
 import 'package:project_echo/features/vault/data/daily_stats.dart';
+import 'package:project_echo/core/services/phone_actions.dart';
+import 'package:project_echo/core/services/reminder_settings.dart';
+import 'package:project_echo/core/services/reminders.dart';
+import 'package:project_echo/features/echo/data/context/chat_context_store.dart';
 
 /// A phone that has paired with this computer's engine via QR — kept only for
 /// display in Settings ("Paired devices").
@@ -57,6 +61,12 @@ class EchoServerService {
 
   HttpServer? _httpServer;
   RawDatagramSocket? _discoverySocket;
+
+  /// When the phone last sent a snapshot (ms since epoch).
+  static const lastPhoneSyncKey = 'desktop_last_phone_sync';
+
+  /// When the owner first opened Echo on the phone (ISO 8601).
+  static const phoneFirstLaunchKey = 'desktop_phone_first_launch';
 
   /// Bumped each time a phone snapshot is received via `/sync`, so the desktop
   /// mirror (Today/Vault) can listen and reload. A plain counter is enough —
@@ -250,6 +260,8 @@ class EchoServerService {
       ..post('/briefing', (r) => _handleGenerate(r, _briefingSampling))
       ..post('/ask', (r) => _handleGenerate(r, _askSampling))
       ..post('/sync', _handleSync)
+      ..get('/actions', _handleActions)
+      ..post('/actions/done', _handleActionsDone)
       ..post('/pair', _handlePair);
 
     final handler = Pipeline()
@@ -273,6 +285,28 @@ class EchoServerService {
     _discoverySocket = null;
     await _httpServer?.close(force: true);
     _httpServer = null;
+  }
+
+  /// What the phone should do (see PhoneActions and DesktopRelay.kt).
+  Future<Response> _handleActions(Request request) async {
+    final open = await PhoneActions.forPhone();
+    return Response.ok(
+      jsonEncode([
+        for (final a in open) {'id': a.id, ...a.body},
+      ]),
+      headers: _jsonHeaders,
+    );
+  }
+
+  /// The phone's report on what it did.
+  Future<Response> _handleActionsDone(Request request) async {
+    try {
+      final body = jsonDecode(await request.readAsString());
+      if (body is List) await PhoneActions.report(body);
+      return Response.ok(jsonEncode({'status': 'ok'}), headers: _jsonHeaders);
+    } catch (e) {
+      return Response.badRequest(body: jsonEncode({'status': 'error'}));
+    }
   }
 
   Response _handleHealth(Request request) =>
@@ -334,6 +368,41 @@ class EchoServerService {
       if (icons is Map && icons.isNotEmpty) {
         await AppIconService.storeSynced(icons.cast<String, dynamic>());
       }
+
+      // For Today: who's been answered and promised to, and what's set to
+      // remind; for Profile, the owner's name and since when (the phone's
+      // first launch, not this computer's).
+      for (final (field, key) in [
+        ('myTurns', ChatContextStore.turnsKey),
+        ('reminders', Reminders.storeKey),
+        ('userName', 'user_name'),
+        ('firstLaunch', phoneFirstLaunchKey),
+      ]) {
+        final value = body[field];
+        if (value is String) await prefs.setString(key, value);
+      }
+      final aliases = body['categoryAliases'];
+      if (aliases is String) {
+        await prefs.setString('vault_category_aliases', aliases);
+      }
+      final blocked = body['blockedCategories'];
+      if (blocked is List) {
+        await prefs.setStringList(
+          'vault_blocked_categories',
+          blocked.whereType<String>().toList(),
+        );
+      }
+      final lead = body['reminderLead'], suggest = body['reminderSuggest'];
+      if (lead is int) {
+        ReminderSettings.lead.value = Duration(minutes: lead);
+      }
+      if (suggest is bool) ReminderSettings.suggest.value = suggest;
+      await prefs.setInt(
+        lastPhoneSyncKey,
+        DateTime.now().millisecondsSinceEpoch,
+      );
+      // What the phone hasn't done yet stays done on screen.
+      await PhoneActions.applyToMirror();
 
       syncTick.value++;
       return Response.ok(jsonEncode({'status': 'ok'}), headers: _jsonHeaders);

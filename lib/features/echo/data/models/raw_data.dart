@@ -46,6 +46,7 @@ class RawData {
         'sender': sender,
         'content': content,
         'timestamp': timestamp.toIso8601String(),
+        if (thread != null) 'thread': thread,
         if (threadTitle != null) 'threadTitle': threadTitle,
         if (isGroup) 'isGroup': true,
         if (addressed != null) 'addressed': addressed,
@@ -57,6 +58,7 @@ class RawData {
     ..content = (m['content'] ?? '').toString()
     ..timestamp =
         DateTime.tryParse((m['timestamp'] ?? '').toString()) ?? DateTime.now()
+    ..thread = m['thread']?.toString()
     ..threadTitle = m['threadTitle']?.toString()
     ..isGroup = m['isGroup'] == true
     ..addressed = m['addressed']?.toString();

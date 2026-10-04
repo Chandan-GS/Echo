@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:project_echo/core/presentation/widgets/pressable.dart';
+import 'package:project_echo/core/presentation/widgets/press_feedback.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 
 /// A plain icon beside a page's title ("Profile ⚙", "The Vault ☰"): no
@@ -30,7 +30,7 @@ class HeaderIconButton extends StatelessWidget {
         // The tap area reaches past the edge so the icon sits on it.
         child: Transform.translate(
           offset: const Offset((_box - _size) / 2, 0),
-          child: Pressable(
+          child: PressFeedback(
             scale: 0.85,
             child: InkResponse(
               onTap: onTap,

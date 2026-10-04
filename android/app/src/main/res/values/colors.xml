@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#5CA363</color>
+    <!-- The splash ground: the welcome screen's (LaunchEcho.ground). -->
+    <color name="launch_ground">#0D0D0D</color>
 
     <!-- To-do widgets (app_theme.dart light palette; night values in values-night) -->
     <color name="todo_widget_bg">#F4F2EE</color>

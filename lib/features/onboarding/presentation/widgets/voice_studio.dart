@@ -27,6 +27,9 @@ class VoiceStudio extends StatelessWidget {
   /// on phone (and on desktop while still loading).
   final List<Map<String, String>>? installedVoices;
 
+  /// Shown under the controls (the natural voice's download in onboarding).
+  final Widget? footer;
+
   const VoiceStudio({
     super.key,
     required this.pref,
@@ -35,6 +38,7 @@ class VoiceStudio extends StatelessWidget {
     required this.onTogglePlay,
     required this.onChanged,
     this.installedVoices,
+    this.footer,
   });
 
   @override
@@ -106,11 +110,13 @@ class VoiceStudio extends StatelessWidget {
             spacing: 10,
             runSpacing: 10,
             children: accents
-                .map((a) => _Choice(
-                      label: a.label,
-                      selected: pref.accent == a,
-                      onTap: () => onChanged(pref.copyWith(accent: a)),
-                    ))
+                .map(
+                  (a) => _Choice(
+                    label: a.label,
+                    selected: pref.accent == a,
+                    onTap: () => onChanged(pref.copyWith(accent: a)),
+                  ),
+                )
                 .toList(),
           ),
           const SizedBox(height: 26),
@@ -126,6 +132,7 @@ class VoiceStudio extends StatelessWidget {
           onChangeEnd: (v) => onChanged(pref.copyWith(speed: v)),
         ),
         const SizedBox(height: 8),
+        if (footer != null) ...[const SizedBox(height: 18), footer!],
       ],
     );
   }
@@ -151,7 +158,10 @@ class _InstalledVoiceList extends StatelessWidget {
     if (voices.isEmpty) {
       return Text(
         'No system voices found.',
-        style: GoogleFonts.nunito(fontSize: 13, color: context.colors.textSecondary),
+        style: GoogleFonts.nunito(
+          fontSize: 13,
+          color: context.colors.textSecondary,
+        ),
       );
     }
     return Column(
@@ -160,23 +170,24 @@ class _InstalledVoiceList extends StatelessWidget {
         final locale = v['locale'] ?? '';
         final quality = (v['quality'] ?? '').toLowerCase();
         final isBetter = quality == 'enhanced' || quality == 'premium';
-        final selected = pref.directVoiceName == name && pref.directVoiceLocale == locale;
+        final selected =
+            pref.directVoiceName == name && pref.directVoiceLocale == locale;
         return Padding(
           padding: const EdgeInsets.only(bottom: 8),
           child: SelectableTile(
             title: name,
             subtitle: isBetter ? '$locale · ${_titleCase(quality)}' : locale,
             isSelected: selected,
-            onTap: () => onChanged(
-              pref.withDirectVoice(name: name, locale: locale),
-            ),
+            onTap: () =>
+                onChanged(pref.withDirectVoice(name: name, locale: locale)),
           ),
         );
       }).toList(),
     );
   }
 
-  String _titleCase(String s) => s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
+  String _titleCase(String s) =>
+      s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
 }
 
 // ── Local building blocks ──────────────────────────────────────────────────

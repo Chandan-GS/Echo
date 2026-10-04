@@ -1,5 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:project_echo/demo/demo_mode.dart';
 import 'package:project_echo/features/echo/data/context/chat_context_store.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:project_echo/features/profile/data/week_stats.dart';
@@ -87,6 +88,15 @@ class ReplySender {
   }
 
   static Future<T?> _call<T>(String method, Map<String, Object?> args) async {
+    // The filming build never reaches a real chat: replies "go out" and
+    // nothing is opened.
+    if (kEchoDemo) {
+      return switch (method) {
+        'route' => 'send',
+        'send' => true,
+        _ => false,
+      } as T?;
+    }
     try {
       return await _channel.invokeMethod<T>(method, args);
     } on PlatformException {

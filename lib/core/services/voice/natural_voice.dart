@@ -21,13 +21,19 @@ class NaturalVoice {
   /// The download for one voice, for the button.
   static const downloadLabel = '64 MB';
 
-  /// 0..1 while downloading and unpacking, null otherwise.
+  /// The Piper voice being downloaded ([piperVoice]), if one is.
+  final installing = ValueNotifier<String?>(null);
+
+  /// 0..1 while [installing] downloads and unpacks, null otherwise.
   final progress = ValueNotifier<double?>(null);
 
-  /// Whether the chosen voice is ready to speak, kept current for Settings.
-  final installed = ValueNotifier<bool>(false);
+  /// Ticks whenever a voice is added or removed, to check [modelDir] again.
+  final changed = ValueNotifier<int>(0);
 
   CancelToken? _cancel;
+
+  /// The install under way, so another can wait for it to stop.
+  Future<void>? _running;
 
   Future<Directory> _voicesDir() async =>
       Directory('${(await getApplicationSupportDirectory()).path}/voices');
@@ -38,14 +44,31 @@ class NaturalVoice {
     await _removeKokoro(voices);
     final dir = '${voices.path}/${_folder(piperVoice(pref))}';
     final ready = await File('$dir/.ready').exists();
-    installed.value = ready;
     return ready ? dir : null;
   }
 
+  /// Downloads [pref]'s voice. Asking for another voice mid-download stops
+  /// that one first: only the voice the owner has chosen is fetched.
   Future<void> install(VoicePreference pref) async {
-    if (progress.value != null) return;
+    final voice = piperVoice(pref);
+    if (installing.value == voice) return;
+    if (_running != null) {
+      cancelInstall();
+      await _running!.catchError((_) {});
+    }
+    final run = _install(voice);
+    _running = run;
+    try {
+      await run;
+    } finally {
+      if (identical(_running, run)) _running = null;
+    }
+  }
+
+  Future<void> _install(String voice) async {
+    installing.value = voice;
     progress.value = 0;
-    final name = _folder(piperVoice(pref));
+    final name = _folder(voice);
     final voices = await _voicesDir();
     await voices.create(recursive: true);
     final archive = File('${voices.path}/$name.tar.bz2');
@@ -65,13 +88,14 @@ class NaturalVoice {
       }
       await Isolate.run(() => _unpack(archive.path, voices.path));
       await File('${voices.path}/$name/.ready').writeAsString('ok');
-      installed.value = true;
+      changed.value++;
     } catch (e) {
       debugPrint('Natural voice install failed: $e');
       rethrow;
     } finally {
       if (await archive.exists()) await archive.delete();
       progress.value = null;
+      installing.value = null;
       _cancel = null;
     }
   }
@@ -141,7 +165,7 @@ class NaturalVoice {
   Future<void> remove() async {
     final voices = await _voicesDir();
     if (await voices.exists()) await voices.delete(recursive: true);
-    installed.value = false;
+    changed.value++;
   }
 
   /// bzip2 to a temporary tar beside it, then the tar onto disk, streamed so
@@ -188,3 +212,23 @@ String piperVoice(VoicePreference pref) {
 /// The speed slider (0..1, centre is normal) as Piper's speed.
 double piperSpeed(VoicePreference pref) =>
     0.85 + 0.35 * pref.speed.clamp(0.0, 1.0);
+
+/// The accents Piper speaks: the others are heard as their nearest (see
+/// [britishVoice]).
+const piperAccents = [EchoAccent.us, EchoAccent.uk];
+
+/// [accent] as the Piper accent it's heard in.
+EchoAccent piperAccent(EchoAccent accent) =>
+    britishVoice(VoicePreference.fallback.copyWith(accent: accent))
+    ? EchoAccent.uk
+    : EchoAccent.us;
+
+/// A few seconds of [pref]'s natural voice saying its hello, bundled so it can
+/// be heard before the voice is downloaded. For audioplayers' AssetSource.
+String voiceSampleAsset(VoicePreference pref) =>
+    'voice_samples/${piperVoice(pref)}.m4a';
+
+/// How fast to play [voiceSampleAsset] for [pref]'s speed: the samples were
+/// made at the slider's centre.
+double voiceSampleRate(VoicePreference pref) =>
+    piperSpeed(pref) / piperSpeed(VoicePreference.fallback);

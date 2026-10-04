@@ -6,15 +6,13 @@ import 'package:go_router/go_router.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/presentation/animations/fade_indexed_stack.dart';
 import 'package:project_echo/core/presentation/widgets/nav_dock.dart';
-import 'package:project_echo/core/presentation/screens/desktop_shell.dart';
 import 'package:project_echo/features/echo/presentation/cubit/briefing_cubit.dart';
 import 'package:project_echo/features/todo/presentation/cubit/todo_cubit.dart';
+import 'package:project_echo/features/desktop/presentation/desktop_workspace.dart';
 import 'package:project_echo/features/echo/presentation/screens/echo_home_screen.dart';
-import 'package:project_echo/features/echo/presentation/screens/desktop_home_screen.dart';
 import 'package:project_echo/features/todo/presentation/screens/todo_screen.dart';
 import 'package:project_echo/features/vault/presentation/screens/vault_screen.dart';
 import 'package:project_echo/features/profile/presentation/screens/profile_screen.dart';
-import 'package:project_echo/features/settings/presentation/screens/settings_screen.dart';
 import 'package:project_echo/demo/demo_mode.dart';
 import 'package:project_echo/core/presentation/widgets/echo_bubble.dart';
 import 'package:project_echo/core/services/echo_says.dart';
@@ -30,14 +28,6 @@ class MainScaffold extends StatefulWidget {
 
 class _MainScaffoldState extends State<MainScaffold> {
   int _selectedIndex = 0;
-
-  // Desktop only — whether the sidebar's persistent "Ask Echo" tab is
-  // showing. Deliberately not route-driven (unlike _selectedIndex): Ask Echo
-  // has no route of its own here, so route-based auto-sync would never
-  // select it and would stomp it back off on the next rebuild.
-  // The filming build can open on Ask Echo (ECHO_ASK="a question").
-  bool _desktopAskEchoActive =
-      kEchoDemo && Platform.environment['ECHO_ASK'] != null;
 
   // Phone only — the nav dock is the Ask Echo bar.
   bool _asking = false;
@@ -64,11 +54,9 @@ class _MainScaffoldState extends State<MainScaffold> {
 
   static bool get _desktop => Platform.isMacOS || Platform.isWindows;
 
-  /// Each tab's route, in order. Desktop has no To-do tab: its list sits on
-  /// its Today screen.
-  static List<String> get _tabRoutes => _desktop
-      ? const ['/echo', '/vault', '/profile']
-      : const ['/echo', '/todo', '/vault', '/profile'];
+  /// Each phone tab's route, in order. The desktop has its own sections
+  /// (see DesktopWorkspace) and stays on '/echo'.
+  static const _tabRoutes = ['/echo', '/todo', '/vault', '/profile'];
 
   static int _calculateSelectedIndex(BuildContext context) {
     final location = GoRouterState.of(context).uri.path;
@@ -88,29 +76,6 @@ class _MainScaffoldState extends State<MainScaffold> {
   }
 
   void _updateRoute(int index) => context.go(_tabRoutes[index]);
-
-  // Desktop only — selecting Today/Vault/Profile always leaves the inline Ask
-  // Echo chat, so the tapped tab is revealed even when its route index hasn't
-  // changed.
-  void _onDesktopItemSelected(int index) {
-    if (_desktopAskEchoActive) {
-      setState(() => _desktopAskEchoActive = false);
-    }
-    _onItemTapped(index);
-  }
-
-  // Desktop only — the inline Ask Echo chat lives inside the Today pane, so
-  // opening it means selecting Today first, then flipping the chat on.
-  void _openHomeChat() {
-    HapticFeedback.selectionClick();
-    if (_selectedIndex != 0) {
-      setState(() => _selectedIndex = 0);
-      context.go('/echo');
-    }
-    setState(() => _desktopAskEchoActive = true);
-  }
-
-  void _closeHomeChat() => setState(() => _desktopAskEchoActive = false);
 
   void _openAsk() {
     HapticFeedback.lightImpact();
@@ -157,22 +122,11 @@ class _MainScaffoldState extends State<MainScaffold> {
 
   Widget _shell(BuildContext context) {
     return _desktop
-        ? DesktopShell(
-            selectedIndex: _selectedIndex,
-            onItemSelected: _onDesktopItemSelected,
-            content: FadeIndexedStack(
-              index: _selectedIndex,
-              children: [
-                DesktopHomeScreen(
-                  chatActive: _desktopAskEchoActive,
-                  onOpenChat: _openHomeChat,
-                  onCloseChat: _closeHomeChat,
-                  onOpenSettings: () => _onDesktopItemSelected(2),
-                ),
-                const VaultScreen(),
-                const SettingsScreen(),
-              ],
-            ),
+        // The filming build can open on Ask Echo (ECHO_ASK="a question").
+        ? DesktopWorkspace(
+            initialQuestion: kEchoDemo
+                ? Platform.environment['ECHO_ASK']
+                : null,
           )
         : _phone(context);
   }

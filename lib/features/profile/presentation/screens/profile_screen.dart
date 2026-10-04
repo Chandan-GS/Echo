@@ -5,7 +5,7 @@ import 'package:project_echo/core/presentation/animations/app_motion.dart';
 import 'package:project_echo/core/presentation/animations/fade_slide_in.dart';
 import 'package:project_echo/core/presentation/animations/page_transitions.dart';
 import 'package:project_echo/core/presentation/widgets/header_icon_button.dart';
-import 'package:project_echo/core/presentation/widgets/pressable.dart';
+import 'package:project_echo/core/presentation/widgets/press_feedback.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/features/profile/data/week_stats.dart';
@@ -130,10 +130,10 @@ class _ProfileScreenState extends State<ProfileScreen>
                 ),
               ),
               const SizedBox(height: 18),
-              enter(_Identity(name: _name, since: _since, onRename: _rename)),
+              enter(ProfileIdentity(name: _name, since: _since, onRename: _rename)),
               const SizedBox(height: 22),
               enter(StreakCalendar(key: _calendarKey)),
-              enter(_ThisWeek(week: _week)),
+              enter(WeekInNumbers(week: _week)),
             ],
           ),
         ),
@@ -144,22 +144,25 @@ class _ProfileScreenState extends State<ProfileScreen>
 
 /// The owner's name, which a tap on the pencil edits, and how long they've
 /// had Echo.
-class _Identity extends StatefulWidget {
+class ProfileIdentity extends StatefulWidget {
   final String name;
   final DateTime? since;
-  final ValueChanged<String> onRename;
 
-  const _Identity({
+  /// Null where the name can't be changed (the computer shows the phone's).
+  final ValueChanged<String>? onRename;
+
+  const ProfileIdentity({
+    super.key,
     required this.name,
     required this.since,
     required this.onRename,
   });
 
   @override
-  State<_Identity> createState() => _IdentityState();
+  State<ProfileIdentity> createState() => _ProfileIdentityState();
 }
 
-class _IdentityState extends State<_Identity> {
+class _ProfileIdentityState extends State<ProfileIdentity> {
   bool _editing = false;
   late final _controller = TextEditingController(text: widget.name);
   final _focus = FocusNode();
@@ -173,7 +176,7 @@ class _IdentityState extends State<_Identity> {
   }
 
   @override
-  void didUpdateWidget(_Identity old) {
+  void didUpdateWidget(ProfileIdentity old) {
     super.didUpdateWidget(old);
     if (!_editing && old.name != widget.name) _controller.text = widget.name;
   }
@@ -196,7 +199,7 @@ class _IdentityState extends State<_Identity> {
 
   void _done() {
     setState(() => _editing = false);
-    widget.onRename(_controller.text);
+    widget.onRename?.call(_controller.text);
   }
 
   static String _date(DateTime d) {
@@ -265,7 +268,8 @@ class _IdentityState extends State<_Identity> {
                         style: nameStyle,
                       ),
                     ),
-                    Pressable(
+                    if (widget.onRename != null)
+                    PressFeedback(
                       scale: 0.85,
                       child: IconButton(
                         tooltip: 'Edit your name',
@@ -299,9 +303,9 @@ class _IdentityState extends State<_Identity> {
 }
 
 /// The last seven days: three numbers, and the messages Echo read each day.
-class _ThisWeek extends StatelessWidget {
+class WeekInNumbers extends StatelessWidget {
   final WeekStats? week;
-  const _ThisWeek({required this.week});
+  const WeekInNumbers({super.key, required this.week});
 
   static const _months = [
     'Jan',

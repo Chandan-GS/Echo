@@ -12,6 +12,9 @@ import 'package:project_echo/features/todo/data/todo_store.dart';
 import 'package:project_echo/features/vault/data/daily_stats.dart';
 import 'package:project_echo/core/services/streak_service.dart';
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
+import 'package:project_echo/core/services/reminder_settings.dart';
+import 'package:project_echo/core/services/reminders.dart';
+import 'package:project_echo/features/echo/data/context/chat_context_store.dart';
 
 /// Phone side of data sync: pushes a full snapshot of this device's captured
 /// notifications, cached briefing and streak to a desktop Echo Engine on the
@@ -98,6 +101,19 @@ class PhoneSyncService {
           'stats': prefs.getString(DailyStats.key),
           'briefingTime': prefs.getString('cached_briefing_time'),
           'icons': icons,
+          // For the computer's Today: who's been answered, what was
+          // promised and what's set to remind; and for its Profile, who the
+          // owner is and since when.
+          'myTurns': prefs.getString(ChatContextStore.turnsKey),
+          'reminders': prefs.getString(Reminders.storeKey),
+          'userName': prefs.getString('user_name'),
+          'firstLaunch': prefs.getString('first_launch_date'),
+          'reminderLead': ReminderSettings.lead.value.inMinutes,
+          'reminderSuggest': ReminderSettings.suggest.value,
+          // The Vault's renamed and blocked categories, so the computer's
+          // Vault groups and hides the same way.
+          'categoryAliases': prefs.getString('vault_category_aliases'),
+          'blockedCategories': prefs.getStringList('vault_blocked_categories'),
         }),
         options: Options(
           headers: {

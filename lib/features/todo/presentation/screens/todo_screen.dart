@@ -18,14 +18,13 @@ import 'package:project_echo/features/echo/data/reply/reply_sender.dart';
 import 'package:project_echo/features/echo/presentation/cubit/briefing_cubit.dart';
 import 'package:project_echo/features/echo/presentation/widgets/ask/ask_parts.dart';
 import 'package:project_echo/features/echo/presentation/widgets/ask/reading_echo.dart';
-import 'package:project_echo/features/echo/presentation/widgets/echo_mascot.dart';
 import 'package:project_echo/features/todo/data/todo_item.dart';
 import 'package:project_echo/features/todo/presentation/cubit/todo_cubit.dart';
 import 'package:project_echo/features/todo/presentation/widgets/reminder_sheet.dart';
 import 'package:project_echo/features/todo/presentation/widgets/todo_card.dart';
 import 'package:project_echo/features/todo/presentation/widgets/todo_parts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:project_echo/core/presentation/widgets/pressable.dart';
+import 'package:project_echo/core/presentation/widgets/press_feedback.dart';
 
 /// The phone's To-do tab: everything Echo has put on the owner's list, and
 /// anything they add, each with a reminder they can set — or Echo's
@@ -763,7 +762,7 @@ class _AddFieldState extends State<_AddField> {
             duration: AppMotion.medium,
             curve: AppMotion.spring,
             scale: typed ? 1 : 0,
-            child: Pressable(
+            child: PressFeedback(
               scale: 0.88,
               child: GestureDetector(
                 onTap: _submit,
@@ -836,21 +835,6 @@ class _OfferCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SizedBox(
-                width: 34,
-                height: 34,
-                child: OverflowBox(
-                  maxWidth: 56,
-                  maxHeight: 56,
-                  child: EchoMascot(
-                    size: 56,
-                    state: done ? EchoState.happy : EchoState.idle,
-                    showRings: false,
-                    glow: false,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
               Expanded(
                 child: done
                     ? Text(
@@ -920,7 +904,7 @@ class _DoneRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return Pressable(
+    return PressFeedback(
       scale: 0.98,
       child: Material(
         color: Colors.transparent,
@@ -1439,7 +1423,7 @@ class _ReminderChip extends StatelessWidget {
         ],
       ),
     );
-    return Pressable(
+    return PressFeedback(
       scale: 0.9,
       child: Semantics(
         key: ValueKey(key),

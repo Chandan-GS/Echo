@@ -7,7 +7,7 @@ import 'package:project_echo/features/echo/data/reply/reply_sender.dart';
 import 'package:project_echo/features/todo/data/todo_item.dart';
 import 'package:project_echo/features/vault/presentation/widgets/source_icon.dart';
 import 'package:material_symbols_icons/symbols.dart';
-import 'package:project_echo/core/presentation/widgets/pressable.dart';
+import 'package:project_echo/core/presentation/widgets/press_feedback.dart';
 
 /// The small pieces Ask Echo is built from, each matching a piece the app
 /// already has (the to-do card's surface and rows, the limit card's pill
@@ -74,7 +74,7 @@ class AskPill extends StatelessWidget {
         : filled
         ? colors.background
         : colors.textPrimary;
-    return Pressable(
+    return PressFeedback(
       enabled: onTap != null,
       child: Material(
         color: set
@@ -135,7 +135,7 @@ class AskSolidButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    return Pressable(
+    return PressFeedback(
       enabled: onTap != null,
       child: Material(
         color: colors.textPrimary,
@@ -439,7 +439,7 @@ class QuickReactions extends StatelessWidget {
           Semantics(
             button: true,
             label: 'Send $emoji',
-            child: Pressable(
+            child: PressFeedback(
               scale: 0.85,
               child: Material(
                 color: c.surface,

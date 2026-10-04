@@ -23,6 +23,10 @@ class EchoTurn extends StatefulWidget {
   /// Echo has said something since: show the words, not the cards.
   final bool earlier;
 
+  /// See [AnswerView.onCite].
+  final void Function(int number)? onCite;
+  final int? litCite;
+
   const EchoTurn({
     super.key,
     required this.message,
@@ -30,6 +34,8 @@ class EchoTurn extends StatefulWidget {
     this.onAdd,
     this.onOpenSource,
     this.earlier = false,
+    this.onCite,
+    this.litCite,
   });
 
   @override
@@ -85,6 +91,8 @@ class _EchoTurnState extends State<EchoTurn> {
               onAdd: widget.onAdd,
               onOpenSource: widget.onOpenSource,
               earlier: widget.earlier,
+              onCite: widget.onCite,
+              litCite: widget.litCite,
             ),
     );
   }
@@ -101,12 +109,20 @@ class AnswerView extends StatelessWidget {
   /// the source cards and buttons.
   final bool earlier;
 
+  /// Desktop, where the sources sit beside the chat: a citation hovered or
+  /// clicked goes here instead of opening its app, and the source cards
+  /// under the answer are left out. [litCite] is the number to light.
+  final void Function(int number)? onCite;
+  final int? litCite;
+
   const AnswerView({
     super.key,
     required this.message,
     this.onAdd,
     this.onOpenSource,
     this.earlier = false,
+    this.onCite,
+    this.litCite,
   });
 
   @override
@@ -123,11 +139,15 @@ class AnswerView extends StatelessWidget {
         AnswerText(
           message.text,
           sources: sources.length,
-          onCite: onOpenSource == null
-              ? null
-              : (n) => onOpenSource!(sources[n - 1]),
+          onCite:
+              onCite ??
+              (onOpenSource == null
+                  ? null
+                  : (n) => onOpenSource!(sources[n - 1])),
+          onCiteHover: onCite,
+          litCite: litCite,
         ),
-        if (cited.isNotEmpty && !earlier) ...[
+        if (cited.isNotEmpty && !earlier && onCite == null) ...[
           const SizedBox(height: 12),
           _SourceCards(
             numbered: [

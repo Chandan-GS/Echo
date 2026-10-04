@@ -82,7 +82,6 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   build_runner: ^2.4.13
   isar_generator: ^3.1.0+1
-  flutter_launcher_icons: ^0.14.4
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -100,8 +99,11 @@ flutter:
     - assets/vocab.txt
     - assets/ai refs/all-MiniLM-L6-v2-quant.tflite
     - assets/logo.png
-    - assets/app_icon_source.png
     - assets/icons/
+    # A few seconds of each Piper voice, for choosing one before downloading it.
+    - assets/voice_samples/
+    # App icons for the filming build's made-up notifications (see DemoIcons).
+    - assets/demo_icons/
 
   fonts:
     - family: Nunito
@@ -141,12 +143,5 @@ flutter:
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
 
-flutter_launcher_icons:
-  android: "ic_launcher"
-  ios: true
-  macos:
-    generate: true
-    image_path: "assets/app_icon_source.png"
-  image_path: "assets/app_icon_source.png"
-  adaptive_icon_background: "#5CA363"
-  adaptive_icon_foreground: "assets/app_icon_source.png"
+# App icons, the notification icon and the splash are drawn by
+# tool/brand/render.mjs and test/render/splash_render_test.dart.

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:project_echo/core/presentation/launch_wake.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -160,6 +161,12 @@ class Echo extends StatelessWidget {
             // wide; touch/trackpad scrolling still works exactly as before.
             scrollBehavior: _NoScrollbarBehavior(),
             routerConfig: _router,
+            // The phone's splash shows Echo asleep; once set up, he wakes
+            // there and fades into Home. (First time, the welcome screen
+            // starts from that same frame instead.)
+            builder: isOnboardingFinished && Platform.isAndroid
+                ? (context, child) => LaunchWake(child: child!)
+                : null,
           );
         },
       ),

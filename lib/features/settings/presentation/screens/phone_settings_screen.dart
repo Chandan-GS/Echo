@@ -7,7 +7,7 @@ import 'package:project_echo/core/presentation/animations/app_motion.dart';
 import 'package:project_echo/core/presentation/animations/fade_slide_in.dart';
 import 'package:project_echo/core/presentation/animations/page_transitions.dart';
 import 'package:project_echo/core/presentation/widgets/echo_app_bar.dart';
-import 'package:project_echo/core/presentation/widgets/pressable.dart';
+import 'package:project_echo/core/presentation/widgets/press_feedback.dart';
 import 'package:project_echo/core/services/analytics_service.dart';
 import 'package:project_echo/core/services/home_widgets_service.dart';
 import 'package:project_echo/core/services/reminder_settings.dart';
@@ -422,7 +422,7 @@ class _Row extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return Pressable(
+    return PressFeedback(
       scale: 0.98,
       child: Material(
         type: MaterialType.transparency,

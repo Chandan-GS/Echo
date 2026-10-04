@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -6,6 +7,7 @@ import 'package:project_echo/core/services/reminder_settings.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:project_echo/features/echo/data/relevance/temporal_relevance.dart';
 import 'package:project_echo/features/todo/data/todo_item.dart';
+import 'package:project_echo/core/services/notify_permission.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// "Remind me at 7:40": a notification about a message or a to-do, at that
@@ -20,7 +22,9 @@ class Reminders {
   static final changed = ValueNotifier<int>(0);
 
   static const _channel = MethodChannel('project_echo/reminders');
-  static const _key = 'echo_reminders_v1';
+
+  /// Also read and written by Reminders.kt, and synced to a paired computer.
+  static const storeKey = 'echo_reminders_v1';
 
   /// Notification ids from here up, clear of Echo's other notifications.
   static const _firstId = 100000;
@@ -56,6 +60,7 @@ class Reminders {
     int? todoId,
     String? thread,
   }) async {
+    unawaited(NotifyPermission.askIfNeeded());
     final all = await _load()
       ..removeWhere(
         (_, r) => DateTime.fromMillisecondsSinceEpoch(
@@ -113,7 +118,7 @@ class Reminders {
     // A snooze from the notification rewrites this natively.
     await prefs.reload();
     try {
-      final raw = jsonDecode(prefs.getString(_key) ?? '{}') as Map;
+      final raw = jsonDecode(prefs.getString(storeKey) ?? '{}') as Map;
       return {
         for (final e in raw.entries)
           e.key as String: Map<String, dynamic>.from(e.value as Map),
@@ -125,7 +130,7 @@ class Reminders {
 
   static Future<void> _save(Map<String, Map<String, dynamic>> all) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_key, jsonEncode(all));
+    await prefs.setString(storeKey, jsonEncode(all));
   }
 }
 

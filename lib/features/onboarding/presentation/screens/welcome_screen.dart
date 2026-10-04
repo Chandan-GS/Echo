@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:project_echo/core/presentation/launch_echo.dart';
 import 'package:project_echo/core/presentation/widgets/echo_button.dart';
 import 'package:project_echo/core/services/app_icon_service.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
@@ -13,7 +14,11 @@ import 'package:material_symbols_icons/symbols.dart';
 /// The first screen: Echo wakes up. He's asleep, three of the phone's own
 /// app icons pop up around him and drift into him, he wakes, bounces up
 /// happily, rises to his place, and says hello with the name, the promise
-/// and Get Started. About three seconds, all of it slow and eased.
+/// and Get Started. About four and a half seconds, all of it slow and eased.
+///
+/// It opens on the splash screen's own frame ([LaunchEcho]): Echo asleep,
+/// dimmed and centred at the splash's size, so the phone's splash hands over
+/// to it without a seam.
 class WelcomeScreen extends StatefulWidget {
   const WelcomeScreen({super.key});
 
@@ -42,11 +47,15 @@ const _fallbackIcons = [
 
 class _WelcomeScreenState extends State<WelcomeScreen>
     with SingleTickerProviderStateMixin {
-  static const _length = 3.0; // seconds
+  /// The storyboard below is written in seconds of a 3-second take...
+  static const _length = 3.0;
+
+  /// ...played at two-thirds speed, so it unhurriedly takes 4.5 seconds.
+  static const _pace = 1.5;
 
   late final AnimationController _c = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 3000),
+    duration: Duration(milliseconds: (_length * _pace * 1000).round()),
   );
   List<Uint8List?> _icons = const [null, null, null];
 
@@ -102,7 +111,7 @@ class _WelcomeScreenState extends State<WelcomeScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D),
+      backgroundColor: LaunchEcho.ground,
       body: LayoutBuilder(
         builder: (context, box) => AnimatedBuilder(
           animation: _c,
@@ -120,8 +129,9 @@ class _WelcomeScreenState extends State<WelcomeScreen>
     final asleep = t < 1.2;
     final happy = t > 1.62 && t < 1.95;
     final rise = _settle(t, 2.0, 2.5);
-    final size = w * 0.64 * _lerp(1, 0.84, rise);
-    final centerY = h * _lerp(0.44, 0.27, rise);
+    // From the splash's size and spot (the middle of the screen) to his place.
+    final size = _lerp(LaunchEcho.mascotSize, w * 0.64 * 0.84, rise);
+    final centerY = _lerp(LaunchEcho.centerY(context, h), h * 0.27, rise);
     // A gentle stretch-and-hop as he wakes, and a small happy wiggle.
     final b = t > 1.58 && t < 2.1 ? math.sin((t - 1.58) / 0.52 * math.pi) : 0.0;
     final squash = t > 1.58 && t < 2.1
@@ -133,8 +143,10 @@ class _WelcomeScreenState extends State<WelcomeScreen>
         ? 0.07 * math.sin((t - 1.62) * 26) * (1 - _span(t, 1.62, 1.95))
         : 0.0;
     final hop = 10 * b;
-    final brightness = _lerp(0.55, 1, _span(t, 1.1, 1.7));
-    final glow = _lerp(0.18, 1, _span(t, 1.15, 1.8));
+    final brightness = _lerp(LaunchEcho.asleep, 1, _span(t, 1.1, 1.7));
+    final glow = _span(t, 1.15, 1.8);
+    // His Zs drift in once he's on screen (the splash shows none).
+    final zzz = _span(t, 0.15, 0.6);
     // Taking the icons in: a brief extra glow.
     final absorb = (_span(t, 1.08, 1.2) - _span(t, 1.25, 1.65)).clamp(0.0, 1.0);
     final lookAt = t < 2.0
@@ -204,6 +216,7 @@ class _WelcomeScreenState extends State<WelcomeScreen>
                   size: size,
                   showRings: false,
                   glow: false,
+                  zzz: zzz,
                   lookAt: lookAt,
                 ),
               ),

@@ -57,6 +57,10 @@ class EchoMascot extends StatefulWidget {
   /// and down reads less than side to side, so a small Echo needs more.
   final double? gazeReachY;
 
+  /// How strongly his sleeping Zs show, 0..1 — so they can fade in where he
+  /// first appears asleep (the splash hands over to a frame without them).
+  final double zzz;
+
   /// Where he looks (-1..1 each way), overriding his own glances, for
   /// scripted moments such as the welcome screen.
   final Offset? lookAt;
@@ -73,6 +77,7 @@ class EchoMascot extends StatefulWidget {
     this.glow = true,
     this.gazeReach = 1,
     this.gazeReachY,
+    this.zzz = 1,
     this.lookAt,
   });
 
@@ -234,6 +239,7 @@ class _EchoMascotState extends State<EchoMascot>
               dizzy: EchoDizzy.instance.level(now),
               recoveryBlink: recovery.blink,
               recoveryShake: recovery.shake,
+              zzz: widget.zzz,
             ),
           );
         },
@@ -281,6 +287,7 @@ class _EchoPainter extends CustomPainter {
   final double dizzy; // 0..~0.5, see EchoDizzy
   final double recoveryBlink; // 1 open; dips twice as he comes round
   final double recoveryShake; // -1..1, the head-shake at the end
+  final double zzz; // 0..1, how strongly the sleeping Zs show
   _EchoPainter(
     this.t,
     this.ms,
@@ -298,6 +305,7 @@ class _EchoPainter extends CustomPainter {
     this.dizzy = 0,
     this.recoveryBlink = 1,
     this.recoveryShake = 0,
+    this.zzz = 1,
   });
 
   static const _tau = 2 * math.pi;
@@ -496,7 +504,7 @@ class _EchoPainter extends CustomPainter {
     // ── In front of the orb ─────────────────────────────────────────────────
     if (state == EchoState.thinking) _band(canvas, orbC, k, front: true);
     if (dizzy > 0.02) _stars(canvas, p, s, secs, floatDy + wobY, wobX);
-    if (state == EchoState.sleeping) _zzz(canvas, p, s);
+    if (state == EchoState.sleeping && zzz > 0) _zzz(canvas, p, s);
 
     if (!showRings) canvas.restore();
   }
@@ -813,7 +821,7 @@ class _EchoPainter extends CustomPainter {
       final dx = ph * s(8);
       paint.color = const Color(
         0xFF5A6B5C,
-      ).withValues(alpha: op.clamp(0.0, 1.0));
+      ).withValues(alpha: op.clamp(0.0, 1.0) * zzz.clamp(0.0, 1.0));
       final path = Path()
         ..moveTo(p(x, y).dx + dx, p(x, y).dy + rise)
         ..lineTo(p(x + w, y).dx + dx, p(x + w, y).dy + rise)
@@ -883,5 +891,6 @@ class _EchoPainter extends CustomPainter {
       old.reachY != reachY ||
       old.dizzy != dizzy ||
       old.recoveryBlink != recoveryBlink ||
-      old.recoveryShake != recoveryShake;
+      old.recoveryShake != recoveryShake ||
+      old.zzz != zzz;
 }
