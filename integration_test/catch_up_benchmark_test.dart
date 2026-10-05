@@ -64,15 +64,11 @@ void main() {
 }
 
 /// What the app does with the buffer once it opens.
-Future<void> _catchUp(List<Map<String, dynamic>> backlog) async {
-  for (final item in backlog) {
-    await NotificationIngest.process(item);
-    await Future<void>.delayed(Duration.zero);
-  }
-}
+Future<void> _catchUp(List<Map<String, dynamic>> backlog) =>
+    NotificationIngest.ingestAll(backlog);
 
 /// Waits for any embedding still being made in the background.
-Future<void> _embedded() async {}
+Future<void> _embedded() => EmbeddingBackfill.whenDone();
 
 Future<void> _reset() async {
   final isar = await IsarDataSource.instance;

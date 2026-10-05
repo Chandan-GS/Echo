@@ -13,6 +13,7 @@ import 'package:project_echo/features/todo/data/todo_planner.dart';
 import 'package:project_echo/features/todo/data/todo_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:project_echo/features/vault/data/app_access.dart';
+import 'package:project_echo/features/echo/data/services/notification_ingest.dart';
 import 'package:project_echo/demo/demo_mode.dart';
 
 /// Makes and updates the to-do list. Only on request — a briefing never does
@@ -37,6 +38,11 @@ class TodoGenerator {
       jsonDecode(prefs.getString('vault_category_aliases') ?? '{}'),
     );
     final excluded = await loadExcludedSources();
+    await NotificationIngest.whenCaughtUp();
+    await EmbeddingBackfill.whenDone().timeout(
+      const Duration(seconds: 15),
+      onTimeout: () {},
+    );
     final entries = await IsarDataSource.getAllEntries();
     final pool = since == null
         ? entries
