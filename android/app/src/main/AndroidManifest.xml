@@ -23,6 +23,16 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"
         tools:node="remove" />
 
+    <!-- The TensorFlow Lite GPU library declares no targetSdkVersion, so the
+         manifest merger adds the permissions old apps got by default. Echo
+         never uses them; strip them so Play doesn't list Phone and Storage. -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE"
+        tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        tools:node="remove" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        tools:node="remove" />
+
     <application
         android:label="${appLabel}"
         android:name="${applicationName}"
