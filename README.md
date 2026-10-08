@@ -3,7 +3,8 @@
   <h1>Echo</h1>
   <p><b>Your day, heard.</b></p>
   <p>Echo reads the notifications on your phone, from WhatsApp, Slack, Teams, Gmail and the rest, and tells you what matters: a short spoken briefing, who's waiting on you, and a to-do list that writes itself. On your phone and on your desktop, privately.</p>
-  <p><a href="https://echo-mobileapp.vercel.app">Website</a> · <a href="https://echo-mobileapp.vercel.app/privacy/">Privacy policy</a></p>
+  <p><a href="https://play.google.com/store/apps/details?id=com.chandangs.echo"><img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" height="80" /></a></p>
+  <p><a href="https://play.google.com/store/apps/details?id=com.chandangs.echo">Google Play</a> · <a href="https://echo-mobileapp.vercel.app">Website</a> · <a href="https://echo-mobileapp.vercel.app/privacy/">Privacy policy</a></p>
 </div>
 
 ---
