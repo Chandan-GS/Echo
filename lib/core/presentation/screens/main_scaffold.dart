@@ -3,16 +3,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/presentation/animations/fade_indexed_stack.dart';
-import 'package:project_echo/core/presentation/widgets/animated_nav_icons.dart';
-import 'package:project_echo/core/presentation/screens/desktop_shell.dart';
+import 'package:project_echo/core/presentation/widgets/nav_dock.dart';
 import 'package:project_echo/features/echo/presentation/cubit/briefing_cubit.dart';
+import 'package:project_echo/features/todo/presentation/cubit/todo_cubit.dart';
+import 'package:project_echo/features/desktop/presentation/desktop_workspace.dart';
 import 'package:project_echo/features/echo/presentation/screens/echo_home_screen.dart';
-import 'package:project_echo/features/echo/presentation/screens/desktop_home_screen.dart';
+import 'package:project_echo/features/todo/presentation/screens/todo_screen.dart';
 import 'package:project_echo/features/vault/presentation/screens/vault_screen.dart';
-import 'package:project_echo/features/settings/presentation/screens/settings_screen.dart';
+import 'package:project_echo/features/profile/presentation/screens/profile_screen.dart';
+import 'package:project_echo/demo/demo_mode.dart';
+import 'package:project_echo/core/presentation/widgets/echo_bubble.dart';
+import 'package:project_echo/core/services/echo_says.dart';
 
 class MainScaffold extends StatefulWidget {
   final Widget child;
@@ -26,11 +29,8 @@ class MainScaffold extends StatefulWidget {
 class _MainScaffoldState extends State<MainScaffold> {
   int _selectedIndex = 0;
 
-  // Desktop only — whether the sidebar's persistent "Ask Echo" tab is
-  // showing. Deliberately not route-driven (unlike _selectedIndex): Ask Echo
-  // has no route of its own here, so route-based auto-sync would never
-  // select it and would stomp it back off on the next rebuild.
-  bool _desktopAskEchoActive = false;
+  // Phone only — the nav dock is the Ask Echo bar.
+  bool _asking = false;
 
   @override
   void initState() {
@@ -52,18 +52,16 @@ class _MainScaffoldState extends State<MainScaffold> {
     super.dispose();
   }
 
+  static bool get _desktop => Platform.isMacOS || Platform.isWindows;
+
+  /// Each phone tab's route, in order. The desktop has its own sections
+  /// (see DesktopWorkspace) and stays on '/echo'.
+  static const _tabRoutes = ['/echo', '/todo', '/vault', '/profile'];
+
   static int _calculateSelectedIndex(BuildContext context) {
-    final String location = GoRouterState.of(context).uri.path;
-    if (location.startsWith('/echo')) {
-      return 0;
-    }
-    if (location.startsWith('/vault')) {
-      return 1;
-    }
-    if (location.startsWith('/profile')) {
-      return 2;
-    }
-    return 0;
+    final location = GoRouterState.of(context).uri.path;
+    final i = _tabRoutes.indexWhere(location.startsWith);
+    return i < 0 ? 0 : i;
   }
 
   void _onItemTapped(int index) {
@@ -77,42 +75,19 @@ class _MainScaffoldState extends State<MainScaffold> {
     _updateRoute(index);
   }
 
-  void _updateRoute(int index) {
-    switch (index) {
-      case 0:
-        context.go('/echo');
-        break;
-      case 1:
-        context.go('/vault');
-        break;
-      case 2:
-        context.go('/profile');
-        break;
-    }
+  void _updateRoute(int index) => context.go(_tabRoutes[index]);
+
+  void _openAsk() {
+    HapticFeedback.lightImpact();
+    setState(() => _asking = true);
   }
 
-  // Desktop only — selecting Today/Vault/Profile always leaves the inline Ask
-  // Echo chat, so the tapped tab is revealed even when its route index hasn't
-  // changed.
-  void _onDesktopItemSelected(int index) {
-    if (_desktopAskEchoActive) {
-      setState(() => _desktopAskEchoActive = false);
-    }
-    _onItemTapped(index);
-  }
+  void _closeAsk() => setState(() => _asking = false);
 
-  // Desktop only — the inline Ask Echo chat lives inside the Today pane, so
-  // opening it means selecting Today first, then flipping the chat on.
-  void _openHomeChat() {
-    HapticFeedback.selectionClick();
-    if (_selectedIndex != 0) {
-      setState(() => _selectedIndex = 0);
-      context.go('/echo');
-    }
-    setState(() => _desktopAskEchoActive = true);
+  void _ask(String question) {
+    _closeAsk();
+    context.push('/echo/chat', extra: question);
   }
-
-  void _closeHomeChat() => setState(() => _desktopAskEchoActive = false);
 
   @override
   Widget build(BuildContext context) {
@@ -125,295 +100,172 @@ class _MainScaffoldState extends State<MainScaffold> {
     // EchoHomeScreen so a briefing keeps generating across tab switches and can
     // never be torn down by incidental navigation — and so the whole shell can
     // surface a "working in background" indicator.
-    return BlocProvider(
-      create: (_) => BriefingCubit(),
-      child: (Platform.isMacOS || Platform.isWindows)
-          ? DesktopShell(
-              selectedIndex: _selectedIndex,
-              onItemSelected: _onDesktopItemSelected,
-              content: FadeIndexedStack(
-                index: _selectedIndex,
-                children: [
-                  DesktopHomeScreen(
-                    chatActive: _desktopAskEchoActive,
-                    onOpenChat: _openHomeChat,
-                    onCloseChat: _closeHomeChat,
-                    onOpenSettings: () => _onDesktopItemSelected(2),
-                  ),
-                  const VaultScreen(),
-                  const SettingsScreen(),
-                ],
-              ),
-            )
-          : Scaffold(
-              body: Stack(
-                children: [
-                  // Persistent screen area using IndexedStack to prevent rebuild jitter
-                  Positioned.fill(
-                    bottom: 80,
-                    child: FadeIndexedStack(
-                      index: _selectedIndex,
-                      children: const [
-                        EchoHomeScreen(),
-                        VaultScreen(),
-                        SettingsScreen(),
-                      ],
-                    ),
-                  ),
-                  // Floating "generating in background" pill — shown on any tab other
-                  // than Today (which already shows the full generating view). Tap to
-                  // jump back to the briefing.
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 140,
-                    child: BlocBuilder<BriefingCubit, BriefingState>(
-                      builder: (context, state) {
-                        final show =
-                            state is BriefingGenerating && _selectedIndex != 0;
-                        return AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 250),
-                          child: show
-                              ? Center(
-                                  child: _GeneratingPill(
-                                    onTap: () => _onItemTapped(0),
-                                  ),
-                                )
-                              : const SizedBox.shrink(),
-                        );
-                      },
-                    ),
-                  ),
-                  // Floating Capsule Nav Bar
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 20,
-                    child: Center(
-                      child: _FloatingNavBar(
-                        selectedIndex: _selectedIndex,
-                        onItemSelected: _onItemTapped,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-    );
-  }
-}
-
-class _FloatingNavBar extends StatelessWidget {
-  final int selectedIndex;
-  final ValueChanged<int> onItemSelected;
-
-  const _FloatingNavBar({
-    required this.selectedIndex,
-    required this.onItemSelected,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final items = [
-      _NavBarItem(
-        label: 'Today',
-        iconBuilder: (isSelected, color) => BounceInIcon(
-          isSelected: isSelected,
-          selectedIcon: Icons.home_rounded,
-          unselectedIcon: Icons.home_outlined,
-          color: color,
-          size: 26,
-        ),
-      ),
-      _NavBarItem(
-        label: 'Vault',
-        iconBuilder: (isSelected, color) => BounceInIcon(
-          isSelected: isSelected,
-          selectedIcon: Icons.inbox,
-          unselectedIcon: Icons.inbox_outlined,
-          color: color,
-          size: 26,
-        ),
-      ),
-      _NavBarItem(
-        label: 'Profile',
-        iconBuilder: (isSelected, color) => BounceInIcon(
-          isSelected: isSelected,
-          selectedIcon: Icons.person,
-          unselectedIcon: Icons.person_outline,
-          color: color,
-          size: 26,
-        ),
-      ),
-    ];
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(34),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 0.0, vertical: 8),
-        child: Container(
-          padding: EdgeInsets.symmetric(horizontal: 10),
-          height: 68,
-          width: double.infinity,
-          decoration: BoxDecoration(borderRadius: BorderRadius.circular(34)),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8.0),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final totalWidth = constraints.maxWidth;
-                final itemWidth = totalWidth / 3;
-                final activeLeft = selectedIndex * itemWidth;
-
-                return Stack(
-                  children: [
-                    // Fluid sliding active capsule
-                    AnimatedPositioned(
-                      duration: const Duration(milliseconds: 200),
-                      curve: Curves.easeOutBack,
-                      left: activeLeft,
-                      top: 8,
-                      bottom: 8,
-                      width: itemWidth,
-                      child: Container(
-                        margin: EdgeInsets.symmetric(horizontal: 16),
-                        decoration: BoxDecoration(
-                          color: context.colors.lightGreenBackground,
-                          borderRadius: BorderRadius.circular(26),
-                        ),
-                      ),
-                    ),
-                    // Nav Items Row
-                    Row(
-                      children: List.generate(items.length, (index) {
-                        final item = items[index];
-                        final isSelected = selectedIndex == index;
-
-                        return Expanded(
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: () => onItemSelected(index),
-                            child: Center(
-                              child: AnimatedDefaultTextStyle(
-                                duration: const Duration(milliseconds: 250),
-                                style: GoogleFonts.nunito(
-                                  fontSize: 11,
-                                  fontWeight: isSelected
-                                      ? FontWeight.w800
-                                      : FontWeight.w600,
-                                  color: context.colors.textPrimary,
-                                ),
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    item.iconBuilder(
-                                      isSelected,
-                                      context.colors.textPrimary,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        );
-                      }),
-                    ),
-                  ],
-                );
-              },
-            ),
-          ),
-        ),
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider(create: (_) => BriefingCubit()),
+        // The to-do list lives beside the briefing: home shows it, the
+        // briefing screen can make or update it.
+        BlocProvider(create: (_) => TodoCubit()),
+      ],
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // go_router's shell Navigator. The tabs below are drawn here, not
+          // by its (empty) pages, but it has to be mounted: back presses and
+          // pops look it up, and without it system back quits the app.
+          Offstage(child: widget.child),
+          _shell(context),
+        ],
       ),
     );
   }
-}
 
-class _NavBarItem {
-  final String label;
-  final Widget Function(bool isSelected, Color color) iconBuilder;
-
-  _NavBarItem({required this.label, required this.iconBuilder});
-}
-
-/// A small breathing dot used to signal ongoing background work.
-class _PulseDot extends StatefulWidget {
-  final Color? color;
-  const _PulseDot({this.color});
-
-  @override
-  State<_PulseDot> createState() => _PulseDotState();
-}
-
-class _PulseDotState extends State<_PulseDot>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _c;
-
-  @override
-  void initState() {
-    super.initState();
-    _c = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 850),
-    )..repeat(reverse: true);
+  Widget _shell(BuildContext context) {
+    return _desktop
+        // The filming build can open on Ask Echo (ECHO_ASK="a question").
+        ? DesktopWorkspace(
+            initialQuestion: kEchoDemo
+                ? Platform.environment['ECHO_ASK']
+                : null,
+          )
+        : _phone(context);
   }
 
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final color = widget.color ?? context.colors.primaryGreen;
-    return FadeTransition(
-      opacity: Tween<double>(begin: 0.45, end: 1.0).animate(_c),
-      child: Container(
-        width: 9,
-        height: 9,
-        decoration: BoxDecoration(
-          color: color,
-          shape: BoxShape.circle,
-        ),
-      ),
+  Widget _phone(BuildContext context) {
+    final media = MediaQuery.of(context);
+    final keyboard = media.viewInsets.bottom;
+    final systemBar = media.viewPadding.bottom;
+    // The dock floats a fixed gap above whatever Android has at the bottom
+    // (gesture handle or three buttons), or above the keyboard while asking.
+    final dockBottom = _asking && keyboard > 0 ? keyboard + 10 : systemBar + 12;
+    // What the tabs keep clear at the bottom so nothing ends under the dock.
+    final clearance = systemBar + 12 + kNavDockHeight + 12;
+    const motion = Duration(milliseconds: 260);
+    // Echo keeps quiet while the question bar or keyboard is up.
+    final quiet = _asking || keyboard > 0;
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => EchoSays.instance.setQuiet(quiet),
     );
-  }
-}
 
-/// Floating "working in the background" chip shown while a briefing generates
-/// and the user is on another tab. Tapping it returns to the briefing.
-class _GeneratingPill extends StatelessWidget {
-  final VoidCallback onTap;
-  const _GeneratingPill({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final onSel = context.onSelection;
-    return Material(
-      color: context.selectionFill,
-      borderRadius: BorderRadius.circular(24),
-      clipBehavior: Clip.antiAlias,
-      elevation: 4,
-      shadowColor: Colors.black.withValues(alpha: 0.18),
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _PulseDot(color: onSel),
-              const SizedBox(width: 10),
-              Text(
-                'Preparing your briefing…',
-                style: GoogleFonts.nunito(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  color: onSel,
+    return PopScope(
+      canPop: !_asking,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _asking) _closeAsk();
+      },
+      child: Scaffold(
+        resizeToAvoidBottomInset: false,
+        body: Stack(
+          children: [
+            // Full height: content scrolls behind the dock, and screens
+            // pad their ends by MediaQuery's bottom padding (the clearance).
+            Positioned.fill(
+              child: MediaQuery(
+                data: media.copyWith(
+                  padding: media.padding.copyWith(bottom: clearance),
+                ),
+                // Scrolling moves Echo's ambient remarks out of the way.
+                child: NotificationListener<ScrollUpdateNotification>(
+                  onNotification: (_) {
+                    EchoSays.instance.scrolled();
+                    return false;
+                  },
+                  child: FadeIndexedStack(
+                    index: _selectedIndex,
+                    children: const [
+                      EchoHomeScreen(),
+                      TodoScreen(),
+                      VaultScreen(),
+                      ProfileScreen(),
+                    ],
+                  ),
                 ),
               ),
-            ],
-          ),
+            ),
+            // Content fades out under the dock instead of cutting off.
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: clearance,
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      colors: [
+                        context.colors.background,
+                        context.colors.background.withValues(alpha: 0),
+                      ],
+                      stops: const [0.45, 1],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            // Dims the screen behind the question bar; tap to close it.
+            Positioned.fill(
+              child: IgnorePointer(
+                ignoring: !_asking,
+                child: AnimatedOpacity(
+                  duration: motion,
+                  opacity: _asking ? 1 : 0,
+                  child: GestureDetector(
+                    onTap: _closeAsk,
+                    child: const ColoredBox(color: Color(0x73000000)),
+                  ),
+                ),
+              ),
+            ),
+            AnimatedPositioned(
+              duration: motion,
+              curve: Curves.easeOutCubic,
+              left: 0,
+              right: 0,
+              bottom: dockBottom + kNavDockHeight + 12,
+              child: IgnorePointer(
+                ignoring: !_asking,
+                child: AnimatedOpacity(
+                  duration: motion,
+                  opacity: _asking ? 1 : 0,
+                  child: AskSuggestionChips(
+                    questions: kAskSuggestions,
+                    onAsk: _ask,
+                  ),
+                ),
+              ),
+            ),
+            // What Echo says, resting on the dock and as wide as it.
+            Positioned(
+              left: 20,
+              right: 20,
+              // The tail's tip just meets the dock, above Echo.
+              bottom: dockBottom + kNavDockHeight + 1,
+              child: const EchoBubble(),
+            ),
+            // Invisible: it only listens. Positioned, so the Stack doesn't
+            // take its zero size as the size of the whole screen.
+            Positioned(
+              left: 0,
+              top: 0,
+              child: EchoSaysHost(onOpenHome: () => _onItemTapped(0)),
+            ),
+            AnimatedPositioned(
+              duration: motion,
+              curve: Curves.easeOutCubic,
+              left: 20,
+              right: 20,
+              bottom: dockBottom,
+              child: NavDock(
+                selectedIndex: _selectedIndex,
+                onTabSelected: _onItemTapped,
+                asking: _asking,
+                onOpenAsk: _openAsk,
+                onCloseAsk: _closeAsk,
+                onAsk: _ask,
+              ),
+            ),
+          ],
         ),
       ),
     );

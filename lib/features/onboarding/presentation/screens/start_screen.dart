@@ -6,6 +6,7 @@ import 'package:project_echo/core/presentation/animations/app_motion.dart';
 import 'package:project_echo/features/onboarding/presentation/cubit/on_boarding_cubit.dart';
 import 'package:project_echo/features/onboarding/presentation/screens/permission_screen.dart';
 import 'package:project_echo/features/onboarding/presentation/screens/ai_mode_screen.dart';
+import 'package:project_echo/features/onboarding/presentation/screens/apps_screen.dart';
 import 'package:project_echo/features/onboarding/presentation/screens/welcome_screen.dart';
 import 'package:project_echo/features/onboarding/presentation/screens/name_input_screen.dart';
 import 'package:project_echo/features/onboarding/presentation/screens/personalize_screen.dart';
@@ -85,15 +86,20 @@ class StartScreen extends StatelessWidget {
     );
   }
 
-  int _stepFor(OnBoardingState state) => switch (state) {
-    PermissionsStep() => 1,
-    AiModeStep() => 2,
-    NameInputStep() => 3,
-    PersonalizeStep() => 4,
-    VoiceStep() => 5,
-    PreviewStep() => 6,
-    _ => 1,
-  };
+  int _stepFor(OnBoardingState state) {
+    // Android has the extra "which apps" step right after permissions.
+    final extra = Platform.isAndroid ? 1 : 0;
+    return switch (state) {
+      PermissionsStep() => 1,
+      AppsStep() => 2,
+      AiModeStep() => 2 + extra,
+      NameInputStep() => 3 + extra,
+      PersonalizeStep() => 4 + extra,
+      VoiceStep() => 5 + extra,
+      PreviewStep() => 6 + extra,
+      _ => 1,
+    };
+  }
 
   VoidCallback? _onBackFor(BuildContext context, OnBoardingState state) {
     final cubit = context.read<OnBoardingCubit>();
@@ -103,8 +109,13 @@ class StartScreen extends StatelessWidget {
     final isDesktop = Platform.isMacOS || Platform.isWindows;
     return switch (state) {
       PermissionsStep() => cubit.startOnboarding,
+      AppsStep() => cubit.checkPermissions,
       AiModeStep() =>
-        isDesktop ? cubit.startOnboarding : cubit.checkPermissions,
+        isDesktop
+            ? cubit.startOnboarding
+            : Platform.isAndroid
+            ? cubit.goBackToApps
+            : cubit.checkPermissions,
       NameInputStep() => cubit.goBackToAiMode,
       PersonalizeStep() => cubit.goBackToName,
       VoiceStep() => cubit.goBackToPersonalize,
@@ -116,6 +127,7 @@ class StartScreen extends StatelessWidget {
   Widget _bodyForState(OnBoardingState state) {
     return switch (state) {
       PermissionsStep() => const PermissionScreen(),
+      AppsStep() => const AppsScreen(),
       AiModeStep() => const AiModeScreen(),
       NameInputStep() => const NameInputScreen(),
       PersonalizeStep() => const PersonalizeScreen(),

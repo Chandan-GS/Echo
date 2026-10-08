@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
+import 'package:project_echo/features/echo/data/context/addressed.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
+import 'package:project_echo/features/echo/presentation/widgets/ask/ask_parts.dart';
 import 'package:project_echo/features/vault/presentation/cubit/vault_cubit.dart';
+import 'package:project_echo/features/vault/presentation/widgets/source_icon.dart';
 import 'package:project_echo/features/vault/presentation/widgets/vault_utils.dart';
 
 class NotificationCardWidget extends StatelessWidget {
@@ -14,6 +17,9 @@ class NotificationCardWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final timeStr = _formatTimestamp(notification.timestamp);
+    // Meant for the owner: said to them, about them, or a reply to them.
+    final addressed = Addressed.parse(notification.addressed);
+    final forYou = addressed == Addressed.group ? null : addressed;
 
     Map<String, int> customIcons = const {};
     try {
@@ -25,8 +31,19 @@ class NotificationCardWidget extends StatelessWidget {
       // Fallback if Cubit is not in tree
     }
 
-    final icon = getSourceIcon(notification.source);
     final themeColor = context.colors.primaryGreen;
+    final custom = customIconFor(notification.source, customIcons);
+    final icon = custom != null
+        ? Icon(custom, size: 16, color: themeColor)
+        : SourceIcon(
+            source: notification.source,
+            size: 18,
+            fallback: Icon(
+              getSourceIcon(notification.source),
+              size: 16,
+              color: themeColor,
+            ),
+          );
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10.0),
@@ -58,7 +75,7 @@ class NotificationCardWidget extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Icon(icon, size: 16, color: themeColor),
+                    icon,
                     const SizedBox(width: 8),
                     Text(
                       _capitalize(notification.source),
@@ -80,13 +97,26 @@ class NotificationCardWidget extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 10),
-                Text(
-                  notification.sender,
-                  style: GoogleFonts.nunito(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: context.colors.textPrimary,
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        // "Rahul · College gang" for a group.
+                        notification.who,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.nunito(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: context.colors.textPrimary,
+                        ),
+                      ),
+                    ),
+                    if (forYou != null) ...[
+                      const SizedBox(width: 8),
+                      ForYouTag(forYou),
+                    ],
+                  ],
                 ),
                 const SizedBox(height: 4),
                 Text(

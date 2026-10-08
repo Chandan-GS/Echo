@@ -1,11 +1,13 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:flutter_tts/flutter_tts.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/core/presentation/widgets/echo_button.dart';
-import 'package:project_echo/core/services/echo_tts.dart';
+import 'package:project_echo/core/services/voice/echo_voice.dart';
+import 'package:project_echo/core/services/voice/natural_voice.dart';
 import 'package:project_echo/features/echo/presentation/widgets/siri_waveform_visualizer.dart';
 import 'package:project_echo/features/onboarding/data/onboarding_personalization.dart';
 import 'package:project_echo/features/onboarding/data/voice_preference.dart';
@@ -31,10 +33,13 @@ class PreviewScreen extends StatefulWidget {
 }
 
 class _PreviewScreenState extends State<PreviewScreen> {
-  final FlutterTts _tts = FlutterTts();
+  final _voice = EchoVoice.instance;
   late final String _sample;
   bool _isPlaying = false;
-  bool _ttsReady = false;
+
+  /// Whether the natural voice is downloaded; until then Echo reads with the
+  /// phone's own voice, and the screen says so.
+  bool _natural = true;
 
   @override
   void initState() {
@@ -44,43 +49,49 @@ class _PreviewScreenState extends State<PreviewScreen> {
       tone: widget.tone,
       interests: widget.interests,
     );
-    _setupTts();
+    _voice.speaking.addListener(_onSpeaking);
+    // A download still going from the voice step can finish here.
+    NaturalVoice.instance.changed.addListener(_checkNatural);
+    NaturalVoice.instance.installing.addListener(_onInstalling);
+    _start();
   }
 
-  Future<void> _setupTts() async {
-    // Apply the exact voice the user just shaped so the payoff matches.
-    await EchoTts.applyPreference(_tts, widget.voice);
+  Future<void> _start() async {
+    await _checkNatural();
+    if (mounted) _speak(); // auto-play the "aha" moment once
+  }
 
-    _tts.setStartHandler(() {
-      if (mounted) setState(() => _isPlaying = true);
-    });
-    _tts.setCompletionHandler(() {
-      if (mounted) setState(() => _isPlaying = false);
-    });
-    _tts.setCancelHandler(() {
-      if (mounted) setState(() => _isPlaying = false);
-    });
-    _tts.setErrorHandler((_) {
-      if (mounted) setState(() => _isPlaying = false);
-    });
+  /// The voice just chosen is saved, so Echo speaks with exactly it.
+  Future<void> _checkNatural() async {
+    final natural =
+        Platform.isMacOS ||
+        Platform.isWindows ||
+        await NaturalVoice.instance.modelDir(widget.voice) != null;
+    if (mounted) setState(() => _natural = natural);
+  }
 
-    if (!mounted) return;
-    setState(() => _ttsReady = true);
-    _speak(); // auto-play the "aha" moment once
+  void _onInstalling() {
+    if (mounted) setState(() {});
+  }
+
+  bool get _downloading =>
+      NaturalVoice.instance.installing.value == piperVoice(widget.voice);
+
+  void _onSpeaking() {
+    final playing = _voice.speaking.value != null;
+    if (mounted && playing != _isPlaying) {
+      setState(() => _isPlaying = playing);
+    }
   }
 
   Future<void> _speak() async {
-    if (!_ttsReady) return;
-    try {
-      await _tts.stop();
-      await _tts.speak(_sample);
-    } catch (_) {}
+    await _voice.stop();
+    _voice.sayAll(_sample);
   }
 
   Future<void> _toggle() async {
     if (_isPlaying) {
-      await _tts.stop();
-      if (mounted) setState(() => _isPlaying = false);
+      await _voice.stop();
     } else {
       await _speak();
     }
@@ -88,10 +99,10 @@ class _PreviewScreenState extends State<PreviewScreen> {
 
   @override
   void dispose() {
-    _tts.setStartHandler(() {});
-    _tts.setCompletionHandler(() {});
-    _tts.setCancelHandler(() {});
-    _tts.stop();
+    _voice.speaking.removeListener(_onSpeaking);
+    NaturalVoice.instance.changed.removeListener(_checkNatural);
+    NaturalVoice.instance.installing.removeListener(_onInstalling);
+    _voice.stop();
     super.dispose();
   }
 
@@ -102,8 +113,14 @@ class _PreviewScreenState extends State<PreviewScreen> {
 
     return OnboardingStepBody(
       title: 'Here’s a taste.',
-      subtitle:
-          'This is your morning briefing, in your voice. Tap the wave to replay.',
+      subtitle: _natural
+          ? 'This is your morning briefing, in your voice. Tap the wave to replay.'
+          : _downloading
+          ? 'This is your morning briefing, read by your phone’s voice while '
+                '${widget.voice.voice.label} downloads. Tap the wave to replay.'
+          : 'This is your morning briefing, read by your phone’s voice until you '
+                'download ${widget.voice.voice.label} in Settings → Voice. Tap '
+                'the wave to replay.',
       scrollableBody: false,
       footer: EchoButton(
         text: 'Sounds great — finish setup',

@@ -1,25 +1,114 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:math' as math;
-import 'package:project_echo/core/services/analytics_service.dart';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:fllama/fllama.dart';
+import 'package:project_echo/core/services/analytics_service.dart';
+import 'package:project_echo/core/services/desktop_engine_client.dart';
+import 'package:project_echo/core/services/gemini_service.dart';
+import 'package:project_echo/core/services/offline_model_repository.dart';
+import 'package:project_echo/demo/demo_mode.dart';
+import 'package:project_echo/features/echo/data/ask/ask_intents.dart';
+import 'package:project_echo/features/echo/data/ask/ask_retrieval.dart';
+import 'package:project_echo/features/echo/data/ask/citations.dart';
+import 'package:project_echo/features/echo/data/ask/conversation_memory.dart';
+import 'package:project_echo/features/echo/data/context/chat_context_store.dart';
 import 'package:project_echo/features/echo/data/datasources/briefing_prompt.dart';
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
 import 'package:project_echo/features/echo/data/datasources/tflite_embedding_service.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
+import 'package:project_echo/features/echo/data/relevance/temporal_relevance.dart';
+import 'package:project_echo/features/echo/data/reply/reply_drafter.dart';
+import 'package:project_echo/features/echo/data/reply/reply_sender.dart';
+import 'package:project_echo/features/todo/data/todo_generator.dart';
+import 'package:project_echo/features/todo/data/todo_item.dart';
+import 'package:project_echo/features/todo/data/todo_planner.dart';
+import 'package:project_echo/features/todo/data/todo_store.dart';
+import 'package:project_echo/features/vault/data/app_access.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:project_echo/core/services/gemini_service.dart';
-import 'package:project_echo/core/services/desktop_engine_client.dart';
-import 'package:project_echo/core/services/offline_model_repository.dart';
+import 'package:project_echo/core/services/phone_actions.dart';
+import 'package:project_echo/features/desktop/data/desktop_actions.dart';
 
 part 'ask_ai_state.dart';
 
 class AskAiCubit extends Cubit<AskAiState> {
   final List<ChatMessage> _messages = [];
   int? _activeRequestId;
+  final TodoGenerator _todos;
 
-  AskAiCubit() : super(AskAiInitial());
+  AskAiCubit({TodoGenerator? todos})
+    : _todos = todos ?? TodoGenerator(),
+      super(AskAiInitial());
+
+  List<ChatMessage> get messages => List.unmodifiable(_messages);
+
+  void _emit({bool searching = false, AskProgress? progress}) {
+    if (isClosed) return;
+    emit(
+      AskAiMessageReceived(
+        messages: List.from(_messages),
+        isSearching: searching,
+        progress: progress,
+      ),
+    );
+  }
+
+  /// The filming build: a scripted answer, found and streamed in the same
+  /// rhythm as a real one.
+  Future<void> _demoAnswer(String question) async {
+    final draft = await DemoAsk.draft(question);
+    if (draft != null) {
+      await Future<void>.delayed(const Duration(milliseconds: 700));
+      if (isClosed) return;
+      final (to, text) = draft;
+      _messages.add(
+        ChatMessage(
+          sender: 'echo',
+          text: '',
+          kind: MessageKind.draft,
+          draft: ReplyDraft(
+            to: to,
+            text: '',
+            route: ReplyRoute.send,
+            status: DraftStatus.writing,
+          ),
+        ),
+      );
+      final index = _messages.length - 1;
+      _emit();
+      await Future<void>.delayed(const Duration(milliseconds: 1100));
+      if (isClosed) return;
+      _updateDraft(
+        index,
+        (d) => d.copyWith(text: text, status: DraftStatus.ready),
+      );
+      return;
+    }
+    final (answer, sources) = await DemoAsk.answer(question);
+    await Future<void>.delayed(const Duration(milliseconds: 900));
+    if (isClosed) return;
+    _messages.add(
+      ChatMessage(
+        sender: 'echo',
+        text: '',
+        isGenerating: true,
+        ragSources: sources,
+      ),
+    );
+    final index = _messages.length - 1;
+    _emit();
+    var shown = '';
+    for (final word in answer.split(' ')) {
+      await Future<void>.delayed(const Duration(milliseconds: 45));
+      if (isClosed) return;
+      shown = shown.isEmpty ? word : '$shown $word';
+      _messages[index] = _messages[index].copyWith(text: shown);
+      _emit();
+    }
+    _messages[index] = _messages[index].copyWith(isGenerating: false);
+    _emit();
+  }
 
   Future<void> sendMessage(String text) async {
     if (text.trim().isEmpty) return;
@@ -29,9 +118,9 @@ class AskAiCubit extends Cubit<AskAiState> {
     cancelInference();
 
     _messages.add(ChatMessage(sender: 'user', text: text));
-    emit(
-      AskAiMessageReceived(messages: List.from(_messages), isSearching: true),
-    );
+    _emit(searching: true);
+
+    if (kEchoDemo) return _demoAnswer(text);
 
     // Index of the echo placeholder for THIS request. Captured once so that
     // streaming callbacks always write to their own message even if the list
@@ -39,418 +128,458 @@ class AskAiCubit extends Cubit<AskAiState> {
     int? echoIndex;
 
     try {
-      // The on-device model is only needed for the offline (Fllama) path below.
-      // Cloud (Gemini) and desktop-engine paths don't require it, so we no
-      // longer hard-gate here — the offline branch guards on modelPath itself.
-      final modelPath = await createOfflineModelRepository().downloadedPathOrNull();
+      // Blocked categories and apps switched off in Apps Echo hears aren't
+      // context, though they stay in the Vault.
+      final allNotifications = await withoutExcludedSources(
+        await IsarDataSource.getAllEntries(),
+      );
 
-      print('=== ASK AI: STARTING QUERY SEARCH ===\nQuery: $text');
+      // "Add them to my list", "tell Rahul I'll bring it": things to do, not
+      // questions to answer.
+      final intent = parseIntent(text, replyCandidates(allNotifications));
+      if (await _act(intent)) return;
+
+      final now = DateTime.now();
+      final smallTalk = isSmallTalk(text);
+      // Small talk isn't looked up, so there's nothing to report reading.
+      final reading = smallTalk ? null : allNotifications.length;
+      _emit(searching: true, progress: _progress(reading));
+
       // Run on-device RAG using all-MiniLM model. The TensorFlow Lite native
       // library isn't bundled on desktop (macOS/Windows), and notifications
       // synced from the phone carry no embeddings anyway, so on desktop we skip
-      // embeddings entirely and fall back to keyword-only retrieval (the +0.4
-      // sender/source keyword boost below still surfaces relevant items).
+      // embeddings entirely and fall back to keyword + time retrieval.
       List<double>? queryEmbedding;
-      if (!(Platform.isMacOS || Platform.isWindows)) {
+      if (!smallTalk && !(Platform.isMacOS || Platform.isWindows)) {
         try {
-          queryEmbedding =
-              await TfliteEmbeddingService.instance.getEmbedding(text);
+          queryEmbedding = await TfliteEmbeddingService.instance.getEmbedding(
+            text,
+          );
         } catch (e) {
-          print('Embedding unavailable — keyword-only retrieval: $e');
-        }
-      }
-      final allNotifications = await IsarDataSource.getAllEntries();
-      print('Total notifications in Isar: ${allNotifications.length}');
-
-      // Cosine similarity comparison with Hybrid Keyword Boost
-      final queryLower = text.toLowerCase();
-      final stopWords = {
-        'notification',
-        'notifications',
-        'message',
-        'messages',
-        'email',
-        'emails',
-        'app',
-        'from',
-        'about',
-        'summarize',
-        'summarise',
-        'what',
-        'did',
-        'say',
-        'the',
-        'tell',
-        'me',
-        'any',
-        'update',
-        'updates',
-        'show',
-        'get',
-        'give',
-      };
-
-      final queryWords = queryLower
-          .split(RegExp(r'\W+'))
-          .where((w) => w.isNotEmpty && w.length > 2 && !stopWords.contains(w))
-          .toSet();
-
-      final scored = allNotifications.map((e) {
-        double similarity = _cosineSimilarity(queryEmbedding, e.embedding);
-
-        // Keyword boost for sender or source
-        final senderLower = e.sender.toLowerCase();
-        final sourceLower = e.source.toLowerCase();
-        final metaWords = {
-          ...senderLower.split(RegExp(r'\W+')),
-          ...sourceLower.split(RegExp(r'\W+')),
-        }.where((w) => w.isNotEmpty && !stopWords.contains(w)).toSet();
-
-        bool hasMetaMatch = queryWords.any((qw) => metaWords.contains(qw));
-        if (hasMetaMatch) {
-          similarity +=
-              0.4; // Significant boost for matching the sender or source name precisely
-        }
-
-        // Keyword boost for the notification's own text — metadata alone
-        // misses a plain-language query whose words simply appear in what
-        // the notification actually says. This matters most on desktop,
-        // which has no embeddings to fall back on (see the queryEmbedding
-        // guard above), so this is the only way content itself counts there.
-        final contentLower = e.content.toLowerCase();
-        final contentWords = contentLower
-            .split(RegExp(r'\W+'))
-            .where((w) => w.isNotEmpty && !stopWords.contains(w))
-            .toSet();
-        if (queryWords.any((qw) => contentWords.contains(qw))) {
-          similarity += 0.35;
-        }
-
-        // A query clearly asking about the weather should still find a
-        // weather notification even when neither the query nor the
-        // notification's sender ever uses the word "weather" itself — e.g. a
-        // system weather alert's sender is just "Google" and its content
-        // reads "29° in Bengaluru · Mostly cloudy", with zero literal
-        // keyword overlap against "what's the weather like today".
-        if (_isWeatherQuery(queryWords) && _looksLikeWeather(contentLower)) {
-          similarity += 0.5;
-        }
-
-        return _ScoredNotification(e, similarity);
-      }).toList();
-
-      scored.sort((a, b) => b.score.compareTo(a.score));
-
-      final Set<String> seenContents = {};
-      final List<_ScoredNotification> uniqueScored = [];
-
-      for (final s in scored) {
-        if (s.score >= 0.30) {
-          final normalizedContent = s.notification.content.toLowerCase().trim();
-          if (!seenContents.contains(normalizedContent)) {
-            seenContents.add(normalizedContent);
-            uniqueScored.add(s);
-            if (uniqueScored.length >= 10) break;
-          }
+          debugPrint('Embedding unavailable — keyword-only retrieval: $e');
         }
       }
 
-      final relevantScored = uniqueScored;
-      final List<RawData> ragSources = relevantScored
-          .map((s) => s.notification)
-          .toList();
+      // Today's conversation. A follow-up ("and Neha?", "when is it?") is
+      // spotted locally, then retrieval leans towards the previous topic and
+      // the prompt gets the last couple of exchanges — nothing otherwise.
+      final memory = await ConversationMemory.load(now);
+      final previous = memory.last;
+      final followUp =
+          !smallTalk && memory.isFollowUp(text, queryEmbedding, now);
 
-      print('=== RAG SIMILARITY SEARCH RESULTS ===');
-      for (int i = 0; i < math.min(5, relevantScored.length); i++) {
-        final match = relevantScored[i];
-        print(
-          'Match #${i + 1}: [Score: ${match.score.toStringAsFixed(4)}] Sender: ${match.notification.sender} | Content: ${match.notification.content}',
-        );
+      final ranked = smallTalk
+          ? const <RankedNotification>[]
+          : rankForQuestion(
+              question: text,
+              now: now,
+              entries: allNotifications,
+              questionEmbedding: followUp
+                  ? blendEmbeddings(queryEmbedding, previous!.embedding)
+                  : queryEmbedding,
+              carriedIds: followUp
+                  ? previous!.sourceIds.toSet()
+                  : const <int>{},
+            );
+      var ragSources = ranked.map((r) => r.entry).toList();
+
+      // A follow-up that matches nothing new ("what time was that?") is still
+      // about the previous answer's notifications.
+      if (ragSources.isEmpty && followUp) {
+        final ids = previous!.sourceIds.toSet();
+        ragSources = allNotifications.where((e) => ids.contains(e.id)).toList();
       }
-      print('=====================================');
 
       // No real match on an actual lookup question: don't hand a small local
       // model an empty context and hope it improvises sensibly — on thin
       // context, the 1.5B model reliably degenerates into paraphrasing its own
       // system instruction back at the user instead of answering. Answer
-      // directly instead of invoking generation at all — the same defensive
-      // short-circuit the briefing cubit uses for a low RAG confidence score.
+      // directly instead of invoking generation at all.
       // Casual small talk ("hi", "thanks") never needed notification context
-      // in the first place, so it still goes to the model normally — the
-      // model generating a warm, natural reply here isn't the failure mode we
-      // were guarding against.
-      if (ragSources.isEmpty && !_isSmallTalk(text)) {
-        final name = (await SharedPreferences.getInstance())
-                .getString('user_name') ??
+      // in the first place, so it still goes to the model normally.
+      if (ragSources.isEmpty && !smallTalk) {
+        final name =
+            (await SharedPreferences.getInstance()).getString('user_name') ??
             'sir';
-        _messages.add(
-          ChatMessage(
-            sender: 'echo',
-            text: _noMatchFallback(name, allNotifications),
-          ),
-        );
-        emit(
-          AskAiMessageReceived(
-            messages: List.from(_messages),
-            isSearching: false,
+        final fallback = _noMatchFallback(name, allNotifications);
+        _messages.add(ChatMessage(sender: 'echo', text: fallback));
+        _emit();
+        await memory.add(
+          ConversationTurn(
+            question: text,
+            answer: fallback,
+            sourceIds: const [],
+            embedding: queryEmbedding,
+            at: now,
           ),
         );
         return;
       }
 
+      // Numbered, so the answer can point at what it used ("… by 4 PM [2]").
+      final myTurns = await ChatContextStore.loadMyTurns();
+      String line(RawData e) => formatEntry(
+        e,
+        myTurns: myTurns,
+        content: _clip(
+          rewriteRelativeDays(e.content, e.timestamp, now),
+          _maxContentChars,
+        ),
+        when: askTimeLabel(e, now, withArrival: isArrivalQuestion(text)),
+      );
       final contextString = ragSources.isEmpty
           ? 'No notifications needed — this is just a casual message.'
-          : ragSources
-              .map(
-                (e) => formatNotification(
-                  source: e.source,
-                  sender: e.sender,
-                  content: e.content,
-                ),
-              )
-              .join('\n');
+          : [
+              for (var i = 0; i < ragSources.length; i++)
+                '${i + 1}. ${line(ragSources[i])}',
+            ].join('\n');
+      final history = followUp ? memory.historyForPrompt() : null;
 
-      final echoMsgPlaceholder = ChatMessage(
-        sender: 'echo',
-        text: '',
-        isGenerating: true,
-        ragSources: ragSources,
-      );
-      _messages.add(echoMsgPlaceholder);
-      echoIndex = _messages.length - 1;
-
-      emit(
-        AskAiMessageReceived(
-          messages: List.from(_messages),
-          isSearching: false,
+      _messages.add(
+        ChatMessage(
+          sender: 'echo',
+          text: '',
+          isGenerating: true,
+          ragSources: ragSources,
+          checked: allNotifications.length,
         ),
       );
+      echoIndex = _messages.length - 1;
+      _emit(progress: _progress(reading, ragSources.length));
 
       final prefs = await SharedPreferences.getInstance();
-      final isOfflineEngine = prefs.getBool('is_offline_engine') ?? true;
-      final geminiApiKey = prefs.getString('gemini_api_key') ?? '';
       final userName = prefs.getString('user_name') ?? 'Sir';
-
-      // Phone-first, computer-optional — same bounded reachability check as
-      // the briefing cubit; falls straight through to on-device/Gemini if no
-      // desktop engine answers in time. Desktop builds never offload to
-      // ANOTHER desktop engine — this computer already generates locally, so
-      // "prefer a computer" only means anything on a phone. Without this
-      // guard, a desktop build that ever had prefer_desktop_engine=true
-      // (e.g. leftover from earlier testing) could discover and call itself
-      // over HTTP, which now correctly gets rejected once pairing has ever
-      // happened — better to just never attempt it on desktop.
-      final preferDesktopEngine = !(Platform.isMacOS || Platform.isWindows) &&
-          (prefs.getBool('prefer_desktop_engine') ?? false);
-      String? desktopHost;
-      if (preferDesktopEngine) {
-        desktopHost = await DesktopEngineClient.discoverHost(
-          cachedHost: prefs.getString('desktop_engine_host'),
+      final answer = StringBuffer();
+      await for (final delta in _generate(
+        prefs: prefs,
+        question: text,
+        context: contextString,
+        userName: userName,
+        history: history,
+        now: now,
+      )) {
+        if (isClosed) return;
+        answer.write(delta);
+        _messages[echoIndex] = _messages[echoIndex].copyWith(
+          text: answer.toString(),
         );
-        if (desktopHost != null) {
-          await prefs.setString('desktop_engine_host', desktopHost);
-        }
+        _emit(progress: _progress(reading, ragSources.length));
       }
-      final useDesktopEngine = desktopHost != null;
+      final finished = _messages[echoIndex].copyWith(
+        text: _withoutChatTokens(answer.toString()),
+      );
+      _messages[echoIndex] = finished.copyWith(
+        isGenerating: false,
+        addable: finished.todos > 0 && await _notOnList(finished.about),
+      );
+      _emit();
 
-      final prompt = buildAskAiQwenPrompt(text, contextString, userName);
-
-      print('=== ASK AI: LLM INPUT PROMPT ===');
-      _debugPrintLongString(prompt);
-      print('================================');
-
-      if (useDesktopEngine) {
-        final stream = DesktopEngineClient.generateStream(
-          host: desktopHost,
-          endpoint: 'ask',
-          prompt: prompt,
+      // Remember the exchange (small talk carries no topic worth following).
+      final spoken = plainAnswer(_messages[echoIndex].text);
+      if (!smallTalk && spoken.isNotEmpty) {
+        await memory.add(
+          ConversationTurn(
+            question: text,
+            answer: spoken,
+            sourceIds: ragSources.map((e) => e.id).toList(),
+            embedding: queryEmbedding,
+            at: now,
+          ),
         );
-        String cumulativeBuffer = '';
-
-        await for (final chunk in stream) {
-          if (isClosed) break;
-          if (chunk.isNotEmpty) {
-            cumulativeBuffer += chunk;
-            final lastIdx = echoIndex;
-            _messages[lastIdx] = _messages[lastIdx].copyWith(
-              text: cumulativeBuffer,
-            );
-            emit(AskAiMessageReceived(messages: List.from(_messages)));
-          }
-        }
-
-        final lastIdx = echoIndex;
-        _messages[lastIdx] = _messages[lastIdx].copyWith(isGenerating: false);
-        emit(AskAiMessageReceived(messages: List.from(_messages)));
-      } else if (!isOfflineEngine && geminiApiKey.isNotEmpty) {
-        final stream = GeminiService.instance.generateStream(
-          geminiApiKey,
-          prompt,
-        );
-        String cumulativeBuffer = '';
-
-        await for (final response in stream) {
-          if (isClosed) break;
-          final chunk = response.text ?? '';
-          if (chunk.isNotEmpty) {
-            cumulativeBuffer += chunk;
-            final lastIdx = echoIndex;
-            _messages[lastIdx] = _messages[lastIdx].copyWith(
-              text: cumulativeBuffer,
-            );
-            emit(AskAiMessageReceived(messages: List.from(_messages)));
-          }
-        }
-
-        final lastIdx = echoIndex;
-        _messages[lastIdx] = _messages[lastIdx].copyWith(isGenerating: false);
-
-        var cleanText = _messages[lastIdx].text.trim();
-        cleanText = cleanText
-            .replaceAll(RegExp(r'<\|im_start\|>.*', dotAll: true), '')
-            .replaceAll(RegExp(r'<\|im_end\|>', dotAll: true), '')
-            .replaceAll(RegExp(r'<\|[^|]*\|>', dotAll: true), '')
-            .trim();
-        _messages[lastIdx] = _messages[lastIdx].copyWith(text: cleanText);
-
-        emit(AskAiMessageReceived(messages: List.from(_messages)));
-      } else {
-        // Offline path — this is the only branch that actually needs the model.
-        if (modelPath == null) {
-          final lastIdx = echoIndex;
-          _messages[lastIdx] = _messages[lastIdx].copyWith(
-            text:
-                "The on-device model isn't installed. Download it in Settings, "
-                'or switch to the cloud engine to use Ask Echo without it.',
-            isGenerating: false,
-          );
-          emit(AskAiMessageReceived(messages: List.from(_messages)));
-          return;
-        }
-        final request = FllamaInferenceRequest(
-          // fllama splits the context across parallel slots, so the usable
-          // window is only contextSize / n_parallel. 16384 keeps the usable
-          // slot at ~2048+ tokens, and keeping it identical to the briefing
-          // request lets the loaded model be reused instead of reloaded when
-          // switching between the two.
-          contextSize: 16384,
-          input: prompt,
-          maxTokens: 500,
-          modelPath: modelPath,
-          numGpuLayers: 99,
-          numThreads: 4,
-          temperature: 0.3,
-          penaltyFrequency: 0.0,
-          penaltyRepeat: 1.1,
-          topP: 0.9,
-        );
-
-        final Completer<void> done = Completer<void>();
-        String cumulativeBuffer = '';
-
-        _activeRequestId = await fllamaInference(request, (
-          cumulative,
-          openaiJson,
-          isDone,
-        ) {
-          if (isClosed) return;
-
-          if (cumulative.length > cumulativeBuffer.length) {
-            final delta = cumulative.substring(cumulativeBuffer.length);
-            cumulativeBuffer = cumulative;
-
-            final lastIdx = echoIndex!;
-            _messages[lastIdx] = _messages[lastIdx].copyWith(
-              text: _messages[lastIdx].text + delta,
-            );
-            emit(AskAiMessageReceived(messages: List.from(_messages)));
-          }
-
-          if (isDone) {
-            final lastIdx = echoIndex!;
-            _messages[lastIdx] = _messages[lastIdx].copyWith(
-              isGenerating: false,
-            );
-
-            var cleanText = _messages[lastIdx].text.trim();
-            cleanText = cleanText
-                .replaceAll(RegExp(r'<\|im_start\|>.*', dotAll: true), '')
-                .replaceAll(RegExp(r'<\|im_end\|>', dotAll: true), '')
-                .replaceAll(RegExp(r'<\|[^|]*\|>', dotAll: true), '')
-                .trim();
-            _messages[lastIdx] = _messages[lastIdx].copyWith(text: cleanText);
-            print(
-              '=== ASK AI: ECHO GENERATED OUTPUT ===\n$cleanText\n=====================================',
-            );
-
-            emit(AskAiMessageReceived(messages: List.from(_messages)));
-            _activeRequestId = null;
-            if (!done.isCompleted) done.complete();
-          }
-        });
-
-        await done.future;
       }
     } catch (e) {
       // Remove this request's own placeholder if it never received any text,
       // identified by its captured index rather than "the last message".
       if (echoIndex != null &&
-          echoIndex >= 0 &&
           echoIndex < _messages.length &&
-          _messages[echoIndex].sender == 'echo' &&
           _messages[echoIndex].text.isEmpty) {
         _messages.removeAt(echoIndex);
       }
       _messages.add(
         ChatMessage(
           sender: 'echo',
-          text: 'Sorry, I encountered an error running inference: $e',
+          text: e is GeminiFailure
+              ? e.message
+              : 'Sorry, I encountered an error running inference: $e',
+          kind: e is GeminiFailure ? MessageKind.notice : MessageKind.text,
         ),
       );
-      emit(
-        AskAiMessageReceived(
-          messages: List.from(_messages),
-          isSearching: false,
-        ),
-      );
+      _emit();
     }
   }
 
-  // Casual openers/closers that never need notification context to answer —
-  // matched as the whole (trimmed) message so a real question that happens to
-  // contain one of these words ("thanks for the update on my WhatsApp?")
-  // still falls through to normal RAG handling.
-  static final RegExp _smallTalkPattern = RegExp(
-    r"^(hi+|hey+|hello+|yo|sup|what'?s up|"
-    r"good\s*(morning|afternoon|evening|night)|"
-    r"how('?s| is| are) it going|how are you( doing)?|"
-    r"thanks?( you)?|thx|ty|"
-    r"ok(ay)?|cool|nice|great|got it|sounds good|"
-    r"bye|goodbye|see (you|ya)|good ?night)[\s!.?]*$",
-    caseSensitive: false,
-  );
+  /// The answer as it streams in, piece by piece, from whichever engine is
+  /// in use: a paired desktop, Gemini, or the on-device model.
+  Stream<String> _generate({
+    required SharedPreferences prefs,
+    required String question,
+    required String context,
+    required String userName,
+    required String? history,
+    required DateTime now,
+  }) async* {
+    final isOfflineEngine = prefs.getBool('is_offline_engine') ?? true;
+    final geminiApiKey = prefs.getString('gemini_api_key') ?? '';
+    final prompt = buildAskAiQwenPrompt(
+      question,
+      context,
+      userName,
+      now: now,
+      history: history,
+    );
 
-  bool _isSmallTalk(String text) => _smallTalkPattern.hasMatch(text.trim());
+    // Phone-first, computer-optional — same bounded reachability check as
+    // the briefing cubit; falls straight through to on-device/Gemini if no
+    // desktop engine answers in time. Desktop builds never offload to
+    // another desktop engine.
+    final preferDesktopEngine =
+        !(Platform.isMacOS || Platform.isWindows) &&
+        (prefs.getBool('prefer_desktop_engine') ?? false);
+    if (preferDesktopEngine) {
+      final host = await DesktopEngineClient.discoverHost(
+        cachedHost: prefs.getString('desktop_engine_host'),
+      );
+      if (host != null) {
+        await prefs.setString('desktop_engine_host', host);
+        yield* DesktopEngineClient.generateStream(
+          host: host,
+          endpoint: 'ask',
+          prompt: prompt,
+        );
+        return;
+      }
+    }
 
-  static const _weatherQueryWords = {
-    'weather', 'forecast', 'temperature', 'rain', 'raining', 'rainy',
-    'sunny', 'cloudy', 'climate', 'hot', 'cold', 'humid', 'humidity',
-    'storm', 'wind', 'windy', 'snow', 'snowing',
-  };
+    if (!isOfflineEngine && geminiApiKey.isNotEmpty) {
+      // Gemini gets a real system instruction and a plain user turn, not
+      // the offline model's chat template.
+      await for (final response in GeminiService.instance.generateStream(
+        geminiApiKey,
+        buildAskAiUserMessage(question, context, history: history),
+        systemInstruction: getAskAiSystemInstruction(userName, now: now),
+      )) {
+        final chunk = response.text ?? '';
+        if (chunk.isNotEmpty) yield chunk;
+      }
+      return;
+    }
 
-  bool _isWeatherQuery(Set<String> queryWords) =>
-      queryWords.any(_weatherQueryWords.contains);
-
-  static final RegExp _degreePattern = RegExp(r'\d+\s*°');
-  static const _weatherContentMarkers = [
-    'cloudy', 'forecast', 'rain', 'sunny', 'humidity', 'storm',
-    'clear sky', 'overcast',
-  ];
-
-  bool _looksLikeWeather(String contentLower) {
-    if (_degreePattern.hasMatch(contentLower)) return true;
-    return _weatherContentMarkers.any(contentLower.contains);
+    final modelPath = await createOfflineModelRepository()
+        .downloadedPathOrNull();
+    if (modelPath == null) {
+      yield "The on-device model isn't installed. Download it in Settings, "
+          'or switch to the cloud engine to use Ask Echo without it.';
+      return;
+    }
+    final deltas = StreamController<String>();
+    var sent = 0;
+    _activeRequestId = await fllamaInference(
+      FllamaInferenceRequest(
+        // fllama splits the context across parallel slots, so the usable
+        // window is only contextSize / n_parallel. 16384 keeps the usable
+        // slot at ~2048+ tokens, and keeping it identical to the briefing
+        // request lets the loaded model be reused instead of reloaded when
+        // switching between the two.
+        contextSize: 16384,
+        input: prompt,
+        maxTokens: 500,
+        modelPath: modelPath,
+        numGpuLayers: 99,
+        numThreads: 4,
+        temperature: 0.3,
+        penaltyFrequency: 0.0,
+        penaltyRepeat: 1.1,
+        topP: 0.9,
+      ),
+      (cumulative, openaiJson, isDone) {
+        if (deltas.isClosed) return;
+        if (cumulative.length > sent) {
+          deltas.add(cumulative.substring(sent));
+          sent = cumulative.length;
+        }
+        if (isDone) {
+          _activeRequestId = null;
+          deltas.close();
+        }
+      },
+    );
+    yield* deltas.stream;
   }
+
+  static AskProgress? _progress(int? reading, [int? found]) =>
+      reading == null ? null : AskProgress(reading, found);
+
+  // ── Doing things ─────────────────────────────────────────────────────────
+
+  /// Carries out [intent], if it asks for anything. True when handled.
+  Future<bool> _act(AskIntent intent) async {
+    final reply = intent.reply;
+    final answer = _lastAnswerIndex();
+    final adding = intent.addToList && answer != null;
+    if (!adding && reply == null) return false;
+    if (adding) await addFromAnswer(answer);
+    if (reply != null) await draftReply(reply.to, gist: reply.gist);
+    return true;
+  }
+
+  /// The latest answer that drew on notifications, which "add them" means.
+  int? _lastAnswerIndex() {
+    for (var i = _messages.length - 1; i >= 0; i--) {
+      final m = _messages[i];
+      if (!m.isUser && m.kind == MessageKind.text && m.ragSources.isNotEmpty) {
+        return i;
+      }
+    }
+    return null;
+  }
+
+  /// Whether any of [entries] isn't on the to-do list yet.
+  Future<bool> _notOnList(List<RawData> entries) async {
+    final (items, _) = await TodoStore().load();
+    final keys = {for (final i in items) i.sourceKey};
+    return entries.any((e) => !keys.contains(sourceKeyOf(e)));
+  }
+
+  /// "Add these to my list" under answer [index].
+  Future<void> addFromAnswer(int index) async {
+    final m = _messages[index];
+    _messages[index] = m.copyWith(addable: false);
+    await addEntries(m.about);
+  }
+
+  /// Puts [entries] on the to-do list, then says what went on.
+  Future<void> addEntries(List<RawData> entries) async {
+    if (entries.isEmpty) return;
+    final now = DateTime.now();
+    final added = await _todos.addFrom(entries, now);
+    _messages.add(
+      ChatMessage(
+        sender: 'echo',
+        text: addedLine(added, now),
+        kind: MessageKind.added,
+        added: added,
+      ),
+    );
+    _emit();
+  }
+
+  Future<void> undoAdded(int index) async {
+    final m = _messages[index];
+    if (m.kind != MessageKind.added || m.undone) return;
+    await TodoStore().remove({for (final i in m.added) i.id});
+    _messages[index] = m.copyWith(undone: true);
+    _emit();
+  }
+
+  /// Drafts a reply to [to]: from the owner's own words ([gist]) when given,
+  /// otherwise a suggestion.
+  Future<void> draftReply(RawData to, {String? gist}) async {
+    final route = await ReplySender.routeFor(to);
+    _messages.add(
+      ChatMessage(
+        sender: 'echo',
+        text: '',
+        kind: MessageKind.draft,
+        draft: ReplyDraft(
+          to: to,
+          text: '',
+          route: route,
+          status: DraftStatus.writing,
+        ),
+      ),
+    );
+    final index = _messages.length - 1;
+    _emit();
+    final text = await ReplyDrafter.draft(ReplyRequest(to, gist));
+    _updateDraft(
+      index,
+      (d) => d.copyWith(text: text, status: DraftStatus.ready),
+    );
+  }
+
+  void editDraft(int index, String text) =>
+      _updateDraft(index, (d) => d.copyWith(text: text));
+
+  void dismissDraft(int index) =>
+      _updateDraft(index, (d) => d.copyWith(status: DraftStatus.dismissed));
+
+  /// Sends [emoji] instead of the drafted words.
+  Future<void> quickReply(int index, String emoji) async {
+    editDraft(index, emoji);
+    await sendDraft(index);
+  }
+
+  Future<void> sendDraft(int index) async {
+    final draft = _messages[index].draft;
+    if (draft == null || !draft.open || draft.text.trim().isEmpty) return;
+    _updateDraft(index, (d) => d.copyWith(status: DraftStatus.sending));
+    // A computer can't reach the chat app; the phone sends it.
+    if ((Platform.isMacOS || Platform.isWindows) && !kEchoDemo) {
+      return _sendThroughPhone(index, draft);
+    }
+    final outcome = await ReplySender.send(draft.to, draft.text.trim());
+    _updateDraft(
+      index,
+      (d) => d.copyWith(
+        doneAt: DateTime.now(),
+        status: switch (outcome) {
+          ReplyOutcome.sent => DraftStatus.sent,
+          ReplyOutcome.written => DraftStatus.written,
+          ReplyOutcome.picker => DraftStatus.picker,
+          ReplyOutcome.copied => DraftStatus.copied,
+        },
+      ),
+    );
+  }
+
+  /// Hands the reply to the phone (see DesktopActions) and follows it: the
+  /// phone sends it, or shows it ready to send with a tap.
+  Future<void> _sendThroughPhone(int index, ReplyDraft draft) async {
+    final id = await DesktopActions.reply(draft.to, draft.text.trim());
+    final started = DateTime.now();
+    final done = Completer<void>();
+    Future<void> check() async {
+      final action = await DesktopActions.state(id);
+      final status = switch (action?.state) {
+        ActionState.done =>
+          action!.outcome == 'sent' ? DraftStatus.sent : DraftStatus.onPhone,
+        ActionState.failed => DraftStatus.failed,
+        _ =>
+          DateTime.now().difference(started) > const Duration(seconds: 40)
+              ? DraftStatus.waitingForPhone
+              : DraftStatus.sending,
+      };
+      if (isClosed) return;
+      _updateDraft(
+        index,
+        (d) => d.copyWith(
+          status: status,
+          doneAt: status == DraftStatus.sent ? DateTime.now() : null,
+        ),
+      );
+      if (status != DraftStatus.sending &&
+          status != DraftStatus.waitingForPhone &&
+          !done.isCompleted) {
+        done.complete();
+      }
+    }
+
+    PhoneActions.changed.addListener(check);
+    // Also notices the 40 seconds passing when nothing changes.
+    final tick = Timer.periodic(const Duration(seconds: 10), (_) => check());
+    await done.future.timeout(const Duration(minutes: 10), onTimeout: () {});
+    tick.cancel();
+    PhoneActions.changed.removeListener(check);
+  }
+
+  void _updateDraft(int index, ReplyDraft Function(ReplyDraft) change) {
+    final draft = _messages[index].draft;
+    if (draft == null) return;
+    _messages[index] = _messages[index].copyWith(draft: change(draft));
+    _emit();
+  }
+
+  // ── Helpers ──────────────────────────────────────────────────────────────
 
   /// A dead-end "I don't know" helps no one — point $name at what's actually
   /// in the vault instead, so a miss still leaves them with something useful
@@ -480,35 +609,16 @@ class AskAiCubit extends Cubit<AskAiState> {
         "but I do have $mentioned if that's useful instead.";
   }
 
-  double _cosineSimilarity(List<double>? a, List<double>? b) {
-    if (a == null || b == null || a.length != b.length) return 0.0;
-    double dotProduct = 0.0;
-    double normA = 0.0;
-    double normB = 0.0;
-    for (int i = 0; i < a.length; i++) {
-      dotProduct += a[i] * b[i];
-      normA += a[i] * a[i];
-      normB += b[i] * b[i];
-    }
-    if (normA == 0 || normB == 0) return 0.0;
-    return dotProduct / (math.sqrt(normA) * math.sqrt(normB));
-  }
+  static const _maxContentChars = 280;
 
-  void _debugPrintLongString(String text) {
-    for (final line in text.split('\n')) {
-      if (line.length <= 800) {
-        print(line);
-      } else {
-        int start = 0;
-        while (start < line.length) {
-          int end = start + 800;
-          if (end > line.length) end = line.length;
-          print(line.substring(start, end));
-          start = end;
-        }
-      }
-    }
-  }
+  static String _clip(String s, int max) =>
+      s.length <= max ? s : '${s.substring(0, max).trimRight()}…';
+
+  /// Chat-template tokens a local model sometimes leaves in its output.
+  static String _withoutChatTokens(String text) => text
+      .replaceAll(RegExp(r'<\|im_start\|>.*', dotAll: true), '')
+      .replaceAll(RegExp(r'<\|[^|]*\|>'), '')
+      .trim();
 
   void cancelInference() {
     if (_activeRequestId != null) {
@@ -524,8 +634,25 @@ class AskAiCubit extends Cubit<AskAiState> {
   }
 }
 
-class _ScoredNotification {
-  final RawData notification;
-  final double score;
-  _ScoredNotification(this.notification, this.score);
+/// What Echo says after adding to-dos: which day's list they went on.
+String addedLine(List<TodoItem> added, DateTime now) {
+  if (added.isEmpty) return "There's nothing new to add from those.";
+  final list = switch (addedTo(added, now)) {
+    'today' => "today's list",
+    'tomorrow' => "tomorrow's list",
+    _ => 'your list',
+  };
+  return added.length == 1 ? "Done. It's on $list." : "Done. They're on $list.";
+}
+
+/// The list [added] went on, as a card heading says it: "today",
+/// "tomorrow", or "your list" when they're on different days.
+String addedTo(List<TodoItem> added, DateTime now) {
+  final days = added.map((i) => startOfDay(i.day)).toSet();
+  if (days.length != 1) return 'your list';
+  return switch (days.single.difference(startOfDay(now)).inDays) {
+    0 => 'today',
+    1 => 'tomorrow',
+    _ => 'your list',
+  };
 }

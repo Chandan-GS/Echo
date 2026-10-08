@@ -6,18 +6,24 @@ sealed class OnBoardingState {}
 final class OnBoardingInitial extends OnBoardingState {}
 
 final class PermissionsStep extends OnBoardingState {
+  /// Notification access: reading other apps' notifications.
   final bool notificationGranted;
   final bool calendarGranted;
-  final bool smsGranted;
+
+  /// Posting Echo's own notifications (its briefing and reminders). Optional.
+  final bool alertsGranted;
 
   PermissionsStep({
     required this.notificationGranted,
     required this.calendarGranted,
-    required this.smsGranted,
+    required this.alertsGranted,
   });
 
   bool get canContinue => notificationGranted && calendarGranted;
 }
+
+/// Android only: which apps Echo hears (see Vault → Apps Echo hears).
+final class AppsStep extends OnBoardingState {}
 
 final class AiModeStep extends OnBoardingState {
   final String? selectedMode; // 'offline' or 'online'
@@ -38,11 +44,7 @@ final class VoiceStep extends OnBoardingState {
   final OnboardingTone tone;
   final Set<OnboardingInterest> interests;
 
-  VoiceStep({
-    required this.name,
-    required this.tone,
-    required this.interests,
-  });
+  VoiceStep({required this.name, required this.tone, required this.interests});
 }
 
 /// Plays a scripted, personalized sample briefing (on-device TTS) so the user

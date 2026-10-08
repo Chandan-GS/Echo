@@ -10,7 +10,13 @@ import 'package:project_echo/features/vault/presentation/widgets/category_detail
 import 'package:project_echo/core/presentation/animations/app_motion.dart';
 import 'package:project_echo/core/presentation/animations/fade_slide_in.dart';
 import 'package:project_echo/features/echo/presentation/widgets/echo_mascot.dart';
-import 'package:project_echo/features/vault/presentation/screens/desktop_vault_screen.dart';
+import 'package:project_echo/features/vault/presentation/screens/app_access_screen.dart';
+import 'package:project_echo/core/presentation/animations/page_transitions.dart';
+import 'package:project_echo/features/echo/data/models/raw_data.dart';
+import 'package:project_echo/features/vault/presentation/widgets/week_card.dart';
+import 'package:project_echo/features/vault/presentation/widgets/vault_day_heading.dart';
+import 'package:material_symbols_icons/symbols.dart';
+import 'package:project_echo/core/presentation/widgets/header_icon_button.dart';
 
 class VaultScreen extends StatelessWidget {
   const VaultScreen({super.key});
@@ -19,9 +25,7 @@ class VaultScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocProvider(
       create: (context) => VaultCubit()..loadEntries(),
-      child: (Platform.isMacOS || Platform.isWindows)
-          ? const DesktopVaultScreen()
-          : const _VaultView(),
+      child: const _VaultView(),
     );
   }
 }
@@ -119,7 +123,10 @@ class _VaultViewState extends State<_VaultView> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: context.colors.background,
+      // Lists scroll behind the phone's nav dock and pad their ends by
+      // MediaQuery's bottom padding (see MainScaffold).
       body: SafeArea(
+        bottom: false,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24.0),
           child: Column(
@@ -127,14 +134,21 @@ class _VaultViewState extends State<_VaultView> {
             children: [
               const SizedBox(height: 24),
               FadeSlideIn(
-                child: Text(
-                  'The Vault',
-                  style: GoogleFonts.oldStandardTt(
-                    fontSize: 40,
-                    fontWeight: FontWeight.w700,
-                    color: context.colors.textPrimary,
-                    height: 1.15,
-                  ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'The Vault',
+                        style: GoogleFonts.oldStandardTt(
+                          fontSize: 40,
+                          fontWeight: FontWeight.w700,
+                          color: context.colors.textPrimary,
+                          height: 1.15,
+                        ),
+                      ),
+                    ),
+                    if (Platform.isAndroid) _appAccessButton(context),
+                  ],
                 ),
               ),
               const SizedBox(height: 24),
@@ -184,30 +198,24 @@ class _VaultViewState extends State<_VaultView> {
                         );
                       }
 
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Custom sliding tab bar
-                          _buildTabBar(),
-                          const SizedBox(height: 24),
-
-                          // Content View
-                          Expanded(
-                            child: AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 200),
-                              transitionBuilder:
-                                  (Widget child, Animation<double> animation) {
-                                    return FadeTransition(
-                                      opacity: animation,
-                                      child: child,
-                                    );
-                                  },
-                              child: _selectedTabIndex == 0
-                                  ? _buildAllView(state)
-                                  : _buildCategoriesView(state, context),
-                            ),
-                          ),
-                        ],
+                      return _SnappingVault(
+                        // Categories gets the whole screen for the wheel.
+                        collapsed: _selectedTabIndex == 1,
+                        header: const WeekCard(),
+                        tabs: _buildTabBar(),
+                        body: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 200),
+                          transitionBuilder:
+                              (Widget child, Animation<double> animation) {
+                                return FadeTransition(
+                                  opacity: animation,
+                                  child: child,
+                                );
+                              },
+                          child: _selectedTabIndex == 0
+                              ? _buildAllView(state)
+                              : _buildCategoriesView(state, context),
+                        ),
                       );
                     }
 
@@ -222,67 +230,104 @@ class _VaultViewState extends State<_VaultView> {
     );
   }
 
+  /// Opens Apps Echo hears; on return the Vault picks up any change to
+  /// blocked categories made there.
+  Widget _appAccessButton(BuildContext context) {
+    return HeaderIconButton(
+      icon: Symbols.tune_rounded,
+      label: 'Apps Echo hears',
+      onTap: () async {
+        final vault = context.read<VaultCubit>();
+        await Navigator.of(
+          context,
+          rootNavigator: true,
+        ).push(bouncyRoute(const AppAccessScreen()));
+        vault.reloadSettings();
+      },
+    );
+  }
+
+  /// Newest first, under a heading per day with that day's count.
   Widget _buildAllView(VaultLoaded state) {
-    return Column(
+    final items = state.displayedItems;
+    final rows = <Object>[]; // a DateTime starts a day, then its notifications
+    final perDay = <DateTime, int>{};
+    for (final item in items) {
+      final t = item.timestamp;
+      final day = DateTime(t.year, t.month, t.day);
+      if (rows.isEmpty || !perDay.containsKey(day)) rows.add(day);
+      perDay[day] = (perDay[day] ?? 0) + 1;
+      rows.add(item);
+    }
+    var cards = 0;
+    return ListView.builder(
       key: const ValueKey('all_view'),
-      children: [
-        Expanded(
-          child: ListView.builder(
-            physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.symmetric(vertical: 8.0),
-            itemCount: state.displayedItems.length,
-            itemBuilder: (context, index) {
-              // Cascade the first screenful on load; items scrolled into view
-              // later just fade up immediately (no stale long delay).
-              return FadeSlideIn(
-                delay: index < 8 ? AppMotion.staggerDelay(index) : Duration.zero,
-                offsetY: 12,
-                child: NotificationCardWidget(
-                  notification: state.displayedItems[index],
-                ),
-              );
-            },
-          ),
-        ),
-      ],
+      padding: EdgeInsets.fromLTRB(
+        0,
+        0,
+        0,
+        MediaQuery.paddingOf(context).bottom + 8,
+      ),
+      itemCount: rows.length,
+      itemBuilder: (context, index) {
+        final row = rows[index];
+        if (row is DateTime) {
+          return VaultDayHeading(
+            day: row,
+            count: perDay[row]!,
+            first: index == 0,
+          );
+        }
+        // Cascade the first screenful on load; items scrolled into view
+        // later just fade up immediately (no stale long delay).
+        final n = cards++;
+        return FadeSlideIn(
+          delay: n < 8 ? AppMotion.staggerDelay(n) : Duration.zero,
+          offsetY: 12,
+          child: NotificationCardWidget(notification: row as RawData),
+        );
+      },
     );
   }
 
   Widget _buildCategoriesView(VaultLoaded state, BuildContext parentContext) {
-    return Column(
+    return Padding(
       key: const ValueKey('categories_view'),
-      children: [
-        Expanded(
-          child: Container(
-            width: double.infinity,
-            child: CategoryPieChart(
-              categoryCounts: state.categoryCounts,
-              onCategorySelected: (category) {
-                showCategoryDetailsSheet(parentContext, category);
-              },
+      padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom),
+      child: Column(
+        children: [
+          Expanded(
+            child: SizedBox(
+              width: double.infinity,
+              child: CategoryPieChart(
+                categoryCounts: state.categoryCounts,
+                onCategorySelected: (category) {
+                  showCategoryDetailsSheet(parentContext, category);
+                },
+              ),
             ),
           ),
-        ),
-        if (state.blockedCategories.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 16.0),
-            child: TextButton.icon(
-              onPressed: () =>
-                  _showManageBlockedCategoriesDialog(parentContext, state),
-              icon: Icon(
-                Icons.block,
-                color: parentContext.colors.textSecondary,
-              ),
-              label: Text(
-                'Manage Blocked (${state.blockedCategories.length})',
-                style: GoogleFonts.nunito(
+          if (state.blockedCategories.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16.0),
+              child: TextButton.icon(
+                onPressed: () =>
+                    _showManageBlockedCategoriesDialog(parentContext, state),
+                icon: Icon(
+                  Symbols.block_rounded,
                   color: parentContext.colors.textSecondary,
-                  fontWeight: FontWeight.bold,
+                ),
+                label: Text(
+                  'Manage Blocked (${state.blockedCategories.length})',
+                  style: GoogleFonts.nunito(
+                    color: parentContext.colors.textSecondary,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -378,62 +423,137 @@ class _VaultViewState extends State<_VaultView> {
       },
     );
   }
+}
 
-  void _showDeleteConfirmation(BuildContext context, String category) {
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          backgroundColor: context.colors.surface,
-          title: Text(
-            'Delete Category',
-            style: GoogleFonts.nunito(
-              fontWeight: FontWeight.bold,
-              color: context.colors.textPrimary,
+/// The week card over the tabs and what they show. The scroll never rests
+/// in between: released part-way, it settles on whichever is nearer — the
+/// full card, or the tabs pinned at the top with the list below.
+class _SnappingVault extends StatefulWidget {
+  final Widget header;
+  final Widget tabs;
+  final Widget body;
+
+  /// Slides the card away (and back, if that's what hid it).
+  final bool collapsed;
+
+  const _SnappingVault({
+    required this.header,
+    required this.tabs,
+    required this.body,
+    this.collapsed = false,
+  });
+
+  @override
+  State<_SnappingVault> createState() => _SnappingVaultState();
+}
+
+class _SnappingVaultState extends State<_SnappingVault> {
+  final _outer = ScrollController();
+  bool _snapping = false;
+
+  /// Whether [collapsed] hid the card, so turning it off brings it back
+  /// rather than undoing a scroll the user made.
+  bool _hidByTab = false;
+
+  @override
+  void didUpdateWidget(covariant _SnappingVault oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.collapsed == oldWidget.collapsed || !_outer.hasClients) return;
+    final max = _outer.position.maxScrollExtent;
+    if (widget.collapsed) {
+      _hidByTab = _outer.offset < max;
+      if (_hidByTab) _slideTo(max);
+    } else if (_hidByTab) {
+      _hidByTab = false;
+      _slideTo(0);
+    }
+  }
+
+  Future<void> _slideTo(double offset) async {
+    _snapping = true;
+    await _outer.animateTo(
+      offset,
+      duration: const Duration(milliseconds: 380),
+      curve: Curves.easeInOutCubic,
+    );
+    _snapping = false;
+  }
+
+  @override
+  void dispose() {
+    _outer.dispose();
+    super.dispose();
+  }
+
+  bool _onEnd(ScrollEndNotification _) {
+    if (_snapping || !_outer.hasClients) return false;
+    final p = _outer.position;
+    if (p.pixels <= 0 || p.pixels >= p.maxScrollExtent) return false;
+    final target = p.pixels < p.maxScrollExtent / 2 ? 0.0 : p.maxScrollExtent;
+    _snapping = true;
+    // After this frame: the scroll that just ended has fully let go.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!_outer.hasClients) return;
+      await _outer.animateTo(
+        target,
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOutCubic,
+      );
+      _snapping = false;
+    });
+    return false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return NotificationListener<ScrollEndNotification>(
+      onNotification: _onEnd,
+      child: NestedScrollView(
+        controller: _outer,
+        headerSliverBuilder: (context, _) => [
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 18),
+              child: widget.header,
             ),
           ),
-          content: Text(
-            'Are you sure you want to delete all notifications for $category?',
-            style: GoogleFonts.nunito(
-              color: context.colors.textPrimary.withValues(alpha: 0.8),
+          SliverPersistentHeader(
+            pinned: true,
+            delegate: _TabsHeader(
+              color: context.colors.background,
+              child: widget.tabs,
             ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: Text(
-                'Cancel',
-                style: GoogleFonts.nunito(
-                  fontWeight: FontWeight.bold,
-                  color: context.colors.textSecondary,
-                ),
-              ),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop();
-                context.read<VaultCubit>().deleteCategory(category);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.redAccent,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: Text(
-                'Delete',
-                style: GoogleFonts.nunito(
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
+        ],
+        body: widget.body,
+      ),
     );
   }
+}
+
+class _TabsHeader extends SliverPersistentHeaderDelegate {
+  final Color color;
+  final Widget child;
+  const _TabsHeader({required this.color, required this.child});
+
+  static const _height = 68.0 + 18;
+
+  @override
+  double get minExtent => _height;
+  @override
+  double get maxExtent => _height;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlaps) =>
+      ColoredBox(
+        color: color,
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 18),
+          child: child,
+        ),
+      );
+
+  @override
+  bool shouldRebuild(covariant _TabsHeader old) =>
+      old.color != color || old.child != child;
 }

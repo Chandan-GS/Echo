@@ -5,6 +5,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:project_echo/core/services/desktop_engine_client.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/features/settings/presentation/cubit/settings_cubit.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 /// Full-screen QR scanner for pairing this phone with a desktop Echo Engine —
 /// the camera-side counterpart of the QR the desktop shows in its own
@@ -102,7 +103,7 @@ class _ScanDesktopScreenState extends State<ScanDesktopScreen> {
                       IconButton(
                         onPressed: () => context.pop(),
                         icon: const Icon(
-                          Icons.close_rounded,
+                          Symbols.close_rounded,
                           color: Colors.white,
                           size: 28,
                         ),

@@ -1,5 +1,6 @@
 package com.chandangs.echo
 
+import android.appwidget.AppWidgetManager
 import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
@@ -7,19 +8,32 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.provider.Settings
 import androidx.annotation.NonNull
+import com.chandangs.echo_native.NotificationBuffer
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
-import org.json.JSONArray
+import java.util.concurrent.Executors
 
 class MainActivity : FlutterActivity() {
     private val PERMISSIONS_CHANNEL = "project_echo/permissions"
-    private val NOTIFICATIONS_METHOD_CHANNEL = "project_echo/notifications"
     private val NOTIFICATIONS_EVENT_CHANNEL = "project_echo/notification_stream"
     private val WIDGET_CHANNEL = "project_echo/widget"
+    private val APP_ICONS_CHANNEL = "project_echo/app_icons"
+    private val REPLY_CHANNEL = "project_echo/reply"
+    private val REMINDERS_CHANNEL = "project_echo/reminders"
+
+    // Drawing and PNG-encoding icons stays off the main thread.
+    private val iconExecutor = Executors.newFixedThreadPool(2)
 
     private var notificationReceiver: BroadcastReceiver? = null
+
+    private val widgetKinds = mapOf(
+        "todo" to EchoTodoWidgetProvider::class.java,
+        "ring" to EchoTodoOrbWidgetProvider::class.java,
+        "brief" to EchoBriefingWidgetProvider::class.java,
+        "streak" to EchoStreakWidgetProvider::class.java,
+    )
     private var eventSink: EventChannel.EventSink? = null
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
@@ -54,11 +68,129 @@ class MainActivity : FlutterActivity() {
                 "refresh" -> {
                     EchoBriefingWidgetProvider.updateAll(this)
                     EchoStreakWidgetProvider.updateAll(this)
+                    EchoTodoWidgetProvider.updateAll(this)
+                    EchoTodoOrbWidgetProvider.updateAll(this)
                     result.success(null)
+                }
+                // For Profile → Widgets: what's placed, whether the launcher
+                // lets apps add widgets, and the data the previews show.
+                "state" -> {
+                    val manager = AppWidgetManager.getInstance(this)
+                    val prefs = WidgetData.prefs(this)
+                    result.success(
+                        mapOf(
+                            "canPin" to manager.isRequestPinAppWidgetSupported,
+                            "placed" to widgetKinds.mapValues { (_, cls) ->
+                                manager.getAppWidgetIds(ComponentName(this, cls)).size
+                            },
+                            "streak" to WidgetData.streak(prefs),
+                            "status" to WidgetData.statusText(prefs),
+                            "week" to WidgetData.weekStates(prefs).toList(),
+                        ),
+                    )
+                }
+                // Ask the launcher to add one of Echo's widgets. Android shows
+                // its own confirmation; the result only says whether the
+                // request went through, not whether the user said yes.
+                "pin" -> {
+                    val cls = widgetKinds[call.argument<String>("kind")]
+                    val manager = AppWidgetManager.getInstance(this)
+                    if (cls == null || !manager.isRequestPinAppWidgetSupported) {
+                        result.success(false)
+                    } else {
+                        result.success(manager.requestPinAppWidget(ComponentName(this, cls), null, null))
+                    }
                 }
                 else -> {
                     result.notImplemented()
                 }
+            }
+        }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, APP_ICONS_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "installedApps" -> {
+                    iconExecutor.execute {
+                        val apps = try {
+                            AppIcons.installedApps(applicationContext)
+                        } catch (e: Exception) {
+                            emptyList()
+                        }
+                        runOnUiThread { result.success(apps) }
+                    }
+                    return@setMethodCallHandler
+                }
+                "activePackages" -> {
+                    result.success(EchoNotificationListenerService.instance?.activePackages() ?: emptyList<String>())
+                    return@setMethodCallHandler
+                }
+                "icon" -> {}
+                else -> {
+                    result.notImplemented()
+                    return@setMethodCallHandler
+                }
+            }
+            val pkg = call.argument<String>("package")
+            val label = call.argument<String>("label")
+            val size = call.argument<Int>("size") ?: 144
+            iconExecutor.execute {
+                val png = try {
+                    AppIcons.png(applicationContext, pkg, label, size)
+                } catch (e: Exception) {
+                    null
+                }
+                runOnUiThread { result.success(png) }
+            }
+        }
+
+        // Answering chats: through the notification's Reply button, or by
+        // opening the chat app (see ReplySender.dart).
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, REPLY_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "route" -> result.success(ReplyActions.route(applicationContext, call.argument<String>("thread") ?: ""))
+                "send" -> result.success(
+                    ReplyActions.send(applicationContext, call.argument<String>("thread") ?: "", call.argument<String>("text") ?: ""),
+                )
+                "write" -> result.success(
+                    ReplyActions.write(this, call.argument<String>("thread") ?: "", call.argument<String>("text") ?: ""),
+                )
+                "openChat" -> result.success(ReplyActions.openChat(this, call.argument<String>("thread") ?: ""))
+                "openApp" -> {
+                    val launch = call.argument<String>("package")?.let { packageManager.getLaunchIntentForPackage(it) }
+                    if (launch == null) {
+                        result.success(false)
+                    } else {
+                        startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        result.success(true)
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, REMINDERS_CHANNEL).setMethodCallHandler { call, result ->
+            val id = call.argument<Int>("id") ?: 0
+            when (call.method) {
+                "set" -> {
+                    Reminders.set(
+                        applicationContext,
+                        Reminders.Reminder(
+                            id = id,
+                            key = call.argument<String>("key") ?: "",
+                            title = call.argument<String>("title") ?: "",
+                            body = call.argument<String>("body") ?: "",
+                            todoId = call.argument<Int>("todoId") ?: -1,
+                            thread = call.argument<String>("thread"),
+                        ),
+                        call.argument<Number>("at")?.toLong() ?: 0L,
+                    )
+                    result.success(null)
+                }
+                "cancel" -> {
+                    Reminders.cancel(applicationContext, id)
+                    result.success(null)
+                }
+                else -> result.notImplemented()
             }
         }
 
@@ -70,28 +202,6 @@ class MainActivity : FlutterActivity() {
                 "requestNotificationPermission" -> {
                     openNotificationSettings()
                     result.success(null)
-                }
-                else -> {
-                    result.notImplemented()
-                }
-            }
-        }
-
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, NOTIFICATIONS_METHOD_CHANNEL).setMethodCallHandler { call, result ->
-            when (call.method) {
-                "fetchTodayCalendarEvents" -> {
-                    if (checkSelfPermission(android.Manifest.permission.READ_CALENDAR) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                        result.success(getTodayCalendarEvents())
-                    } else {
-                        result.success("[]")
-                    }
-                }
-                "drainBuffer" -> {
-                    val prefs = getSharedPreferences(EchoNotificationListenerService.PREFS_NAME, Context.MODE_PRIVATE)
-                    val bufferStr = prefs.getString(EchoNotificationListenerService.BUFFER_KEY, "[]")
-                    // Clear the buffer after reading
-                    prefs.edit().putString(EchoNotificationListenerService.BUFFER_KEY, "[]").apply()
-                    result.success(bufferStr)
                 }
                 else -> {
                     result.notImplemented()
@@ -118,9 +228,11 @@ class MainActivity : FlutterActivity() {
         notificationReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
                 val data = intent?.getStringExtra(EchoNotificationListenerService.EXTRA_NOTIFICATION_DATA)
-                if (data != null) {
-                    eventSink?.success(data)
-                }
+                    ?: return
+                // Until Dart has subscribed (just after the app opens), keep
+                // it for the buffer Dart drains once it has.
+                eventSink?.success(data)
+                    ?: context?.let { NotificationBuffer.append(it, data) }
             }
         }
         val filter = IntentFilter(EchoNotificationListenerService.ACTION_NEW_NOTIFICATION)
@@ -165,69 +277,5 @@ class MainActivity : FlutterActivity() {
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             startActivity(intent)
         }
-    }
-
-    private fun getTodayCalendarEvents(): String {
-        val calendar = java.util.Calendar.getInstance()
-        calendar.set(java.util.Calendar.HOUR_OF_DAY, 0)
-        calendar.set(java.util.Calendar.MINUTE, 0)
-        calendar.set(java.util.Calendar.SECOND, 0)
-        val startOfDay = calendar.timeInMillis
-
-        calendar.set(java.util.Calendar.HOUR_OF_DAY, 23)
-        calendar.set(java.util.Calendar.MINUTE, 59)
-        calendar.set(java.util.Calendar.SECOND, 59)
-        val endOfDay = calendar.timeInMillis
-
-        val projection = arrayOf(
-            android.provider.CalendarContract.Events.TITLE,
-            android.provider.CalendarContract.Events.DTSTART,
-            android.provider.CalendarContract.Events.DTEND,
-            android.provider.CalendarContract.Events.DESCRIPTION
-        )
-
-        val selection = "${android.provider.CalendarContract.Events.DTSTART} >= ? AND ${android.provider.CalendarContract.Events.DTSTART} <= ?"
-        val selectionArgs = arrayOf(startOfDay.toString(), endOfDay.toString())
-
-        val cursor = try {
-            contentResolver.query(
-                android.provider.CalendarContract.Events.CONTENT_URI,
-                projection,
-                selection,
-                selectionArgs,
-                "${android.provider.CalendarContract.Events.DTSTART} ASC"
-            )
-        } catch (e: Exception) {
-            null
-        }
-
-        val array = org.json.JSONArray()
-        cursor?.use {
-            val titleIdx = it.getColumnIndex(android.provider.CalendarContract.Events.TITLE)
-            val startIdx = it.getColumnIndex(android.provider.CalendarContract.Events.DTSTART)
-            val endIdx = it.getColumnIndex(android.provider.CalendarContract.Events.DTEND)
-            val descIdx = it.getColumnIndex(android.provider.CalendarContract.Events.DESCRIPTION)
-
-            while (it.moveToNext()) {
-                val title = if (titleIdx != -1) it.getString(titleIdx) else ""
-                val start = if (startIdx != -1) it.getLong(startIdx) else 0L
-                val end = if (endIdx != -1) it.getLong(endIdx) else 0L
-                val desc = if (descIdx != -1) it.getString(descIdx) else ""
-
-                if (!title.isNullOrEmpty()) {
-                    val json = org.json.JSONObject()
-                    json.put("source", "Calendar")
-                    json.put("sender", title)
-                    val dateFormat = java.text.SimpleDateFormat("h:mm a", java.util.Locale.getDefault())
-                    val timeString = "${dateFormat.format(java.util.Date(start))} - ${dateFormat.format(java.util.Date(end))}"
-                    val contentStr = if (desc.isNullOrEmpty()) timeString else "$timeString\n$desc"
-                    
-                    json.put("content", contentStr)
-                    json.put("timestamp", start)
-                    array.put(json)
-                }
-            }
-        }
-        return array.toString()
     }
 }

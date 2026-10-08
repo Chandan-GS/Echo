@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+5
+version: 1.0.0+6
 
 environment:
   sdk: ^3.11.5
@@ -63,6 +63,13 @@ dependencies:
   qr_flutter: ^4.1.0
   aptabase_flutter: ^0.5.0
   package_info_plus: ^10.2.1
+  echo_native:
+    path: packages/echo_native
+  sensors_plus: ^7.1.0
+  sherpa_onnx: ^1.13.8
+  audioplayers: ^6.8.1
+  archive: ^4.3.0
+  material_symbols_icons: ^4.2960.0
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -75,7 +82,6 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   build_runner: ^2.4.13
   isar_generator: ^3.1.0+1
-  flutter_launcher_icons: ^0.14.4
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -93,8 +99,11 @@ flutter:
     - assets/vocab.txt
     - assets/ai refs/all-MiniLM-L6-v2-quant.tflite
     - assets/logo.png
-    - assets/app_icon_source.png
     - assets/icons/
+    # A few seconds of each Piper voice, for choosing one before downloading it.
+    - assets/voice_samples/
+    # App icons for the filming build's made-up notifications (see DemoIcons).
+    - assets/demo_icons/
 
   fonts:
     - family: Nunito
@@ -105,6 +114,8 @@ flutter:
         - asset: assets/fonts/OldStandardTT-Regular.ttf
         - asset: assets/fonts/OldStandardTT-Bold.ttf
           weight: 700
+        - asset: assets/fonts/OldStandardTT-Italic.ttf
+          style: italic
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
@@ -132,12 +143,5 @@ flutter:
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
 
-flutter_launcher_icons:
-  android: "ic_launcher"
-  ios: true
-  macos:
-    generate: true
-    image_path: "assets/app_icon_source.png"
-  image_path: "assets/app_icon_source.png"
-  adaptive_icon_background: "#5CA363"
-  adaptive_icon_foreground: "assets/app_icon_source.png"
+# App icons, the notification icon and the splash are drawn by
+# tool/brand/render.mjs and test/render/splash_render_test.dart.

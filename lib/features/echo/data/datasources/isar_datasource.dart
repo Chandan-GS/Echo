@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:isar/isar.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
+import 'package:project_echo/features/echo/data/relevance/briefing_selection.dart';
 
 class IsarDataSource {
   static Isar? _isar;
@@ -80,6 +81,21 @@ class IsarDataSource {
     return isar.rawDatas.where().sortByTimestampDesc().findAll();
   }
 
+  /// The message a to-do or reminder was made from, by its source key
+  /// ("sender|timestamp", see sourceKeyOf; a split part's "#n" is ignored).
+  static Future<RawData?> entryForKey(String key) async {
+    final base = key.split('#').first;
+    final bar = base.lastIndexOf('|');
+    final at = bar < 0 ? null : int.tryParse(base.substring(bar + 1));
+    if (at == null) return null;
+    final isar = await instance;
+    return isar.rawDatas
+        .filter()
+        .senderEqualTo(base.substring(0, bar))
+        .timestampEqualTo(DateTime.fromMillisecondsSinceEpoch(at))
+        .findFirst();
+  }
+
   /// Replaces the entire notification set with [entries] in one transaction —
   /// used by the desktop mirror when it receives a fresh snapshot from the
   /// phone (the phone is the source of truth; the desktop just reflects it).
@@ -130,21 +146,31 @@ class IsarDataSource {
     });
   }
 
-  /// Deletes all notification entries older than 24 hours.
+  /// Deletes notifications older than 24 hours, except those still pointing
+  /// at something ahead ("Goa trip on Oct 3" received a week earlier) — those
+  /// are kept until their time passes, so the briefing on the day can cover
+  /// them. Nothing is kept longer than [_maxRetention].
   static Future<void> deleteOldNotifications() async {
     try {
       final isar = await instance;
-      final limit = DateTime.now().subtract(const Duration(hours: 24));
+      final now = DateTime.now();
+      final limit = now.subtract(const Duration(hours: 24));
+      final hardLimit = now.subtract(_maxRetention);
       await isar.writeTxn(() async {
         final oldEntries = await isar.rawDatas.filter().timestampLessThan(limit).findAll();
-        if (oldEntries.isNotEmpty) {
-          final ids = oldEntries.map((e) => e.id).toList();
+        final ids = oldEntries
+            .where((e) => e.timestamp.isBefore(hardLimit) || !isStillRelevant(e, now))
+            .map((e) => e.id)
+            .toList();
+        if (ids.isNotEmpty) {
           await isar.rawDatas.deleteAll(ids);
-          debugPrint('Permanently deleted ${ids.length} notifications older than 24 hours.');
+          debugPrint('Permanently deleted ${ids.length} notifications no longer relevant.');
         }
       });
     } catch (e) {
       debugPrint('Error cleaning up old notifications: $e');
     }
   }
+
+  static const _maxRetention = Duration(days: 180);
 }

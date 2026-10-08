@@ -43,7 +43,6 @@ class VoiceCatalog {
     if (_voices != null) return _voices!;
     try {
       final dynamic raw = await tts.getVoices;
-      debugPrint('VoiceCatalog: raw device voices = $raw');
       if (raw is List) {
         final all = raw
             .whereType<Map>()
@@ -67,7 +66,9 @@ class VoiceCatalog {
       debugPrint('VoiceCatalog: getVoices failed: $e');
       _voices = const [];
     }
-    debugPrint('VoiceCatalog: usable English voices = $_voices');
+    // Count only: the full list can run to hundreds of entries and stalls the
+    // UI thread while the string is built.
+    debugPrint('VoiceCatalog: ${_voices!.length} usable English voices');
     return _voices!;
   }
 

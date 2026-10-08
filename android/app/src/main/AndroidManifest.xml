@@ -9,6 +9,8 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Only to find a WhatsApp chat when replying to it, asked on first use. -->
+    <uses-permission android:name="android.permission.READ_CONTACTS"/>
 
     <!-- Echo schedules the daily briefing with INEXACT alarms (a few minutes'
          drift is fine for a morning briefing), so it deliberately does NOT use
@@ -21,8 +23,18 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"
         tools:node="remove" />
 
+    <!-- The TensorFlow Lite GPU library declares no targetSdkVersion, so the
+         manifest merger adds the permissions old apps got by default. Echo
+         never uses them; strip them so Play doesn't list Phone and Storage. -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE"
+        tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        tools:node="remove" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        tools:node="remove" />
+
     <application
-        android:label="Echo"
+        android:label="${appLabel}"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="true"
@@ -53,6 +65,13 @@
             </intent-filter>
         </activity>
 
+        <!-- Reminders ("Remind me at 7:40"), set again after a restart or update. -->
+        <receiver android:name=".ReminderReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
         <service android:name=".EchoNotificationListenerService"
             android:label="Echo Notification Listener"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
@@ -104,6 +123,30 @@
                 android:resource="@xml/echo_streak_widget_info" />
         </receiver>
 
+        <receiver
+            android:name=".EchoTodoWidgetProvider"
+            android:exported="false"
+            android:label="@string/todo_widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/echo_todo_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".EchoTodoOrbWidgetProvider"
+            android:exported="false"
+            android:label="@string/todo_orb_widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/echo_todo_orb_widget_info" />
+        </receiver>
+
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
@@ -116,6 +159,11 @@
         </intent>
         <intent>
             <action android:name="android.speech.RecognitionService" />
+        </intent>
+        <!-- Launcher apps, so the Vault can show the icon of the app behind each category -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
         </intent>
     </queries>
 </manifest>

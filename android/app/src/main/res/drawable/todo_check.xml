@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Checkbox button for the to-do widget (Android 12+, where widgets can host
+     a real CheckBox): animates on check, switches straight back on uncheck. -->
+<animated-selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/todo_checked"
+        android:drawable="@drawable/todo_check_on"
+        android:state_checked="true" />
+    <item
+        android:id="@+id/todo_unchecked"
+        android:drawable="@drawable/todo_check_off" />
+    <transition
+        android:drawable="@drawable/todo_check_anim"
+        android:fromId="@id/todo_unchecked"
+        android:toId="@id/todo_checked" />
+</animated-selector>

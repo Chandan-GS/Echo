@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 /// A standard reusable AppBar matching the Ask AI / Echo editorial standards.
 class EchoAppBar extends StatelessWidget implements PreferredSizeWidget {
@@ -22,16 +23,20 @@ class EchoAppBar extends StatelessWidget implements PreferredSizeWidget {
       leading: IconButton(
         icon: Icon(
           size: 28,
-          Icons.arrow_back_ios_new_rounded,
+          Symbols.arrow_back_ios_new_rounded,
           color: context.colors.textPrimary,
         ),
         onPressed:
             onBackPressed ??
             () {
-              if (context.canPop()) {
+              // The nearest Navigator first: it pops pages pushed straight
+              // onto it (bouncyRoute), which go_router doesn't know about and
+              // throws on, as well as go_router's own pages.
+              final navigator = Navigator.of(context);
+              if (navigator.canPop()) {
+                navigator.pop();
+              } else if (context.canPop()) {
                 context.pop();
-              } else {
-                Navigator.of(context).pop();
               }
             },
       ),
@@ -69,7 +74,7 @@ class EchoSliverAppBar extends StatelessWidget {
       leading: IconButton(
         icon: Icon(
           size: 28,
-          Icons.arrow_back_ios_new_rounded,
+          Symbols.arrow_back_ios_new_rounded,
           color: context.colors.textPrimary,
         ),
         onPressed:

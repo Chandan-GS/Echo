@@ -3,10 +3,9 @@ import 'package:siri_wave/siri_wave.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 
 /// Siri-style waveform visualizer with an integrated tap-to-play/pause gesture.
-/// A brief animated overlay icon appears on tap and fades out after 1.2 seconds.
 class SiriWaveformVisualizer extends StatefulWidget {
   final bool isPlaying;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final double amplitude;
   final double height;
 
@@ -20,7 +19,7 @@ class SiriWaveformVisualizer extends StatefulWidget {
   const SiriWaveformVisualizer({
     super.key,
     required this.isPlaying,
-    required this.onTap,
+    this.onTap,
     required this.amplitude,
     this.height = 180,
     this.color1,
@@ -32,24 +31,12 @@ class SiriWaveformVisualizer extends StatefulWidget {
   State<SiriWaveformVisualizer> createState() => _SiriWaveformVisualizerState();
 }
 
-class _SiriWaveformVisualizerState extends State<SiriWaveformVisualizer>
-    with SingleTickerProviderStateMixin {
+class _SiriWaveformVisualizerState extends State<SiriWaveformVisualizer> {
   IOS9SiriWaveformController? _waveController;
-  late AnimationController _iconFadeController;
-  late Animation<double> _iconOpacity;
 
   @override
   void initState() {
     super.initState();
-
-    _iconFadeController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 300),
-    );
-    _iconOpacity = CurvedAnimation(
-      parent: _iconFadeController,
-      curve: Curves.easeOut,
-    );
   }
 
   @override
@@ -66,31 +53,21 @@ class _SiriWaveformVisualizerState extends State<SiriWaveformVisualizer>
   @override
   void didUpdateWidget(covariant SiriWaveformVisualizer oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.isPlaying != oldWidget.isPlaying) {
+    if (widget.isPlaying != oldWidget.isPlaying ||
+        widget.amplitude != oldWidget.amplitude) {
       _waveController?.amplitude = widget.isPlaying ? widget.amplitude : 0.5;
     }
   }
 
   @override
   void dispose() {
-    _iconFadeController.dispose();
     super.dispose();
-  }
-
-  void _handleTap() {
-    widget.onTap();
-    // Briefly flash the icon then fade it out
-    _iconFadeController.forward(from: 0.0).then((_) {
-      Future.delayed(const Duration(milliseconds: 900), () {
-        if (mounted) _iconFadeController.reverse();
-      });
-    });
   }
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: _handleTap,
+      onTap: widget.onTap,
       behavior: HitTestBehavior.opaque,
       child: SizedBox(
         height: widget.height,

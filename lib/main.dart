@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:project_echo/core/presentation/launch_wake.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -10,7 +11,6 @@ import 'package:project_echo/core/routes/app_router.dart';
 import 'package:project_echo/features/settings/presentation/cubit/settings_cubit.dart';
 import 'package:project_echo/features/settings/presentation/cubit/settings_state.dart';
 import 'package:go_router/go_router.dart';
-import 'package:project_echo/features/onboarding/data/repositories/model_download_repository_impl.dart';
 import 'package:project_echo/features/echo/data/services/notification_service.dart';
 import 'package:project_echo/core/services/schedule_service.dart';
 import 'package:project_echo/core/services/local_notification_service.dart';
@@ -19,14 +19,20 @@ import 'package:project_echo/core/services/analytics_service.dart';
 import 'package:project_echo/core/services/remote_config_service.dart';
 import 'package:aptabase_flutter/aptabase_flutter.dart';
 import 'dart:async';
+import 'package:project_echo/demo/demo_mode.dart';
+import 'package:project_echo/core/services/reminder_settings.dart';
 
 void main() async {
   GoogleFonts.config.allowRuntimeFetching = false;
   WidgetsFlutterBinding.ensureInitialized();
 
+  // The filming build starts on its scripted day every launch.
+  await DemoSeed.seed();
+
   // Anonymous, opt-out usage analytics — no account, no PII, no user content.
   // Only counts how often features are used (see Analytics / analytics_service).
-  await Aptabase.init('A-US-1016715353');
+  // Never from the demo build.
+  if (!kEchoDemo) await Aptabase.init('A-US-1016715353');
   await Analytics.load();
 
   // Fetch the remote Gemini model name in the background — never blocks launch;
@@ -39,7 +45,8 @@ void main() async {
     DeviceOrientation.portraitDown,
   ]);
   final prefs = await SharedPreferences.getInstance();
-  bool isOnboardingFinished = prefs.getBool('onboarding_finished') ?? false;
+  await ReminderSettings.load();
+  final isOnboardingFinished = prefs.getBool('onboarding_finished') ?? false;
 
   // Stamp the first-ever launch so the Profile screen can show "Member for N
   // days". Set once, never overwritten.
@@ -66,26 +73,19 @@ void main() async {
   // Note: notification permission is requested in-context during onboarding
   // (the Permissions step), not abruptly at cold start.
 
-  // Only the offline engine needs the local model on disk. Cloud (Gemini)
-  // users legitimately finish onboarding without ever downloading it, and
-  // offline users may still be downloading it in the background — so guard on
-  // the selected engine and use the same size-validated check as the download
-  // repository. Otherwise these users get forced back through onboarding on
-  // every launch.
-  if (isOnboardingFinished) {
-    final isOfflineEngine = prefs.getBool('is_offline_engine') ?? true;
-    if (isOfflineEngine &&
-        !(await ModelDownloadRepositoryImpl().isModelDownloaded())) {
-      isOnboardingFinished = false;
-      await prefs.setBool('onboarding_finished', false);
-    }
+  // Onboarding is never re-entered once finished. A missing on-device model is
+  // handled in-feature: the briefing and Ask Echo prompt the user to download
+  // it or switch to the cloud engine.
+
+  // The demo neither listens to the device's notifications nor schedules
+  // briefings: its day is scripted.
+  if (!kEchoDemo) {
+    await NotificationService.instance.initialize();
+
+    await ScheduleService.initialize();
+    final briefingTimes = prefs.getStringList('briefing_times') ?? ['07:00'];
+    await ScheduleService.updateSchedules(briefingTimes);
   }
-
-  await NotificationService.instance.initialize();
-
-  await ScheduleService.initialize();
-  final briefingTimes = prefs.getStringList('briefing_times') ?? ['07:00'];
-  await ScheduleService.updateSchedules(briefingTimes);
 
   // Desktop-only, off by default: resume the Echo Engine service on launch if
   // the user previously turned it on for this machine. Starts regardless of
@@ -99,7 +99,35 @@ void main() async {
     }
   }
 
-  runApp(Echo(isOnboardingFinished: isOnboardingFinished));
+  final app = Echo(isOnboardingFinished: isOnboardingFinished);
+  // Filming on a computer: a moment of plain ground first, so the window is
+  // up before Echo draws, and its entrance can be recorded from the start.
+  final curtain = kEchoDemo && (Platform.isMacOS || Platform.isWindows);
+  runApp(curtain ? _Curtain(child: app) : app);
+}
+
+class _Curtain extends StatefulWidget {
+  final Widget child;
+  const _Curtain({required this.child});
+
+  @override
+  State<_Curtain> createState() => _CurtainState();
+}
+
+class _CurtainState extends State<_Curtain> {
+  bool _up = true;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(const Duration(milliseconds: 2200), () {
+      if (mounted) setState(() => _up = false);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      _up ? const ColoredBox(color: Color(0xFF1A1A1A)) : widget.child;
 }
 
 class Echo extends StatelessWidget {
@@ -133,6 +161,12 @@ class Echo extends StatelessWidget {
             // wide; touch/trackpad scrolling still works exactly as before.
             scrollBehavior: _NoScrollbarBehavior(),
             routerConfig: _router,
+            // The phone's splash shows Echo asleep; once set up, he wakes
+            // there and fades into Home. (First time, the welcome screen
+            // starts from that same frame instead.)
+            builder: isOnboardingFinished && Platform.isAndroid
+                ? (context, child) => LaunchWake(child: child!)
+                : null,
           );
         },
       ),

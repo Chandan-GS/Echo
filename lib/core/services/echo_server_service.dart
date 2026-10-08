@@ -16,6 +16,13 @@ import 'offline_model_repository.dart';
 import 'system_info_service.dart';
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
+import 'package:project_echo/core/services/app_icon_service.dart';
+import 'package:project_echo/features/todo/data/todo_store.dart';
+import 'package:project_echo/features/vault/data/daily_stats.dart';
+import 'package:project_echo/core/services/phone_actions.dart';
+import 'package:project_echo/core/services/reminder_settings.dart';
+import 'package:project_echo/core/services/reminders.dart';
+import 'package:project_echo/features/echo/data/context/chat_context_store.dart';
 
 /// A phone that has paired with this computer's engine via QR — kept only for
 /// display in Settings ("Paired devices").
@@ -24,14 +31,16 @@ class PairedDevice {
   final DateTime pairedAt;
   const PairedDevice({required this.name, required this.pairedAt});
 
-  Map<String, dynamic> toJson() =>
-      {'name': name, 'pairedAt': pairedAt.toIso8601String()};
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    'pairedAt': pairedAt.toIso8601String(),
+  };
 
   static PairedDevice fromJson(Map<String, dynamic> m) => PairedDevice(
-        name: (m['name'] ?? '').toString(),
-        pairedAt: DateTime.tryParse((m['pairedAt'] ?? '').toString()) ??
-            DateTime.now(),
-      );
+    name: (m['name'] ?? '').toString(),
+    pairedAt:
+        DateTime.tryParse((m['pairedAt'] ?? '').toString()) ?? DateTime.now(),
+  );
 }
 
 /// The desktop half of the optional "Echo Engine": a larger local model
@@ -52,6 +61,12 @@ class EchoServerService {
 
   HttpServer? _httpServer;
   RawDatagramSocket? _discoverySocket;
+
+  /// When the phone last sent a snapshot (ms since epoch).
+  static const lastPhoneSyncKey = 'desktop_last_phone_sync';
+
+  /// When the owner first opened Echo on the phone (ISO 8601).
+  static const phoneFirstLaunchKey = 'desktop_phone_first_launch';
 
   /// Bumped each time a phone snapshot is received via `/sync`, so the desktop
   /// mirror (Today/Vault) can listen and reload. A plain counter is enough —
@@ -83,8 +98,10 @@ class EchoServerService {
     final existing = prefs.getString(_tokenKey);
     if (existing != null && existing.isNotEmpty) return existing;
     final random = Random.secure();
-    final token =
-        List.generate(32, (_) => random.nextInt(16).toRadixString(16)).join();
+    final token = List.generate(
+      32,
+      (_) => random.nextInt(16).toRadixString(16),
+    ).join();
     await prefs.setString(_tokenKey, token);
     return token;
   }
@@ -166,7 +183,9 @@ class EchoServerService {
       if (path == '/health' || path == '/pair') return innerHandler(request);
 
       final prefs = await SharedPreferences.getInstance();
-      if (!(prefs.getBool(_hasPairedKey) ?? false)) return innerHandler(request);
+      if (!(prefs.getBool(_hasPairedKey) ?? false)) {
+        return innerHandler(request);
+      }
 
       final expected = await pairingToken();
       final provided = request.headers['x-echo-token'];
@@ -188,10 +207,15 @@ class EchoServerService {
       final deviceName = (body['deviceName'] as String?)?.trim();
       final expected = await pairingToken();
 
-      if (incomingToken != expected || deviceName == null || deviceName.isEmpty) {
+      if (incomingToken != expected ||
+          deviceName == null ||
+          deviceName.isEmpty) {
         return Response(
           400,
-          body: jsonEncode({'status': 'error', 'message': 'invalid pairing request'}),
+          body: jsonEncode({
+            'status': 'error',
+            'message': 'invalid pairing request',
+          }),
           headers: _jsonHeaders,
         );
       }
@@ -236,6 +260,8 @@ class EchoServerService {
       ..post('/briefing', (r) => _handleGenerate(r, _briefingSampling))
       ..post('/ask', (r) => _handleGenerate(r, _askSampling))
       ..post('/sync', _handleSync)
+      ..get('/actions', _handleActions)
+      ..post('/actions/done', _handleActionsDone)
       ..post('/pair', _handlePair);
 
     final handler = Pipeline()
@@ -247,7 +273,9 @@ class EchoServerService {
       InternetAddress.anyIPv4,
       httpPort,
     );
-    debugPrint('Echo Engine listening on ${_httpServer!.address.address}:$httpPort');
+    debugPrint(
+      'Echo Engine listening on ${_httpServer!.address.address}:$httpPort',
+    );
 
     await _startDiscoveryResponder();
   }
@@ -257,6 +285,28 @@ class EchoServerService {
     _discoverySocket = null;
     await _httpServer?.close(force: true);
     _httpServer = null;
+  }
+
+  /// What the phone should do (see PhoneActions and DesktopRelay.kt).
+  Future<Response> _handleActions(Request request) async {
+    final open = await PhoneActions.forPhone();
+    return Response.ok(
+      jsonEncode([
+        for (final a in open) {'id': a.id, ...a.body},
+      ]),
+      headers: _jsonHeaders,
+    );
+  }
+
+  /// The phone's report on what it did.
+  Future<Response> _handleActionsDone(Request request) async {
+    try {
+      final body = jsonDecode(await request.readAsString());
+      if (body is List) await PhoneActions.report(body);
+      return Response.ok(jsonEncode({'status': 'ok'}), headers: _jsonHeaders);
+    } catch (e) {
+      return Response.badRequest(body: jsonEncode({'status': 'error'}));
+    }
   }
 
   Response _handleHealth(Request request) =>
@@ -296,6 +346,63 @@ class EchoServerService {
       if (streak is Map) {
         await StreakService().importSnapshot(streak.cast<String, dynamic>());
       }
+
+      // The phone's to-do list and the Vault's week, mirrored as-is.
+      final todos = body['todos'];
+      if (todos is Map) {
+        for (final (field, key) in [
+          ('items', TodoStore.itemsKey),
+          ('meta', TodoStore.metaKey),
+        ]) {
+          final value = todos[field];
+          if (value is String) await prefs.setString(key, value);
+        }
+      }
+      final stats = body['stats'];
+      if (stats is String) await prefs.setString(DailyStats.key, stats);
+      final briefingTime = body['briefingTime'];
+      if (briefingTime is String) {
+        await prefs.setString('cached_briefing_time', briefingTime);
+      }
+      final icons = body['icons'];
+      if (icons is Map && icons.isNotEmpty) {
+        await AppIconService.storeSynced(icons.cast<String, dynamic>());
+      }
+
+      // For Today: who's been answered and promised to, and what's set to
+      // remind; for Profile, the owner's name and since when (the phone's
+      // first launch, not this computer's).
+      for (final (field, key) in [
+        ('myTurns', ChatContextStore.turnsKey),
+        ('reminders', Reminders.storeKey),
+        ('userName', 'user_name'),
+        ('firstLaunch', phoneFirstLaunchKey),
+      ]) {
+        final value = body[field];
+        if (value is String) await prefs.setString(key, value);
+      }
+      final aliases = body['categoryAliases'];
+      if (aliases is String) {
+        await prefs.setString('vault_category_aliases', aliases);
+      }
+      final blocked = body['blockedCategories'];
+      if (blocked is List) {
+        await prefs.setStringList(
+          'vault_blocked_categories',
+          blocked.whereType<String>().toList(),
+        );
+      }
+      final lead = body['reminderLead'], suggest = body['reminderSuggest'];
+      if (lead is int) {
+        ReminderSettings.lead.value = Duration(minutes: lead);
+      }
+      if (suggest is bool) ReminderSettings.suggest.value = suggest;
+      await prefs.setInt(
+        lastPhoneSyncKey,
+        DateTime.now().millisecondsSinceEpoch,
+      );
+      // What the phone hasn't done yet stays done on screen.
+      await PhoneActions.applyToMirror();
 
       syncTick.value++;
       return Response.ok(jsonEncode({'status': 'ok'}), headers: _jsonHeaders);
@@ -342,7 +449,8 @@ class EchoServerService {
           return;
         }
 
-        final modelPath = await createOfflineModelRepository().downloadedPathOrNull();
+        final modelPath = await createOfflineModelRepository()
+            .downloadedPathOrNull();
         if (modelPath == null) {
           await controller.close();
           return;

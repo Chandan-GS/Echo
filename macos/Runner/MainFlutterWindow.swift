@@ -9,6 +9,13 @@ class MainFlutterWindow: NSWindow {
   // activity token tells the OS not to do that for the duration.
   private var backgroundActivityToken: NSObjectProtocol?
 
+  // The title bar says "Echo", not the bundle's product name: macOS puts
+  // that back after launch, whatever is set in awakeFromNib.
+  override var title: String {
+    get { "Echo" }
+    set { super.title = "Echo" }
+  }
+
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
     var windowFrame = self.frame
@@ -66,8 +73,17 @@ class MainFlutterWindow: NSWindow {
     let minSize = NSSize(width: 960, height: 680)
     self.minSize = minSize
     if windowFrame.width < minSize.width || windowFrame.height < minSize.height {
-      windowFrame.size.width = max(windowFrame.width, minSize.width)
-      windowFrame.size.height = max(windowFrame.height, minSize.height)
+      // Too small to have been the owner's own choice: open at a size the
+      // three-column Today fits, centred on the screen.
+      windowFrame.size = NSSize(width: 1320, height: 840)
+      if let screen = NSScreen.main?.visibleFrame {
+        windowFrame.size.width = min(windowFrame.width, screen.width)
+        windowFrame.size.height = min(windowFrame.height, screen.height)
+        windowFrame.origin = NSPoint(
+          x: screen.midX - windowFrame.width / 2,
+          y: screen.midY - windowFrame.height / 2
+        )
+      }
     }
     self.setFrame(windowFrame, display: true)
 

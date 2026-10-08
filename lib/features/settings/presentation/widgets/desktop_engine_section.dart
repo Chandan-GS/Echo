@@ -12,6 +12,7 @@ import 'package:project_echo/core/services/echo_server_service.dart';
 import 'package:project_echo/core/services/offline_model_repository.dart';
 import 'package:project_echo/features/settings/presentation/cubit/settings_cubit.dart';
 import 'package:project_echo/features/settings/presentation/cubit/settings_state.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 /// Phone-first, computer-optional connection controls — and, crucially, each
 /// platform shows only the half that makes sense for it, so the two toggles
@@ -103,7 +104,7 @@ class _UseComputerCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.laptop_mac_rounded, size: 20, color: colors.primaryGreen),
+              Icon(Symbols.laptop_mac_rounded, size: 20, color: colors.primaryGreen),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -134,7 +135,7 @@ class _UseComputerCard extends StatelessWidget {
             Row(
               children: [
                 Icon(
-                  connected ? Icons.check_circle_rounded : Icons.wifi_find_rounded,
+                  connected ? Symbols.check_circle_rounded : Symbols.wifi_find_rounded, fill: connected ? 1 : 0,
                   size: 16,
                   color: connected ? colors.primaryGreen : colors.textSecondary,
                 ),
@@ -196,7 +197,7 @@ class _UseComputerCard extends StatelessWidget {
                         ),
                         padding: const EdgeInsets.symmetric(vertical: 10),
                       ),
-                      icon: const Icon(Icons.qr_code_scanner_rounded, size: 15),
+                      icon: const Icon(Symbols.qr_code_scanner_rounded, size: 15),
                       label: Text(
                         'Scan QR code',
                         style: GoogleFonts.nunito(
@@ -258,7 +259,7 @@ class _RunHereSection extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  Icon(Icons.dns_rounded, size: 20, color: colors.primaryGreen),
+                  Icon(Symbols.dns_rounded, size: 20, color: colors.primaryGreen),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -338,7 +339,7 @@ class _RunHereSection extends StatelessWidget {
                         foregroundColor: colors.primaryGreen,
                         padding: const EdgeInsets.symmetric(horizontal: 4),
                       ),
-                      icon: const Icon(Icons.add_link_rounded, size: 16),
+                      icon: const Icon(Symbols.add_link_rounded, size: 16),
                       label: Text(
                         'Connect a phone',
                         style: GoogleFonts.nunito(
@@ -465,7 +466,7 @@ class _ConnectPhoneDialogState extends State<_ConnectPhoneDialog> {
                   ),
                   IconButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    icon: Icon(Icons.close_rounded, color: colors.textSecondary),
+                    icon: Icon(Symbols.close_rounded, color: colors.textSecondary),
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
                     iconSize: 20,

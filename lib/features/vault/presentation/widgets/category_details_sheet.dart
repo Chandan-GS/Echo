@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:project_echo/core/services/app_icon_service.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/features/vault/data/vault_icons.dart';
 import 'package:project_echo/features/vault/presentation/cubit/vault_cubit.dart';
 import 'package:project_echo/features/vault/presentation/widgets/notification_card_widget.dart';
+import 'package:project_echo/features/vault/presentation/widgets/source_icon.dart';
 import 'package:project_echo/features/vault/presentation/widgets/vault_utils.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 void showCategoryDetailsSheet(BuildContext context, String category) {
   // Ensure the cubit has this category selected before opening
@@ -221,7 +224,10 @@ class _CategoryDetailsSheet extends StatelessWidget {
     );
   }
 
-  void _showIconPickerDialog(BuildContext context, IconData currentIcon) {
+  /// [custom] is the glyph picked so far; null means the app's own icon.
+  void _showIconPickerDialog(BuildContext context, IconData? custom) {
+    final appIcon = AppIconService.cached(category);
+    final offset = appIcon != null ? 1 : 0;
     _showBouncyDialog(
       context: context,
       builder: (dialogContext) {
@@ -247,10 +253,41 @@ class _CategoryDetailsSheet extends StatelessWidget {
                 mainAxisSpacing: 12,
                 crossAxisSpacing: 12,
               ),
-              itemCount: curatedVaultIcons.length,
+              itemCount: curatedVaultIcons.length + offset,
               itemBuilder: (context, index) {
-                final icon = curatedVaultIcons[index];
-                final isSelected = icon.codePoint == currentIcon.codePoint;
+                if (appIcon != null && index == 0) {
+                  return GestureDetector(
+                    onTap: () {
+                      parentContext.read<VaultCubit>().clearCategoryIcon(
+                        category,
+                      );
+                      Navigator.of(dialogContext).pop();
+                    },
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: context.colors.background,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: custom == null
+                              ? context.colors.primaryGreen
+                              : context.colors.dividerColor.withValues(
+                                  alpha: 0.5,
+                                ),
+                          width: custom == null ? 2.5 : 1.5,
+                        ),
+                      ),
+                      alignment: Alignment.center,
+                      child: Image.memory(
+                        appIcon,
+                        width: 32,
+                        height: 32,
+                        filterQuality: FilterQuality.medium,
+                      ),
+                    ),
+                  );
+                }
+                final icon = curatedVaultIcons[index - offset];
+                final isSelected = icon.codePoint == custom?.codePoint;
 
                 return GestureDetector(
                   onTap: () {
@@ -314,7 +351,15 @@ class _CategoryDetailsSheet extends StatelessWidget {
           return const SizedBox.shrink();
         }
 
-        final currentIcon = getSourceIcon(category);
+        final custom = customIconFor(category, state.categoryIcons);
+        Widget glyphDisc(IconData icon) => Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: context.colors.primaryGreen,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, size: 24, color: context.colors.textInverse),
+        );
 
         return Container(
           height: MediaQuery.of(context).size.height * 0.85,
@@ -355,19 +400,14 @@ class _CategoryDetailsSheet extends StatelessWidget {
                     ),
                     const SizedBox(width: 12),
                     GestureDetector(
-                      onTap: () => _showIconPickerDialog(context, currentIcon),
-                      child: Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: context.colors.primaryGreen,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          currentIcon,
-                          size: 24,
-                          color: context.colors.textInverse,
-                        ),
-                      ),
+                      onTap: () => _showIconPickerDialog(context, custom),
+                      child: custom != null
+                          ? glyphDisc(custom)
+                          : SourceIcon(
+                              source: category,
+                              size: 44,
+                              fallback: glyphDisc(getSourceIcon(category)),
+                            ),
                     ),
                   ],
                 ),
@@ -397,14 +437,14 @@ class _CategoryDetailsSheet extends StatelessWidget {
                   children: [
                     _buildActionButton(
                       context: context,
-                      icon: Icons.edit_rounded,
+                      icon: Symbols.edit_rounded,
                       label: 'Rename',
                       onTap: () => _showRenameDialog(context),
                     ),
                     const SizedBox(width: 12),
                     _buildActionButton(
                       context: context,
-                      icon: Icons.block_rounded,
+                      icon: Symbols.block_rounded,
                       label: 'Block',
                       onTap: () => _showBlockConfirmation(context),
                       isWarning: true,
@@ -412,7 +452,7 @@ class _CategoryDetailsSheet extends StatelessWidget {
                     const SizedBox(width: 12),
                     _buildActionButton(
                       context: context,
-                      icon: Icons.delete_sweep_rounded,
+                      icon: Symbols.delete_sweep_rounded,
                       label: 'Clear',
                       onTap: () => _showDeleteConfirmation(context),
                       isDanger: true,

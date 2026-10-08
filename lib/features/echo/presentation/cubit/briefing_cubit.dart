@@ -2,21 +2,25 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'package:project_echo/core/services/analytics_service.dart';
-import 'dart:math' as math;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:fllama/fllama.dart';
+import 'package:project_echo/features/echo/data/context/chat_context_store.dart';
 import 'package:project_echo/features/echo/data/datasources/briefing_prompt.dart';
 import 'package:project_echo/features/onboarding/data/onboarding_personalization.dart';
 import 'package:project_echo/features/echo/data/datasources/priority_query_embedding.dart';
+import 'package:project_echo/features/echo/data/relevance/briefing_selection.dart';
+import 'package:project_echo/features/echo/data/relevance/temporal_relevance.dart';
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:project_echo/core/services/gemini_service.dart';
+import 'package:project_echo/core/services/gemini_usage.dart';
 import 'package:project_echo/core/services/widget_refresh_service.dart';
 import 'package:project_echo/core/services/phone_sync_service.dart';
 import 'package:project_echo/core/services/desktop_engine_client.dart';
 import 'package:project_echo/core/services/offline_model_repository.dart';
+import 'package:project_echo/features/vault/data/app_access.dart';
 
 part 'briefing_state.dart';
 
@@ -75,28 +79,27 @@ class BriefingCubit extends Cubit<BriefingState> {
       // The on-device model is only needed for the offline (Fllama) path below.
       // Cloud (Gemini) and desktop-engine paths don't require it, so we no
       // longer hard-gate here — the offline branch guards on modelPath itself.
-      final modelPath = await createOfflineModelRepository().downloadedPathOrNull();
+      final modelPath = await createOfflineModelRepository()
+          .downloadedPathOrNull();
 
-      // ── 2. Get filtered context (Top 15 semantic RAG matches) ──────────────
-      final contextObj = await _getFilteredContext();
-
-      if (contextObj['context'] == 'No notifications available yet.') {
+      // ── 2. Pick what's relevant from now until the end of tomorrow ────────
+      final now = DateTime.now();
+      final entries = await IsarDataSource.getAllEntries();
+      if (entries.isEmpty) {
         emit(BriefingError('No important notifications available.'));
         return;
       }
 
-      final highestScore = contextObj['highestScore'] as double?;
-      print('RAG Highest Similarity Score: $highestScore');
-
-      if (highestScore != null && highestScore < 0.15) {
-        final clearSchedule =
-            "Echo: No urgent tasks detected for today. Have a clear schedule!";
+      final notificationContext = await _buildContext(entries, now);
+      if (notificationContext == null) {
+        const clearSchedule =
+            'Echo: Nothing needs your attention today or tomorrow. Enjoy the clear schedule!';
         emit(BriefingReady(rawText: clearSchedule, ttsText: clearSchedule));
         return;
       }
 
       // ── 3. REDUCE PHASE: Final briefing generation ────────────────────────
-      emit(BriefingGenerating(partial: 'Synthesizing briefing...'));
+      emit(BriefingGenerating(partial: 'Writing your briefing…'));
 
       final prefs = await SharedPreferences.getInstance();
       final isOfflineEngine = prefs.getBool('is_offline_engine') ?? true;
@@ -113,7 +116,8 @@ class BriefingCubit extends Cubit<BriefingState> {
       // locally, so "prefer a computer" only ever makes sense on a phone. A
       // desktop build with a stale prefer_desktop_engine=true (e.g. leftover
       // from testing) would otherwise discover and call itself over HTTP.
-      final preferDesktopEngine = !(Platform.isMacOS || Platform.isWindows) &&
+      final preferDesktopEngine =
+          !(Platform.isMacOS || Platform.isWindows) &&
           (prefs.getBool('prefer_desktop_engine') ?? false);
       String? desktopHost;
       if (preferDesktopEngine) {
@@ -135,7 +139,14 @@ class BriefingCubit extends Cubit<BriefingState> {
           buffer.write(token);
         },
         onError: (Object err) {
-          emit(BriefingError('Generation failed: $err'));
+          emit(
+            BriefingError(
+              err is GeminiFailure ? err.message : 'Generation failed: $err',
+              limitReached:
+                  err is GeminiFailure &&
+                  err.hit?.kind == GeminiLimitKind.perDay,
+            ),
+          );
           if (!done.isCompleted) done.complete();
         },
         onDone: () async {
@@ -173,6 +184,10 @@ class BriefingCubit extends Cubit<BriefingState> {
               final prefs = await SharedPreferences.getInstance();
               final today = DateTime.now().toIso8601String().split('T').first;
               await prefs.setString('cached_briefing_date', today);
+              await prefs.setString(
+                'cached_briefing_time',
+                DateTime.now().toIso8601String(),
+              );
               await prefs.setString('cached_briefing_text', rawText);
               // Best-effort: no-ops when this runs in the headless alarm
               // isolate (no Activity to receive it) — the widget's own
@@ -188,13 +203,14 @@ class BriefingCubit extends Cubit<BriefingState> {
       );
 
       final prompt = buildQwenPrompt(
-        contextObj['context'] as String,
+        notificationContext,
         userName,
         toneInstruction: tone.promptInstruction,
         // Only the small on-device phone model copies the few-shot example
         // verbatim; the stronger cloud and desktop-engine models handle it
         // fine (and generate a better-shaped briefing with it).
         includeExample: useDesktopEngine || !isOfflineEngine,
+        now: now,
       );
 
       _debugPrintLongString(
@@ -215,17 +231,24 @@ class BriefingCubit extends Cubit<BriefingState> {
           onError: (e) => controller.addError(e),
         );
       } else if (!isOfflineEngine && geminiApiKey.isNotEmpty) {
-        final stream = GeminiService.instance.generateStream(geminiApiKey, prompt);
-        stream.listen((response) {
-          final chunk = response.text ?? '';
-          if (chunk.isNotEmpty) {
-            controller.add(chunk);
-          }
-        }, onDone: () {
-          controller.close();
-        }, onError: (e) {
-          controller.addError(e);
-        });
+        final stream = GeminiService.instance.generateStream(
+          geminiApiKey,
+          prompt,
+        );
+        stream.listen(
+          (response) {
+            final chunk = response.text ?? '';
+            if (chunk.isNotEmpty) {
+              controller.add(chunk);
+            }
+          },
+          onDone: () {
+            controller.close();
+          },
+          onError: (e) {
+            controller.addError(e);
+          },
+        );
       } else {
         // Offline path — this is the only branch that actually needs the model.
         if (modelPath == null) {
@@ -283,157 +306,55 @@ class BriefingCubit extends Cubit<BriefingState> {
 
       await done.future;
     } catch (e) {
-      emit(BriefingError('Error: $e'));
+      emit(BriefingError(e is GeminiFailure ? e.message : 'Error: $e'));
     }
   }
 
-  double _cosineSimilarity(List<double>? a, List<double>? b) {
-    if (a == null || b == null || a.length != b.length) return 0.0;
-    double dotProduct = 0.0;
-    double normA = 0.0;
-    double normB = 0.0;
-    for (int i = 0; i < a.length; i++) {
-      dotProduct += a[i] * b[i];
-      normA += a[i] * a[i];
-      normB += b[i] * b[i];
-    }
-    if (normA == 0 || normB == 0) return 0.0;
-    return dotProduct / (math.sqrt(normA) * math.sqrt(normB));
-  }
+  /// The briefing's notification context at [now]: everything relevant from
+  /// now until the end of tomorrow, one line each, labelled with when it
+  /// applies. Null when nothing qualifies.
+  Future<String?> _buildContext(List<RawData> entries, DateTime now) async {
+    final prefs = await SharedPreferences.getInstance();
+    // The on-device model's context window is small; cloud and desktop
+    // engines can take a fuller day.
+    final onDevice = prefs.getBool('is_offline_engine') ?? true;
+    final aliases = Map<String, String>.from(
+      jsonDecode(prefs.getString('vault_category_aliases') ?? '{}'),
+    );
+    // Blocked categories, and apps switched off in Apps Echo hears.
+    final excluded = await loadExcludedSources();
 
-  Future<Map<String, dynamic>> _getFilteredContext() async {
-    try {
-      final List<RawData> entries = await IsarDataSource.getAllEntries();
-      if (entries.isEmpty) {
-        return {
-          'context': 'No notifications available yet.',
-          'highestScore': 0.0,
-        };
-      }
+    // Desktop mirrors notifications from the phone WITHOUT embeddings (the
+    // sync payload omits the 384-float vectors, and TensorFlow Lite isn't
+    // available here to recompute them), so undated items are ranked by
+    // recency there instead of by priority similarity.
+    final isDesktop = Platform.isMacOS || Platform.isWindows;
+    final items = selectForBriefing(
+      entries,
+      now,
+      aliases: aliases,
+      blockedCategories: excluded.toList(),
+      priorityVector: isDesktop ? null : priorityQueryEmbedding,
+      affinity: (await ChatContextStore.loadEngagement()).affinity,
+      limit: onDevice ? 15 : 25,
+    );
+    if (items.isEmpty) return null;
 
-      // Garbage filter list (Pre-processor)
-      final junkSenders = [
-        'zomato',
-        'swiggy',
-        'myntra',
-        'lenskart',
-        'amazon',
-        'uber',
-        'hdfc',
-        'credit card',
-        'makemytrip',
-        'apollo',
-        'dominos',
-        'jio',
-        'urban company',
-        'blinkit',
-        'flipkart',
-        'quora',
-        'linkedin',
-        'medium',
-      ];
-      final junkKeywords = ['% off', 'otp', 'flash sale', 'discount', 'free'];
-
-      final prefs = await SharedPreferences.getInstance();
-      final aliasesString = prefs.getString('vault_category_aliases') ?? '{}';
-      final Map<String, String> categoryAliases = Map<String, String>.from(jsonDecode(aliasesString));
-      final blockedCategories = prefs.getStringList('vault_blocked_categories') ?? [];
-
-      final candidateEntries = entries.where((e) {
-        // Filter out old notifications (older than 24 hours) to keep only current and future events
-        if (e.timestamp.isBefore(
-          DateTime.now().subtract(const Duration(hours: 24)),
-        ))
-          return false;
-
-        final senderLower = e.sender.toLowerCase();
-        final contentLower = e.content.toLowerCase();
-        
-        final sourceKey = e.source.trim();
-        final defaultSource = sourceKey.isEmpty ? 'Unknown' : 
-            '${sourceKey[0].toUpperCase()}${sourceKey.substring(1).toLowerCase()}';
-        final displaySource = categoryAliases[defaultSource] ?? defaultSource;
-
-        if (blockedCategories.contains(displaySource)) return false;
-
-        for (final junk in junkSenders) {
-          if (senderLower.contains(junk)) return false;
-        }
-        for (final junk in junkKeywords) {
-          if (contentLower.contains(junk)) return false;
-        }
-        return true;
-      }).toList();
-
-      // Deduplicate by exact content to prevent identical mock messages
-      // from saturating the top 40 context.
-      final uniqueCandidates = <String, RawData>{};
-      for (final e in candidateEntries) {
-        uniqueCandidates[e.content] = e;
-      }
-
-      if (uniqueCandidates.isEmpty) {
-        return {
-          'context': 'No notifications available yet.',
-          'highestScore': 0.0,
-        };
-      }
-
-      // Desktop mirrors notifications from the phone WITHOUT embeddings (the
-      // sync payload omits the 384-float vectors, and TensorFlow Lite isn't
-      // available here to recompute them). So semantic scoring would be all
-      // zeros and wrongly trip the "no urgent tasks" fallback. Rank by recency
-      // instead and hand the model the latest signals to summarize.
-      if (Platform.isMacOS || Platform.isWindows) {
-        final recent = uniqueCandidates.values.toList()
-          ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
-        final lines = recent.take(15).map(
-              (e) => formatNotification(
-                source: e.source,
-                sender: e.sender,
-                content: e.content,
-              ),
-            );
-        return {'context': lines.join('\n'), 'highestScore': 1.0};
-      }
-
-      // Semantic Scoring (RAG)
-      // Score each candidate against the pre-calculated Priority Query Embedding
-      final scoredCandidates = uniqueCandidates.values.map((e) {
-        final score = _cosineSimilarity(priorityQueryEmbedding, e.embedding);
-        return {'entry': e, 'score': score};
-      }).toList();
-
-      // Sort descending by semantic score
-      scoredCandidates.sort(
-        (a, b) => (b['score'] as double).compareTo(a['score'] as double),
-      );
-
-      final highestScore = scoredCandidates.first['score'] as double;
-
-      // STRICT CAP: Take Top 15 semantic matches. Keeping this tight matters
-      // for the offline model — every extra notification inflates the prompt,
-      // and an over-long prompt overflows the local model's context window.
-      final topEntries = scoredCandidates
-          .take(15)
-          .map((e) => e['entry'] as RawData)
-          .toList();
-
-      final lines = topEntries.map(
-        (e) => formatNotification(
-          source: e.source,
-          sender: e.sender,
-          content: e.content,
-        ),
-      );
-
-      return {'context': lines.join('\n'), 'highestScore': highestScore};
-    } catch (_) {
-      return {
-        'context': 'No notifications available yet.',
-        'highestScore': 0.0,
-      };
-    }
+    final myTurns = await ChatContextStore.loadMyTurns();
+    return items
+        .map(
+          (i) => formatEntry(
+            i.entry,
+            content: rewriteRelativeDays(
+              i.entry.content,
+              i.entry.timestamp,
+              now,
+            ),
+            when: describeEntry(i.entry, i.window, now),
+            myTurns: myTurns,
+          ),
+        )
+        .join('\n');
   }
 
   Future<void> goBack() async {

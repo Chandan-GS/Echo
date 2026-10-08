@@ -17,28 +17,48 @@ const RawDataSchema = CollectionSchema(
   name: r'RawData',
   id: 6440790256153188216,
   properties: {
-    r'content': PropertySchema(
+    r'addressed': PropertySchema(
       id: 0,
+      name: r'addressed',
+      type: IsarType.string,
+    ),
+    r'content': PropertySchema(
+      id: 1,
       name: r'content',
       type: IsarType.string,
     ),
     r'embedding': PropertySchema(
-      id: 1,
+      id: 2,
       name: r'embedding',
       type: IsarType.doubleList,
     ),
+    r'isGroup': PropertySchema(
+      id: 3,
+      name: r'isGroup',
+      type: IsarType.bool,
+    ),
     r'sender': PropertySchema(
-      id: 2,
+      id: 4,
       name: r'sender',
       type: IsarType.string,
     ),
     r'source': PropertySchema(
-      id: 3,
+      id: 5,
       name: r'source',
       type: IsarType.string,
     ),
+    r'thread': PropertySchema(
+      id: 6,
+      name: r'thread',
+      type: IsarType.string,
+    ),
+    r'threadTitle': PropertySchema(
+      id: 7,
+      name: r'threadTitle',
+      type: IsarType.string,
+    ),
     r'timestamp': PropertySchema(
-      id: 4,
+      id: 8,
       name: r'timestamp',
       type: IsarType.dateTime,
     )
@@ -48,7 +68,21 @@ const RawDataSchema = CollectionSchema(
   deserialize: _rawDataDeserialize,
   deserializeProp: _rawDataDeserializeProp,
   idName: r'id',
-  indexes: {},
+  indexes: {
+    r'thread': IndexSchema(
+      id: 2879416675853168189,
+      name: r'thread',
+      unique: false,
+      replace: false,
+      properties: [
+        IndexPropertySchema(
+          name: r'thread',
+          type: IndexType.hash,
+          caseSensitive: true,
+        )
+      ],
+    )
+  },
   links: {},
   embeddedSchemas: {},
   getId: _rawDataGetId,
@@ -63,6 +97,12 @@ int _rawDataEstimateSize(
   Map<Type, List<int>> allOffsets,
 ) {
   var bytesCount = offsets.last;
+  {
+    final value = object.addressed;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
   bytesCount += 3 + object.content.length * 3;
   {
     final value = object.embedding;
@@ -72,6 +112,18 @@ int _rawDataEstimateSize(
   }
   bytesCount += 3 + object.sender.length * 3;
   bytesCount += 3 + object.source.length * 3;
+  {
+    final value = object.thread;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
+  {
+    final value = object.threadTitle;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
   return bytesCount;
 }
 
@@ -81,11 +133,15 @@ void _rawDataSerialize(
   List<int> offsets,
   Map<Type, List<int>> allOffsets,
 ) {
-  writer.writeString(offsets[0], object.content);
-  writer.writeDoubleList(offsets[1], object.embedding);
-  writer.writeString(offsets[2], object.sender);
-  writer.writeString(offsets[3], object.source);
-  writer.writeDateTime(offsets[4], object.timestamp);
+  writer.writeString(offsets[0], object.addressed);
+  writer.writeString(offsets[1], object.content);
+  writer.writeDoubleList(offsets[2], object.embedding);
+  writer.writeBool(offsets[3], object.isGroup);
+  writer.writeString(offsets[4], object.sender);
+  writer.writeString(offsets[5], object.source);
+  writer.writeString(offsets[6], object.thread);
+  writer.writeString(offsets[7], object.threadTitle);
+  writer.writeDateTime(offsets[8], object.timestamp);
 }
 
 RawData _rawDataDeserialize(
@@ -95,12 +151,16 @@ RawData _rawDataDeserialize(
   Map<Type, List<int>> allOffsets,
 ) {
   final object = RawData();
-  object.content = reader.readString(offsets[0]);
-  object.embedding = reader.readDoubleList(offsets[1]);
+  object.addressed = reader.readStringOrNull(offsets[0]);
+  object.content = reader.readString(offsets[1]);
+  object.embedding = reader.readDoubleList(offsets[2]);
   object.id = id;
-  object.sender = reader.readString(offsets[2]);
-  object.source = reader.readString(offsets[3]);
-  object.timestamp = reader.readDateTime(offsets[4]);
+  object.isGroup = reader.readBool(offsets[3]);
+  object.sender = reader.readString(offsets[4]);
+  object.source = reader.readString(offsets[5]);
+  object.thread = reader.readStringOrNull(offsets[6]);
+  object.threadTitle = reader.readStringOrNull(offsets[7]);
+  object.timestamp = reader.readDateTime(offsets[8]);
   return object;
 }
 
@@ -112,14 +172,22 @@ P _rawDataDeserializeProp<P>(
 ) {
   switch (propertyId) {
     case 0:
-      return (reader.readString(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 1:
-      return (reader.readDoubleList(offset)) as P;
+      return (reader.readString(offset)) as P;
     case 2:
-      return (reader.readString(offset)) as P;
+      return (reader.readDoubleList(offset)) as P;
     case 3:
-      return (reader.readString(offset)) as P;
+      return (reader.readBool(offset)) as P;
     case 4:
+      return (reader.readString(offset)) as P;
+    case 5:
+      return (reader.readString(offset)) as P;
+    case 6:
+      return (reader.readStringOrNull(offset)) as P;
+    case 7:
+      return (reader.readStringOrNull(offset)) as P;
+    case 8:
       return (reader.readDateTime(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -211,10 +279,221 @@ extension RawDataQueryWhere on QueryBuilder<RawData, RawData, QWhereClause> {
       ));
     });
   }
+
+  QueryBuilder<RawData, RawData, QAfterWhereClause> threadIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.equalTo(
+        indexName: r'thread',
+        value: [null],
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterWhereClause> threadIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.between(
+        indexName: r'thread',
+        lower: [null],
+        includeLower: false,
+        upper: [],
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterWhereClause> threadEqualTo(
+      String? thread) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.equalTo(
+        indexName: r'thread',
+        value: [thread],
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterWhereClause> threadNotEqualTo(
+      String? thread) {
+    return QueryBuilder.apply(this, (query) {
+      if (query.whereSort == Sort.asc) {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'thread',
+              lower: [],
+              upper: [thread],
+              includeUpper: false,
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'thread',
+              lower: [thread],
+              includeLower: false,
+              upper: [],
+            ));
+      } else {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'thread',
+              lower: [thread],
+              includeLower: false,
+              upper: [],
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'thread',
+              lower: [],
+              upper: [thread],
+              includeUpper: false,
+            ));
+      }
+    });
+  }
 }
 
 extension RawDataQueryFilter
     on QueryBuilder<RawData, RawData, QFilterCondition> {
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> addressedIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'addressed',
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> addressedIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'addressed',
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> addressedEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'addressed',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> addressedGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'addressed',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> addressedLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'addressed',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> addressedBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'addressed',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> addressedStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'addressed',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> addressedEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'addressed',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> addressedContains(
+      String value,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'addressed',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> addressedMatches(
+      String pattern,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'addressed',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> addressedIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'addressed',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> addressedIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'addressed',
+        value: '',
+      ));
+    });
+  }
+
   QueryBuilder<RawData, RawData, QAfterFilterCondition> contentEqualTo(
     String value, {
     bool caseSensitive = true,
@@ -562,6 +841,16 @@ extension RawDataQueryFilter
     });
   }
 
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> isGroupEqualTo(
+      bool value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'isGroup',
+        value: value,
+      ));
+    });
+  }
+
   QueryBuilder<RawData, RawData, QAfterFilterCondition> senderEqualTo(
     String value, {
     bool caseSensitive = true,
@@ -822,6 +1111,299 @@ extension RawDataQueryFilter
     });
   }
 
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> threadIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'thread',
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> threadIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'thread',
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> threadEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'thread',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> threadGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'thread',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> threadLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'thread',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> threadBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'thread',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> threadStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'thread',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> threadEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'thread',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> threadContains(
+      String value,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'thread',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> threadMatches(
+      String pattern,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'thread',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> threadIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'thread',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> threadIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'thread',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> threadTitleIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'threadTitle',
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> threadTitleIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'threadTitle',
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> threadTitleEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'threadTitle',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> threadTitleGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'threadTitle',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> threadTitleLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'threadTitle',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> threadTitleBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'threadTitle',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> threadTitleStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'threadTitle',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> threadTitleEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'threadTitle',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> threadTitleContains(
+      String value,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'threadTitle',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> threadTitleMatches(
+      String pattern,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'threadTitle',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> threadTitleIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'threadTitle',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition>
+      threadTitleIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'threadTitle',
+        value: '',
+      ));
+    });
+  }
+
   QueryBuilder<RawData, RawData, QAfterFilterCondition> timestampEqualTo(
       DateTime value) {
     return QueryBuilder.apply(this, (query) {
@@ -883,6 +1465,18 @@ extension RawDataQueryLinks
     on QueryBuilder<RawData, RawData, QFilterCondition> {}
 
 extension RawDataQuerySortBy on QueryBuilder<RawData, RawData, QSortBy> {
+  QueryBuilder<RawData, RawData, QAfterSortBy> sortByAddressed() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'addressed', Sort.asc);
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterSortBy> sortByAddressedDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'addressed', Sort.desc);
+    });
+  }
+
   QueryBuilder<RawData, RawData, QAfterSortBy> sortByContent() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'content', Sort.asc);
@@ -892,6 +1486,18 @@ extension RawDataQuerySortBy on QueryBuilder<RawData, RawData, QSortBy> {
   QueryBuilder<RawData, RawData, QAfterSortBy> sortByContentDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'content', Sort.desc);
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterSortBy> sortByIsGroup() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isGroup', Sort.asc);
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterSortBy> sortByIsGroupDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isGroup', Sort.desc);
     });
   }
 
@@ -919,6 +1525,30 @@ extension RawDataQuerySortBy on QueryBuilder<RawData, RawData, QSortBy> {
     });
   }
 
+  QueryBuilder<RawData, RawData, QAfterSortBy> sortByThread() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'thread', Sort.asc);
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterSortBy> sortByThreadDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'thread', Sort.desc);
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterSortBy> sortByThreadTitle() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'threadTitle', Sort.asc);
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterSortBy> sortByThreadTitleDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'threadTitle', Sort.desc);
+    });
+  }
+
   QueryBuilder<RawData, RawData, QAfterSortBy> sortByTimestamp() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'timestamp', Sort.asc);
@@ -934,6 +1564,18 @@ extension RawDataQuerySortBy on QueryBuilder<RawData, RawData, QSortBy> {
 
 extension RawDataQuerySortThenBy
     on QueryBuilder<RawData, RawData, QSortThenBy> {
+  QueryBuilder<RawData, RawData, QAfterSortBy> thenByAddressed() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'addressed', Sort.asc);
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterSortBy> thenByAddressedDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'addressed', Sort.desc);
+    });
+  }
+
   QueryBuilder<RawData, RawData, QAfterSortBy> thenByContent() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'content', Sort.asc);
@@ -955,6 +1597,18 @@ extension RawDataQuerySortThenBy
   QueryBuilder<RawData, RawData, QAfterSortBy> thenByIdDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'id', Sort.desc);
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterSortBy> thenByIsGroup() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isGroup', Sort.asc);
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterSortBy> thenByIsGroupDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isGroup', Sort.desc);
     });
   }
 
@@ -982,6 +1636,30 @@ extension RawDataQuerySortThenBy
     });
   }
 
+  QueryBuilder<RawData, RawData, QAfterSortBy> thenByThread() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'thread', Sort.asc);
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterSortBy> thenByThreadDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'thread', Sort.desc);
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterSortBy> thenByThreadTitle() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'threadTitle', Sort.asc);
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterSortBy> thenByThreadTitleDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'threadTitle', Sort.desc);
+    });
+  }
+
   QueryBuilder<RawData, RawData, QAfterSortBy> thenByTimestamp() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'timestamp', Sort.asc);
@@ -997,6 +1675,13 @@ extension RawDataQuerySortThenBy
 
 extension RawDataQueryWhereDistinct
     on QueryBuilder<RawData, RawData, QDistinct> {
+  QueryBuilder<RawData, RawData, QDistinct> distinctByAddressed(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'addressed', caseSensitive: caseSensitive);
+    });
+  }
+
   QueryBuilder<RawData, RawData, QDistinct> distinctByContent(
       {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
@@ -1007,6 +1692,12 @@ extension RawDataQueryWhereDistinct
   QueryBuilder<RawData, RawData, QDistinct> distinctByEmbedding() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'embedding');
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QDistinct> distinctByIsGroup() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'isGroup');
     });
   }
 
@@ -1021,6 +1712,20 @@ extension RawDataQueryWhereDistinct
       {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'source', caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QDistinct> distinctByThread(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'thread', caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QDistinct> distinctByThreadTitle(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'threadTitle', caseSensitive: caseSensitive);
     });
   }
 
@@ -1039,6 +1744,12 @@ extension RawDataQueryProperty
     });
   }
 
+  QueryBuilder<RawData, String?, QQueryOperations> addressedProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'addressed');
+    });
+  }
+
   QueryBuilder<RawData, String, QQueryOperations> contentProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'content');
@@ -1051,6 +1762,12 @@ extension RawDataQueryProperty
     });
   }
 
+  QueryBuilder<RawData, bool, QQueryOperations> isGroupProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'isGroup');
+    });
+  }
+
   QueryBuilder<RawData, String, QQueryOperations> senderProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'sender');
@@ -1060,6 +1777,18 @@ extension RawDataQueryProperty
   QueryBuilder<RawData, String, QQueryOperations> sourceProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'source');
+    });
+  }
+
+  QueryBuilder<RawData, String?, QQueryOperations> threadProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'thread');
+    });
+  }
+
+  QueryBuilder<RawData, String?, QQueryOperations> threadTitleProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'threadTitle');
     });
   }
 

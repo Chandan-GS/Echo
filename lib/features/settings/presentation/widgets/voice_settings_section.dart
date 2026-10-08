@@ -7,9 +7,13 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/core/services/echo_tts.dart';
+import 'package:project_echo/core/services/voice/echo_voice.dart';
+import 'package:project_echo/core/services/voice/natural_voice.dart';
 import 'package:project_echo/core/services/voice_catalog.dart';
 import 'package:project_echo/features/onboarding/data/voice_preference.dart';
 import 'package:project_echo/features/onboarding/presentation/widgets/voice_studio.dart';
+import 'package:project_echo/features/settings/presentation/widgets/natural_voice_tile.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 /// Settings ▸ Voice — lets the user re-tune the briefing voice (gender · accent ·
 /// speed · character) at any time, using the same [VoiceStudio] surface as
@@ -47,8 +51,9 @@ class _VoiceSettingsSectionState extends State<VoiceSettingsSection> {
     final restored = VoicePreference.read(prefs);
     final accents = await VoiceCatalog.instance.availableAccents(_tts);
     final hasGoodVoice = await VoiceCatalog.instance.hasHighQualityVoice(_tts);
-    final installedVoices =
-        _isDesktop ? await VoiceCatalog.instance.listInstalledVoices(_tts) : null;
+    final installedVoices = _isDesktop
+        ? await VoiceCatalog.instance.listInstalledVoices(_tts)
+        : null;
 
     _tts.setCompletionHandler(() {
       if (mounted) setState(() => _playing = false);
@@ -63,18 +68,21 @@ class _VoiceSettingsSectionState extends State<VoiceSettingsSection> {
     if (!mounted) return;
     setState(() {
       if (installedVoices != null) {
-        final stillInstalled = restored.hasDirectVoice &&
-            installedVoices.any((v) =>
-                v['name'] == restored.directVoiceName &&
-                v['locale'] == restored.directVoiceLocale);
+        final stillInstalled =
+            restored.hasDirectVoice &&
+            installedVoices.any(
+              (v) =>
+                  v['name'] == restored.directVoiceName &&
+                  v['locale'] == restored.directVoiceLocale,
+            );
         _pref = stillInstalled
             ? restored
             : (installedVoices.isNotEmpty
-                ? restored.withDirectVoice(
-                    name: installedVoices.first['name']!,
-                    locale: installedVoices.first['locale']!,
-                  )
-                : restored);
+                  ? restored.withDirectVoice(
+                      name: installedVoices.first['name']!,
+                      locale: installedVoices.first['locale']!,
+                    )
+                  : restored);
         if (!stillInstalled) _persist();
       } else {
         _pref = accents.contains(restored.accent)
@@ -104,6 +112,18 @@ class _VoiceSettingsSectionState extends State<VoiceSettingsSection> {
 
   Future<void> _audition() async {
     if (!_ready) return;
+    // With the natural voice downloaded, that's the voice Echo speaks in.
+    if (!_isDesktop && await NaturalVoice.instance.modelDir(_pref) != null) {
+      await _tts.stop();
+      await _persist();
+      final voice = EchoVoice.instance;
+      await voice.stop();
+      if (mounted) setState(() => _playing = true);
+      voice.say(_pref.previewLine);
+      await voice.finished;
+      if (mounted) setState(() => _playing = false);
+      return;
+    }
     try {
       await _tts.stop();
       await EchoTts.applyPreference(_tts, _pref);
@@ -117,6 +137,7 @@ class _VoiceSettingsSectionState extends State<VoiceSettingsSection> {
   Future<void> _togglePlay() async {
     if (_playing) {
       await _tts.stop();
+      await EchoVoice.instance.stop();
       if (mounted) setState(() => _playing = false);
     } else {
       await _audition();
@@ -134,7 +155,9 @@ class _VoiceSettingsSectionState extends State<VoiceSettingsSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (Platform.isMacOS && !_hasHighQualityVoice) const _BetterVoicesHint(),
+        if (!_isDesktop) NaturalVoiceTile(pref: _pref),
+        if (Platform.isMacOS && !_hasHighQualityVoice)
+          const _BetterVoicesHint(),
         if (_isDesktop)
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
@@ -176,7 +199,11 @@ class _RescanButton extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.refresh_rounded, size: 16, color: colors.primaryGreen),
+                Icon(
+                  Symbols.refresh_rounded,
+                  size: 16,
+                  color: colors.primaryGreen,
+                ),
                 const SizedBox(width: 8),
                 Text(
                   'Rescan installed voices',
@@ -223,24 +250,37 @@ class _BetterVoicesHint extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.record_voice_over_rounded, size: 18, color: colors.primaryGreen),
+          Icon(
+            Symbols.record_voice_over_rounded,
+            size: 18,
+            color: colors.primaryGreen,
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: RichText(
               text: TextSpan(
-                style: GoogleFonts.nunito(fontSize: 12.5, height: 1.45, color: colors.textPrimary),
+                style: GoogleFonts.nunito(
+                  fontSize: 12.5,
+                  height: 1.45,
+                  color: colors.textPrimary,
+                ),
                 children: [
                   const TextSpan(
-                    text: 'These are macOS\'s default-quality voices. For much more '
+                    text:
+                        'These are macOS\'s default-quality voices. For much more '
                         'natural speech, download a free ',
                   ),
                   TextSpan(
                     text: 'Premium',
-                    style: GoogleFonts.nunito(fontSize: 12.5, fontWeight: FontWeight.w800),
+                    style: GoogleFonts.nunito(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                   const TextSpan(text: ' (or Enhanced) voice in '),
                   TextSpan(
-                    text: 'System Settings → Accessibility → Spoken Content → '
+                    text:
+                        'System Settings → Accessibility → Spoken Content → '
                         'System Voice → Manage Voices',
                     style: GoogleFonts.nunito(
                       fontSize: 12.5,
@@ -250,15 +290,17 @@ class _BetterVoicesHint extends StatelessWidget {
                     recognizer: TapGestureRecognizer()
                       ..onTap = () => _openSystemSettings(),
                   ),
-                  const TextSpan(
-                    text: ', then tap Rescan. Note: ',
-                  ),
+                  const TextSpan(text: ', then tap Rescan. Note: '),
                   TextSpan(
                     text: 'Siri\'s own voice can\'t be used',
-                    style: GoogleFonts.nunito(fontSize: 12.5, fontWeight: FontWeight.w800),
+                    style: GoogleFonts.nunito(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                   const TextSpan(
-                    text: ' — Apple locks it to Siri, so pick a Premium voice instead.',
+                    text:
+                        ' — Apple locks it to Siri, so pick a Premium voice instead.',
                   ),
                 ],
               ),

@@ -64,19 +64,14 @@ class LocalNotificationService {
       },
       // Tapping the "Play" action while the app is fully terminated lands
       // here instead, in a separate background isolate.
-      onDidReceiveBackgroundNotificationResponse: notificationTapBackgroundHandler,
+      onDidReceiveBackgroundNotificationResponse:
+          notificationTapBackgroundHandler,
     );
 
-    // On Android 13+ (API 33), posting ANY notification requires the runtime
-    // POST_NOTIFICATIONS permission — separate from (and unrelated to) the
-    // NotificationListenerService access granted during onboarding, which only
-    // lets Echo *read* other apps' notifications. Without this, `show()` below
-    // silently does nothing. A no-op on older Android/iOS.
-    await flutterLocalNotificationsPlugin
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.requestNotificationsPermission();
-
+    // Posting notifications needs its own permission on Android 13+ (separate
+    // from the notification access that lets Echo read other apps'). It's
+    // asked for in onboarding, beside notification access, not here: init()
+    // runs on every launch and in the background.
     _initialized = true;
   }
 

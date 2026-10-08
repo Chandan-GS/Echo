@@ -12,6 +12,7 @@ import 'package:project_echo/features/onboarding/presentation/widgets/onboarding
 import 'package:project_echo/features/onboarding/presentation/widgets/selectable_tile.dart';
 import 'package:project_echo/features/settings/presentation/cubit/settings_cubit.dart';
 import 'package:project_echo/features/settings/presentation/cubit/settings_state.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 class PersonalizeScreen extends StatefulWidget {
   const PersonalizeScreen({super.key});
@@ -152,7 +153,7 @@ class _PersonalizeScreenState extends State<PersonalizeScreen> {
               ),
               child: Row(
                 children: [
-                  Icon(Icons.alarm_rounded, color: colors.primaryGreen),
+                  Icon(Symbols.alarm_rounded, color: colors.primaryGreen),
                   const SizedBox(width: 14),
                   Expanded(
                     child: Text(
@@ -357,7 +358,7 @@ class _InterestChip extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (selected) ...[
-                Icon(Icons.check_rounded, size: 17, color: onSel),
+                Icon(Symbols.check_rounded, size: 17, color: onSel),
                 const SizedBox(width: 6),
               ],
               Text(

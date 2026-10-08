@@ -6,7 +6,15 @@ class TfliteEmbeddingService {
   static TfliteEmbeddingService? _instance;
   final BertTokenizer _tokenizer = BertTokenizer();
   Interpreter? _interpreter;
+  // Runs inference in a background isolate so it never blocks the UI thread.
+  IsolateInterpreter? _isolateInterpreter;
   bool _initialized = false;
+
+  // Serializes embedding calls. IsolateInterpreter returns immediately, without
+  // writing any output, if a run is already in flight, so an overlapping call
+  // (a live notification mid-drain, or an Ask Echo query) would silently get a
+  // zero vector. The native interpreter isn't safe for concurrent use either.
+  Future<void> _queue = Future<void>.value();
 
   TfliteEmbeddingService._();
 
@@ -24,10 +32,20 @@ class TfliteEmbeddingService {
       'assets/ai refs/all-MiniLM-L6-v2-quant.tflite',
       options: options,
     );
+    _isolateInterpreter =
+        await IsolateInterpreter.create(address: _interpreter!.address);
     _initialized = true;
   }
 
-  Future<List<double>> getEmbedding(String text) async {
+  Future<List<double>> getEmbedding(String text) {
+    // Errors are swallowed on the chain only, so one failure can't wedge every
+    // later call; the caller still receives it via `result`.
+    final result = _queue.then((_) => _computeEmbedding(text));
+    _queue = result.then((_) {}, onError: (_) {});
+    return result;
+  }
+
+  Future<List<double>> _computeEmbedding(String text) async {
     await initialize();
 
     const int sequenceLength = 256;
@@ -78,7 +96,7 @@ class TfliteEmbeddingService {
         ),
       );
 
-      _interpreter!.runForMultipleInputs(inputs, {0: outputBuffer});
+      await _isolateInterpreter!.runForMultipleInputs(inputs, {0: outputBuffer});
 
       final tokenEmbeddings = outputBuffer.first;
       rawVector = List<double>.filled(embDim, 0.0);
@@ -105,7 +123,7 @@ class TfliteEmbeddingService {
         (_) => List<double>.filled(outputShape[1], 0.0),
       );
 
-      _interpreter!.runForMultipleInputs(inputs, {0: outputBuffer});
+      await _isolateInterpreter!.runForMultipleInputs(inputs, {0: outputBuffer});
       rawVector = outputBuffer.first;
     }
 
@@ -123,7 +141,9 @@ class TfliteEmbeddingService {
     return vector.map((val) => val / norm).toList();
   }
 
-  void dispose() {
+  Future<void> dispose() async {
+    await _isolateInterpreter?.close();
+    _isolateInterpreter = null;
     _interpreter?.close();
     _interpreter = null;
     _initialized = false;

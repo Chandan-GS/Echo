@@ -35,13 +35,13 @@ class OnBoardingCubit extends Cubit<OnBoardingState> {
   Future<void> checkPermissions() async {
     final notificationStatus = await _checkNotificationPermission();
     final calendarStatus = await Permission.calendarFullAccess.status;
-    final smsStatus = await Permission.sms.status;
+    final alertsStatus = await Permission.notification.status;
 
     emit(
       PermissionsStep(
         notificationGranted: notificationStatus,
         calendarGranted: calendarStatus.isGranted,
-        smsGranted: smsStatus.isGranted,
+        alertsGranted: alertsStatus.isGranted,
       ),
     );
   }
@@ -91,23 +91,36 @@ class OnBoardingCubit extends Cubit<OnBoardingState> {
     }
   }
 
-  Future<void> toggleSms() async {
+  /// Asks to post Echo's briefing and reminders; once Android stops asking
+  /// (denied for good), or to turn it off, that's in system settings.
+  Future<void> toggleAlerts() async {
     final currentState = state;
-    if (currentState is PermissionsStep) {
-      if (currentState.smsGranted) {
-        await openAppSettings();
-      } else {
-        final status = await Permission.sms.request();
-        if (!status.isGranted) {
-          await openAppSettings();
-        }
-      }
-      await checkPermissions();
+    if (currentState is! PermissionsStep) return;
+    final status = await Permission.notification.status;
+    if (currentState.alertsGranted || status.isPermanentlyDenied) {
+      await openAppSettings();
+    } else if (!(await Permission.notification.request()).isGranted) {
+      // Said no, or Android 12 and older (no question to show, notifications
+      // switched off): the switch is in system settings.
+      await openAppSettings();
     }
+    await checkPermissions();
   }
 
   void completePermissions() {
+    if (Platform.isAndroid) {
+      emit(AppsStep());
+    } else {
+      emit(AiModeStep(selectedMode: null, isModelDownloaded: false));
+    }
+  }
+
+  void completeApps() {
     emit(AiModeStep(selectedMode: null, isModelDownloaded: false));
+  }
+
+  void goBackToApps() {
+    emit(AppsStep());
   }
 
   void selectAiMode(String mode) {
