@@ -200,7 +200,7 @@ class EchoNotificationListenerService : NotificationListenerService() {
         val jsonString = json.toString()
         Log.d("EchoNotification", "Captured from ${json.optString("packageName")}")
 
-        // 1. Buffer to SharedPreferences ONLY if Flutter is not actively listening
+        // 1. Buffer (NotificationBuffer) ONLY if Flutter is not actively listening
         if (!isFlutterListening) {
             NotificationBuffer.append(applicationContext, jsonString)
         }

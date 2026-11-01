@@ -24,6 +24,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// day old and about nothing still ahead) isn't saved at all. Embeddings are
 /// made afterwards, newest first ([EmbeddingBackfill]); until then search
 /// still finds a message by its words, sender and time.
+///
+/// The native buffer only lends notifications out: each round is deleted
+/// there once it's saved here, so the app dying mid-catch-up loses nothing,
+/// and a round delivered again is recognised by its [RawData.captureKey].
 class NotificationIngest {
   NotificationIngest._();
 
@@ -42,11 +46,59 @@ class NotificationIngest {
 
   static Future<void> _drain() async {
     try {
-      final buffer = jsonDecode(await EchoNative.drainBuffer());
-      if (buffer is! List) return;
-      await ingestAll(buffer.whereType<Map<String, dynamic>>().toList());
+      await drainRounds(
+        peek: () => EchoNative.peekBuffer(limit: _round),
+        ack: EchoNative.ackBuffer,
+        save: _save,
+      );
     } catch (e) {
       debugPrint('Error draining buffer: $e');
+    }
+  }
+
+  /// Notifications per round of the catch-up. Each round is confirmed once
+  /// saved, so a kill mid-catch-up repeats at most one.
+  static const _round = 500;
+
+  /// [_drain]'s rounds, with the buffer and the saving passed in for tests.
+  /// Each round [peek] lends is saved, then confirmed with [ack]. A round
+  /// that won't save is tried one by one: if none of it saves (Isar is
+  /// unavailable, say) it stays buffered for next time; otherwise what still
+  /// fails is dropped, so one bad notification can't hold up the rest.
+  @visibleForTesting
+  static Future<void> drainRounds({
+    required Future<Map<String, String>> Function() peek,
+    required Future<void> Function(Iterable<String> keys) ack,
+    required Future<void> Function(List<Map<String, dynamic>> items) save,
+  }) async {
+    while (true) {
+      final lent = await peek();
+      if (lent.isEmpty) return;
+      final items = <Map<String, dynamic>>[];
+      for (final MapEntry(:key, :value) in lent.entries) {
+        try {
+          final json = jsonDecode(value);
+          if (json is Map<String, dynamic>) {
+            items.add(json..['captureKey'] = key);
+          }
+        } catch (_) {
+          debugPrint('Dropping an unreadable buffered notification.');
+        }
+      }
+      try {
+        await save(items);
+      } catch (e) {
+        debugPrint('Saving ${items.length} buffered notifications failed: $e');
+        var saved = 0;
+        for (final item in items) {
+          try {
+            await save([item]);
+            saved++;
+          } catch (_) {}
+        }
+        if (saved == 0 && items.isNotEmpty) return;
+      }
+      await ack(lent.keys);
     }
   }
 
@@ -94,145 +146,182 @@ class NotificationIngest {
     List<Map<String, dynamic>> items, {
     DateTime? now,
   }) async {
-    if (items.isEmpty) return 0;
     try {
-      final at = now ?? DateTime.now();
-      final ordered = [...items]..sort((a, b) => _time(a).compareTo(_time(b)));
-
-      // Signals first: who the owner is, where they spoke, what they opened.
-      final selfNames = <String>{};
-      final myTurns = <({String thread, DateTime at, String text})>[];
-      final engagements = <({String thread, String action, DateTime at})>[];
-      final notifications = <Map<String, dynamic>>[];
-      for (final json in ordered) {
-        final thread = json['thread'] as String?;
-        if (json['kind'] == 'engagement') {
-          if (thread != null) {
-            engagements.add((
-              thread: thread,
-              action: json['action'] as String? ?? '',
-              at: _time(json),
-            ));
-          }
-          continue;
-        }
-        final selfName = json['selfName'] as String?;
-        if (selfName != null) selfNames.add(selfName);
-        // The owner's own message only marks when they last spoke there.
-        if (json['fromMe'] == true) {
-          if (thread != null) {
-            myTurns.add((
-              thread: thread,
-              at: _time(json),
-              text: json['content'] as String? ?? '',
-            ));
-          }
-          continue;
-        }
-        notifications.add(json);
-      }
-      await ChatContextStore.learnSelfNames(selfNames);
-      await ChatContextStore.recordMyTurns(myTurns);
-      await ChatContextStore.recordEngagements(engagements);
-      if (notifications.isEmpty) return 0;
-
-      // What every notification needs, read once.
-      final prefs = await SharedPreferences.getInstance();
-      final aliases = Map<String, String>.from(
-        jsonDecode(prefs.getString('vault_category_aliases') ?? '{}'),
-      );
-      final myNames = ownerNames(
-        prefs.getString('user_name'),
-        await ChatContextStore.selfNames(),
-      );
-      final turns = await ChatContextStore.loadMyTurns();
-      final isar = await IsarDataSource.instance;
-
-      final keep = <RawData>[];
-      final counted = <({String source, DateTime at})>[];
-      final packages = <String, Map<String, int>>{};
-      // Per group: messages already saved after the owner last spoke there,
-      // and those seen in this batch so far.
-      final savedSince = <String, int>{};
-      final seenInBatch = <String, List<DateTime>>{};
-
-      for (final json in notifications) {
-        final time = _time(json);
-        final rawSource = json['source'] as String? ?? 'Unknown';
-        final defaultSource = rawSource.isEmpty
-            ? 'Unknown'
-            : '${rawSource[0].toUpperCase()}${rawSource.substring(1).toLowerCase()}';
-        final source = aliases[defaultSource] ?? defaultSource;
-        final package = json['packageName'] as String?;
-        if (package != null && package.isNotEmpty) {
-          final forSource = packages.putIfAbsent(defaultSource, () => {});
-          forSource[package] = (forSource[package] ?? 0) + 1;
-        }
-
-        final thread = json['thread'] as String?;
-        final content = json['content'] as String? ?? '';
-        // Only chats say whether they're a group.
-        final isChat = json.containsKey('isGroup');
-        final isGroup = json['isGroup'] == true;
-        Addressed? addressed;
-        if (isChat) {
-          final spoke = turns.lastBefore(thread, time);
-          var since = 0;
-          if (isGroup && spoke != null && thread != null) {
-            since =
-                await _savedSince(isar, savedSince, thread, spoke.at) +
-                (seenInBatch[thread] ?? const <DateTime>[])
-                    .where((t) => t.isAfter(spoke.at))
-                    .length;
-          }
-          addressed = addressedFor(
-            isGroup: isGroup,
-            content: content,
-            at: time,
-            myNames: myNames,
-            mySpokeAt: spoke?.at,
-            messagesSince: since,
-          );
-        }
-        if (thread != null) {
-          seenInBatch.putIfAbsent(thread, () => []).add(time);
-        }
-
-        final entry = RawData()
-          ..source = source
-          ..sender = json['sender'] as String? ?? ''
-          ..content = content
-          ..timestamp = time
-          ..thread = thread
-          ..threadTitle = json['threadTitle'] as String?
-          ..isGroup = isGroup
-          ..addressed = addressed?.name;
-
-        // The Vault's week keeps only these numbers, past the Vault's own
-        // 24-hour life of a notification, so everything is counted…
-        counted.add((source: entry.source, at: time));
-        // …but what the Vault would delete straight away isn't saved.
-        if (_stale(entry, at)) continue;
-        keep.add(entry);
-      }
-
-      for (var i = 0; i < keep.length; i += _chunk) {
-        final chunk = keep.sublist(i, (i + _chunk).clamp(0, keep.length));
-        await isar.writeTxn(() => isar.rawDatas.putAll(chunk));
-      }
-      await DailyStats.countAll(counted);
-      await AppIconService.rememberAll(packages);
-      debugPrint(
-        'Saved ${keep.length} of ${notifications.length} notifications '
-        '(${notifications.length - keep.length} already past).',
-      );
-
-      if (keep.isNotEmpty) unawaited(EmbeddingBackfill.run());
-      return keep.length;
+      return await _save(items, now: now);
     } catch (e) {
       debugPrint('Error processing notifications: $e');
       return 0;
     }
+  }
+
+  /// [ingestAll], throwing if something can't be saved.
+  static Future<int> _save(
+    List<Map<String, dynamic>> items, {
+    DateTime? now,
+  }) async {
+    if (items.isEmpty) return 0;
+    final at = now ?? DateTime.now();
+    final ordered = [...items]..sort((a, b) => _time(a).compareTo(_time(b)));
+
+    // Signals first: who the owner is, where they spoke, what they opened.
+    final selfNames = <String>{};
+    final myTurns = <({String thread, DateTime at, String text})>[];
+    final engagements = <({String thread, String action, DateTime at})>[];
+    final notifications = <Map<String, dynamic>>[];
+    for (final json in ordered) {
+      final thread = json['thread'] as String?;
+      if (json['kind'] == 'engagement') {
+        if (thread != null) {
+          engagements.add((
+            thread: thread,
+            action: json['action'] as String? ?? '',
+            at: _time(json),
+          ));
+        }
+        continue;
+      }
+      final selfName = json['selfName'] as String?;
+      if (selfName != null) selfNames.add(selfName);
+      // The owner's own message only marks when they last spoke there.
+      if (json['fromMe'] == true) {
+        if (thread != null) {
+          myTurns.add((
+            thread: thread,
+            at: _time(json),
+            text: json['content'] as String? ?? '',
+          ));
+        }
+        continue;
+      }
+      notifications.add(json);
+    }
+    await ChatContextStore.learnSelfNames(selfNames);
+    await ChatContextStore.recordMyTurns(myTurns);
+    await ChatContextStore.recordEngagements(engagements);
+    if (notifications.isEmpty) return 0;
+
+    // What every notification needs, read once.
+    final prefs = await SharedPreferences.getInstance();
+    final aliases = Map<String, String>.from(
+      jsonDecode(prefs.getString('vault_category_aliases') ?? '{}'),
+    );
+    final myNames = ownerNames(
+      prefs.getString('user_name'),
+      await ChatContextStore.selfNames(),
+    );
+    final turns = await ChatContextStore.loadMyTurns();
+    final isar = await IsarDataSource.instance;
+
+    final keep = <RawData>[];
+    final counted = <({String source, DateTime at})>[];
+    final packages = <String, Map<String, int>>{};
+    // Per group: messages already saved after the owner last spoke there,
+    // and those seen in this batch so far.
+    final savedSince = <String, int>{};
+    final seenInBatch = <String, List<DateTime>>{};
+
+    for (final json in notifications) {
+      final time = _time(json);
+      final rawSource = json['source'] as String? ?? 'Unknown';
+      final defaultSource = rawSource.isEmpty
+          ? 'Unknown'
+          : '${rawSource[0].toUpperCase()}${rawSource.substring(1).toLowerCase()}';
+      final source = aliases[defaultSource] ?? defaultSource;
+      final package = json['packageName'] as String?;
+      if (package != null && package.isNotEmpty) {
+        final forSource = packages.putIfAbsent(defaultSource, () => {});
+        forSource[package] = (forSource[package] ?? 0) + 1;
+      }
+
+      final thread = json['thread'] as String?;
+      final content = json['content'] as String? ?? '';
+      // Only chats say whether they're a group.
+      final isChat = json.containsKey('isGroup');
+      final isGroup = json['isGroup'] == true;
+      Addressed? addressed;
+      if (isChat) {
+        final spoke = turns.lastBefore(thread, time);
+        var since = 0;
+        if (isGroup && spoke != null && thread != null) {
+          since =
+              await _savedSince(isar, savedSince, thread, spoke.at) +
+              (seenInBatch[thread] ?? const <DateTime>[])
+                  .where((t) => t.isAfter(spoke.at))
+                  .length;
+        }
+        addressed = addressedFor(
+          isGroup: isGroup,
+          content: content,
+          at: time,
+          myNames: myNames,
+          mySpokeAt: spoke?.at,
+          messagesSince: since,
+        );
+      }
+      if (thread != null) {
+        seenInBatch.putIfAbsent(thread, () => []).add(time);
+      }
+
+      final entry = RawData()
+        ..source = source
+        ..sender = json['sender'] as String? ?? ''
+        ..content = content
+        ..timestamp = time
+        ..thread = thread
+        ..threadTitle = json['threadTitle'] as String?
+        ..isGroup = isGroup
+        ..addressed = addressed?.name
+        ..captureKey = json['captureKey'] as String?;
+
+      // The Vault's week keeps only these numbers, past the Vault's own
+      // 24-hour life of a notification, so everything is counted…
+      counted.add((source: entry.source, at: time));
+      // …but what the Vault would delete straight away isn't saved.
+      if (_stale(entry, at)) continue;
+      keep.add(entry);
+    }
+
+    var saved = 0;
+    for (var i = 0; i < keep.length; i += _chunk) {
+      final chunk = keep.sublist(i, (i + _chunk).clamp(0, keep.length));
+      await isar.writeTxn(() async {
+        final fresh = await _unsaved(isar, chunk);
+        await isar.rawDatas.putAll(fresh);
+        saved += fresh.length;
+      });
+    }
+    await DailyStats.countAll(counted);
+    await AppIconService.rememberAll(packages);
+    debugPrint(
+      'Saved $saved of ${notifications.length} notifications '
+      '(${notifications.length - keep.length} already past, '
+      '${keep.length - saved} saved before).',
+    );
+
+    if (saved > 0) unawaited(EmbeddingBackfill.run());
+    return saved;
+  }
+
+  /// [entries] minus those an earlier, unconfirmed catch-up already saved.
+  /// Asked inside the write, so two engines draining at once can't both
+  /// save one.
+  static Future<List<RawData>> _unsaved(
+    Isar isar,
+    List<RawData> entries,
+  ) async {
+    final keys = [for (final e in entries) ?e.captureKey];
+    if (keys.isEmpty) return entries;
+    final saved =
+        (await isar.rawDatas
+                .where()
+                .anyOf(keys, (q, key) => q.captureKeyEqualTo(key))
+                .captureKeyProperty()
+                .findAll())
+            .toSet();
+    return [
+      for (final e in entries)
+        if (!saved.contains(e.captureKey)) e,
+    ];
   }
 
   /// Saved per Isar transaction.

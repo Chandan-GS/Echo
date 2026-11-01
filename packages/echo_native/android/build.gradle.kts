@@ -24,9 +24,16 @@ android {
         getByName("main") {
             java.srcDirs("src/main/kotlin")
         }
+        getByName("test") {
+            java.srcDirs("src/test/kotlin")
+        }
     }
 
     defaultConfig {
         minSdk = 26
     }
+}
+
+dependencies {
+    testImplementation("junit:junit:4.13.2")
 }
