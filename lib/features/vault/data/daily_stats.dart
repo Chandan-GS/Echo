@@ -112,20 +112,29 @@ class DailyStats {
 
   /// Called at ingest for every saved notification. Blocked categories and
   /// switched-off apps aren't counted.
-  static Future<void> count(String source, DateTime at) async {
+  static Future<void> count(String source, DateTime at) =>
+      countAll([(source: source, at: at)]);
+
+  /// [count] for many at once, in one write (a backlog's worth).
+  static Future<void> countAll(
+    List<({String source, DateTime at})> signals,
+  ) async {
+    if (signals.isEmpty) return;
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.reload(); // the background alarm isolate counts too
       final aliases = Map<String, String>.from(
         jsonDecode(prefs.getString('vault_category_aliases') ?? '{}'),
       );
-      final shown = displaySource(source, aliases);
-      if ((await loadExcludedSources()).contains(shown)) return;
-      final store = _decode(prefs.getString(key));
-      await prefs.setString(
-        key,
-        jsonEncode(added(store, shown, at, DateTime.now())),
-      );
+      final excluded = await loadExcludedSources();
+      final now = DateTime.now();
+      var store = _decode(prefs.getString(key));
+      for (final s in signals) {
+        final shown = displaySource(s.source, aliases);
+        if (excluded.contains(shown)) continue;
+        store = added(store, shown, s.at, now);
+      }
+      await prefs.setString(key, jsonEncode(store));
     } catch (_) {}
   }
 

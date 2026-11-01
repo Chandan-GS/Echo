@@ -35,6 +35,12 @@ class RawData {
       ? (sender.isEmpty ? threadTitle! : '$sender · $threadTitle')
       : sender;
 
+  /// The native buffer's key for this notification, so one delivered again
+  /// (the app died before confirming it was saved) isn't saved twice. Null
+  /// for live notifications and calendar events.
+  @Index()
+  String? captureKey;
+
   // 384-dimensional vector from all-MiniLM-L6-v2
   List<double>? embedding;
 

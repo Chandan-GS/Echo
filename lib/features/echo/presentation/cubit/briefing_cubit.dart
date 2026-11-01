@@ -20,6 +20,7 @@ import 'package:project_echo/core/services/widget_refresh_service.dart';
 import 'package:project_echo/core/services/phone_sync_service.dart';
 import 'package:project_echo/core/services/desktop_engine_client.dart';
 import 'package:project_echo/core/services/offline_model_repository.dart';
+import 'package:project_echo/features/echo/data/services/notification_ingest.dart';
 import 'package:project_echo/features/vault/data/app_access.dart';
 
 part 'briefing_state.dart';
@@ -83,6 +84,13 @@ class BriefingCubit extends Cubit<BriefingState> {
           .downloadedPathOrNull();
 
       // ── 2. Pick what's relevant from now until the end of tomorrow ────────
+      // Notifications missed while the app was closed first, with their
+      // embeddings if they come in time (they rank what's kept).
+      await NotificationIngest.whenCaughtUp();
+      await EmbeddingBackfill.whenDone().timeout(
+        const Duration(seconds: 15),
+        onTimeout: () {},
+      );
       final now = DateTime.now();
       final entries = await IsarDataSource.getAllEntries();
       if (entries.isEmpty) {

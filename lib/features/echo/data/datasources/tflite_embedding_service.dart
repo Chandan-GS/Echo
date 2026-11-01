@@ -14,6 +14,8 @@ class TfliteEmbeddingService {
   // writing any output, if a run is already in flight, so an overlapping call
   // (a live notification mid-drain, or an Ask Echo query) would silently get a
   // zero vector. The native interpreter isn't safe for concurrent use either.
+  // Background work (EmbeddingBackfill) asks for one embedding at a time, so
+  // a question never waits behind more than one of them.
   Future<void> _queue = Future<void>.value();
 
   TfliteEmbeddingService._();
@@ -32,8 +34,9 @@ class TfliteEmbeddingService {
       'assets/ai refs/all-MiniLM-L6-v2-quant.tflite',
       options: options,
     );
-    _isolateInterpreter =
-        await IsolateInterpreter.create(address: _interpreter!.address);
+    _isolateInterpreter = await IsolateInterpreter.create(
+      address: _interpreter!.address,
+    );
     _initialized = true;
   }
 
@@ -48,8 +51,13 @@ class TfliteEmbeddingService {
   Future<List<double>> _computeEmbedding(String text) async {
     await initialize();
 
-    const int sequenceLength = 256;
-    final tokenIds = _tokenizer.tokenizeAndEncode(text, maxLen: sequenceLength);
+    // The model takes any length and ignores padding, so it gets just the
+    // text's own tokens: a notification is usually under 40, and padding
+    // every one to 256 made each embedding several times slower for the
+    // same vector (checked: cosine 1.0 against the padded version).
+    const int maxLength = 256;
+    final tokenIds = _tokenizer.tokenizeAndEncode(text, maxLen: maxLength);
+    final sequenceLength = math.max(1, tokenIds.length);
 
     // Prepare inputs
     final inputIds = List<int>.filled(sequenceLength, 0);
@@ -96,7 +104,9 @@ class TfliteEmbeddingService {
         ),
       );
 
-      await _isolateInterpreter!.runForMultipleInputs(inputs, {0: outputBuffer});
+      await _isolateInterpreter!.runForMultipleInputs(inputs, {
+        0: outputBuffer,
+      });
 
       final tokenEmbeddings = outputBuffer.first;
       rawVector = List<double>.filled(embDim, 0.0);
@@ -123,7 +133,9 @@ class TfliteEmbeddingService {
         (_) => List<double>.filled(outputShape[1], 0.0),
       );
 
-      await _isolateInterpreter!.runForMultipleInputs(inputs, {0: outputBuffer});
+      await _isolateInterpreter!.runForMultipleInputs(inputs, {
+        0: outputBuffer,
+      });
       rawVector = outputBuffer.first;
     }
 

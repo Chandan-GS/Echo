@@ -84,7 +84,12 @@ void main() async {
 
     await ScheduleService.initialize();
     final briefingTimes = prefs.getStringList('briefing_times') ?? ['07:00'];
-    await ScheduleService.updateSchedules(briefingTimes);
+    // Nothing before the first frame needs the alarms set.
+    unawaited(
+      ScheduleService.updateSchedules(
+        briefingTimes,
+      ).catchError((Object e) => debugPrint('Scheduling briefings failed: $e')),
+    );
   }
 
   // Desktop-only, off by default: resume the Echo Engine service on launch if

@@ -152,13 +152,21 @@ class AppIconService {
   /// Called at ingest for every notification: records the app behind
   /// [source], and lets a category that had no icon yet try again.
   static Future<void> remember(String source, String? packageName) async {
-    if (!Platform.isAndroid || packageName == null || packageName.isEmpty) {
-      return;
-    }
-    await SourcePackages.remember(source, packageName);
-    final key = _sourceKey(source);
-    if (_resolved.containsKey(key) && _resolved[key] == null) {
-      _resolved.remove(key);
+    if (packageName == null || packageName.isEmpty) return;
+    await rememberAll({
+      source: {packageName: 1},
+    });
+  }
+
+  /// [remember] for many at once: source → package → how many times.
+  static Future<void> rememberAll(Map<String, Map<String, int>> seen) async {
+    if (!Platform.isAndroid || seen.isEmpty) return;
+    await SourcePackages.rememberAll(seen);
+    for (final source in seen.keys) {
+      final key = _sourceKey(source);
+      if (_resolved.containsKey(key) && _resolved[key] == null) {
+        _resolved.remove(key);
+      }
     }
   }
 }

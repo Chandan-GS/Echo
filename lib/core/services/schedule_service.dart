@@ -117,11 +117,35 @@ class ScheduleService {
     // desktop build is the optional Echo Engine, not its own alarm clock).
   }
 
-  static Future<void> updateSchedules(List<String> times) async {
+  /// The alarm IDs (hour*100+minute) last scheduled, so rescheduling cancels
+  /// just those rather than every minute of the day.
+  static const _alarmIdsKey = 'scheduled_briefing_alarm_ids';
+
+  static Future<void> _last = Future.value();
+
+  /// Schedules a briefing at each of [times], replacing the ones set before.
+  /// Calls run one after another, so a change made in Settings while the
+  /// launch's call is still going can't be undone by it.
+  static Future<void> updateSchedules(List<String> times) {
+    final run = _last.catchError((_) {}).then((_) => _update(times));
+    _last = run;
+    return run;
+  }
+
+  static Future<void> _update(List<String> times) async {
     if (Platform.isAndroid) {
-      // Cancel existing ones (we'll just use a large range since ID is hour*100+min)
-      for (int i = 0; i < 2400; i++) {
-        await AndroidAlarmManager.cancel(i);
+      final prefs = await SharedPreferences.getInstance();
+      final ids = {
+        for (final t in times)
+          if (parseBriefingTime(t) case final p?) p.hour * 100 + p.minute,
+      };
+      // Versions before this one kept no record, but cancelled every other
+      // time of day whenever they scheduled, so only the saved times can
+      // be set.
+      final previous =
+          prefs.getStringList(_alarmIdsKey)?.map(int.tryParse).nonNulls ?? ids;
+      for (final id in {...previous, ...ids}) {
+        await AndroidAlarmManager.cancel(id);
       }
 
       DateTime? earliest;
@@ -172,11 +196,12 @@ class ScheduleService {
         }
       }
 
+      await prefs.setStringList(_alarmIdsKey, [for (final id in ids) '$id']);
+
       // Persisted for the native widget, which can't easily decode Dart's
       // internal StringList encoding — a plain epoch millis is robust to read
       // directly, and lets the widget compute its own "ready in Xh Ym" text.
       if (earliest != null) {
-        final prefs = await SharedPreferences.getInstance();
         await prefs.setInt(
           'next_briefing_epoch_ms',
           earliest.millisecondsSinceEpoch,

@@ -20,21 +20,26 @@ class ChatContextStore {
   static const _maxThreads = 400;
 
   /// Remembers that the owner wrote [text] in [thread] at [at].
-  static Future<void> recordMyTurn(
-    String thread,
-    DateTime at,
-    String text,
+  static Future<void> recordMyTurn(String thread, DateTime at, String text) =>
+      recordMyTurns([(thread: thread, at: at, text: text)]);
+
+  /// [recordMyTurn] for many at once, in one write (a backlog's worth).
+  static Future<void> recordMyTurns(
+    List<({String thread, DateTime at, String text})> turns,
   ) async {
+    if (turns.isEmpty) return;
     final prefs = await SharedPreferences.getInstance();
     await prefs.reload();
     final all = _decode(prefs.getString(turnsKey));
-    final turns = [
-      ...((all[thread] as List?) ?? const []),
-      {'t': at.millisecondsSinceEpoch, 'x': _clip(text, 140)},
-    ]..sort((a, b) => (a['t'] as int).compareTo(b['t'] as int));
-    all[thread] = turns.sublist(
-      turns.length > _turnsPerThread ? turns.length - _turnsPerThread : 0,
-    );
+    for (final turn in turns) {
+      final kept = [
+        ...((all[turn.thread] as List?) ?? const []),
+        {'t': turn.at.millisecondsSinceEpoch, 'x': _clip(turn.text, 140)},
+      ]..sort((a, b) => (a['t'] as int).compareTo(b['t'] as int));
+      all[turn.thread] = kept.sublist(
+        kept.length > _turnsPerThread ? kept.length - _turnsPerThread : 0,
+      );
+    }
     _prune(all, (v) => ((v as List).last as Map)['t'] as int);
     await prefs.setString(turnsKey, jsonEncode(all));
   }
@@ -45,13 +50,19 @@ class ChatContextStore {
   }
 
   /// Keeps a name a chat app gives the owner, for spotting mentions.
-  static Future<void> learnSelfName(String name) async {
-    final n = name.trim();
-    if (n.isEmpty) return;
+  static Future<void> learnSelfName(String name) => learnSelfNames([name]);
+
+  /// [learnSelfName] for many at once.
+  static Future<void> learnSelfNames(Iterable<String> found) async {
     final prefs = await SharedPreferences.getInstance();
-    final names = prefs.getStringList(_namesKey) ?? const [];
-    if (names.contains(n)) return;
-    await prefs.setStringList(_namesKey, [...names, n].take(12).toList());
+    final names = [...?prefs.getStringList(_namesKey)];
+    final before = names.length;
+    for (final name in found) {
+      final n = name.trim();
+      if (n.isNotEmpty && !names.contains(n)) names.add(n);
+    }
+    if (names.length == before) return;
+    await prefs.setStringList(_namesKey, names.take(12).toList());
   }
 
   static Future<List<String>> selfNames() async {
@@ -66,31 +77,49 @@ class ChatContextStore {
     String thread,
     String action,
     DateTime at,
+  ) => recordEngagements([(thread: thread, action: action, at: at)]);
+
+  /// [recordEngagement] for many at once, in order, in one write.
+  static Future<void> recordEngagements(
+    List<({String thread, String action, DateTime at})> events,
   ) async {
-    final weight = switch (action) {
+    double weightOf(String action) => switch (action) {
       'opened' => 1.0,
       'read' => 0.5,
       'dismissed' => -1.0,
       _ => 0.0,
     };
-    if (weight == 0) return;
+    final counted = [
+      for (final e in events)
+        if (weightOf(e.action) != 0) e,
+    ];
+    if (counted.isEmpty) return;
     final prefs = await SharedPreferences.getInstance();
     await prefs.reload();
     final all = _decode(prefs.getString(_engagementKey));
-    final e = Map<String, dynamic>.from((all[thread] as Map?) ?? const {});
-    var o = (e['o'] as num?)?.toDouble() ?? 0;
-    var d = (e['d'] as num?)?.toDouble() ?? 0;
-    if (weight > 0) {
-      o += weight;
-    } else {
-      d -= weight;
+    for (final event in counted) {
+      final weight = weightOf(event.action);
+      final e = Map<String, dynamic>.from(
+        (all[event.thread] as Map?) ?? const {},
+      );
+      var o = (e['o'] as num?)?.toDouble() ?? 0;
+      var d = (e['d'] as num?)?.toDouble() ?? 0;
+      if (weight > 0) {
+        o += weight;
+      } else {
+        d -= weight;
+      }
+      // Halve old counts now and then, so a habit that changes shows up.
+      if (o + d > 40) {
+        o /= 2;
+        d /= 2;
+      }
+      all[event.thread] = {
+        'o': o,
+        'd': d,
+        't': event.at.millisecondsSinceEpoch,
+      };
     }
-    // Halve old counts now and then, so a habit that changes shows up.
-    if (o + d > 40) {
-      o /= 2;
-      d /= 2;
-    }
-    all[thread] = {'o': o, 'd': d, 't': at.millisecondsSinceEpoch};
     _prune(all, (v) => (v as Map)['t'] as int);
     await prefs.setString(_engagementKey, jsonEncode(all));
   }
