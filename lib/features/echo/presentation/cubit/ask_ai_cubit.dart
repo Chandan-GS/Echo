@@ -28,6 +28,7 @@ import 'package:project_echo/features/todo/data/todo_store.dart';
 import 'package:project_echo/features/vault/data/app_access.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:project_echo/core/services/phone_actions.dart';
+import 'package:project_echo/features/echo/data/services/notification_ingest.dart';
 import 'package:project_echo/features/desktop/data/desktop_actions.dart';
 
 part 'ask_ai_state.dart';
@@ -128,6 +129,10 @@ class AskAiCubit extends Cubit<AskAiState> {
     int? echoIndex;
 
     try {
+      // Notifications missed while the app was closed count too. Saving them
+      // is quick; their embeddings may still be on the way, and until then
+      // they're found by their words, sender and time.
+      await NotificationIngest.whenCaughtUp();
       // Blocked categories and apps switched off in Apps Echo hears aren't
       // context, though they stay in the Vault.
       final allNotifications = await withoutExcludedSources(
