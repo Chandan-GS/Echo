@@ -11,14 +11,53 @@ import 'package:project_echo/features/vault/presentation/widgets/source_icon.dar
 import 'package:project_echo/features/vault/presentation/widgets/vault_utils.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
+/// Seven slice colours from Echo's palette, distinct within each theme.
+const _sliceLight = [
+  Color(0xFF49884F),
+  Color(0xFF1E1E1E),
+  Color(0xFF8C8A84),
+  Color(0xFFC9962E),
+  Color(0xFFAECFB4),
+  Color(0xFFB4553C),
+  Color(0xFFD8CBB2),
+];
+const _sliceDark = [
+  Color(0xFF6EBC76),
+  Color(0xFFEFEFEF),
+  Color(0xFF7E7E7E),
+  Color(0xFFE6C77A),
+  Color(0xFF2F5B36),
+  Color(0xFFE58C76),
+  Color(0xFF9C8A66),
+];
+
+/// Which of the seven colours slice [index] of [count] gets. They repeat past
+/// seven, but the last slice never matches the first one it sits beside.
+int sliceColorIndex(int index, int count) {
+  final colors = _sliceLight.length;
+  if (count > 1 && index == count - 1 && index % colors == 0) return 1;
+  return index % colors;
+}
+
+/// The colour of slice [index] of [count], shared with the wheel's legend.
+Color sliceColor(BuildContext context, int index, int count) =>
+    (context.isDarkMode ? _sliceDark : _sliceLight)[sliceColorIndex(
+      index,
+      count,
+    )];
+
 class CategoryPieChart extends StatefulWidget {
   final Map<String, int> categoryCounts;
   final Function(String) onCategorySelected;
+
+  /// A category to lift out of the ring, as a scrub would.
+  final String? highlight;
 
   const CategoryPieChart({
     super.key,
     required this.categoryCounts,
     required this.onCategorySelected,
+    this.highlight,
   });
 
   @override
@@ -63,18 +102,6 @@ class _CategoryPieChartState extends State<CategoryPieChart>
   // Used to interpolate hover states smoothly
   final Map<int, double> _hoverValues = {};
 
-  List<Color> get _palette {
-    final colors = context.colors;
-    return [
-      colors.primaryGreen,
-      colors.textPrimary,
-      colors.textSecondary,
-      colors.buttonDark,
-      colors.lightGreenBackground,
-      colors.dividerColor,
-    ];
-  }
-
   @override
   void initState() {
     super.initState();
@@ -96,9 +123,22 @@ class _CategoryPieChartState extends State<CategoryPieChart>
   @override
   void didUpdateWidget(covariant CategoryPieChart oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!mapEquals(oldWidget.categoryCounts, widget.categoryCounts)) {
-      _calculateSlices();
-    }
+    final changed = !mapEquals(oldWidget.categoryCounts, widget.categoryCounts);
+    if (changed) _calculateSlices();
+    if (changed || oldWidget.highlight != widget.highlight) _applyHighlight();
+  }
+
+  /// Lifts [CategoryPieChart.highlight]'s slice, unless a finger is on the ring.
+  void _applyHighlight() {
+    if (_scrubbing) return;
+    final found = widget.highlight == null
+        ? -1
+        : _slices.indexWhere((s) => s.category == widget.highlight);
+    final index = found < 0 ? null : found;
+    if (index == _hoveredIndex) return;
+    _hoveredIndex = index;
+    index == null ? _iconsController.reverse() : _iconsController.forward();
+    _startAnimation();
   }
 
   void _calculateSlices() {
@@ -121,7 +161,7 @@ class _CategoryPieChartState extends State<CategoryPieChart>
           count: g.count,
           startAngle: g.startAngle,
           sweepAngle: g.sweepAngle,
-          color: _palette[i % _palette.length],
+          color: sliceColor(context, i, geometry.length),
         ),
       );
 
@@ -330,15 +370,17 @@ class _CategoryPieChartState extends State<CategoryPieChart>
                               color: context.colors.textSecondary,
                             ),
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Release to open',
-                            style: GoogleFonts.nunito(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: context.colors.textSecondary,
+                          if (_scrubbing) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              'Release to open',
+                              style: GoogleFonts.nunito(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: context.colors.textSecondary,
+                              ),
                             ),
-                          ),
+                          ],
                         ],
                       ),
                     )

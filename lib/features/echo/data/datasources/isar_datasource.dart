@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:isar/isar.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:project_echo/core/services/retention_settings.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:project_echo/features/echo/data/relevance/briefing_selection.dart';
 
@@ -75,10 +76,11 @@ class IsarDataSource {
     }
   }
 
-  /// Returns all stored notification entries, most recent first.
+  /// Returns everything the owner was sent, most recent first. What they
+  /// sent themselves through Echo stays in History only.
   static Future<List<RawData>> getAllEntries() async {
     final isar = await instance;
-    return isar.rawDatas.where().sortByTimestampDesc().findAll();
+    return isar.rawDatas.filter().sentIsNull().sortByTimestampDesc().findAll();
   }
 
   /// The message a to-do or reminder was made from, by its source key
@@ -146,30 +148,43 @@ class IsarDataSource {
     });
   }
 
-  /// Deletes notifications older than 24 hours, except those still pointing
-  /// at something ahead ("Goa trip on Oct 3" received a week earlier) — those
-  /// are kept until their time passes, so the briefing on the day can cover
-  /// them. Nothing is kept longer than [_maxRetention].
+  /// Deletes notifications past the owner's retention (Settings → History),
+  /// except those still pointing at something ahead ("Goa trip on Oct 3"
+  /// received weeks earlier): those are kept until their time passes, so the
+  /// briefing on the day can cover them. Nothing is kept past [_maxRetention].
   static Future<void> deleteOldNotifications() async {
     try {
       final isar = await instance;
       final now = DateTime.now();
-      final limit = now.subtract(const Duration(hours: 24));
-      final hardLimit = now.subtract(_maxRetention);
-      await isar.writeTxn(() async {
-        final oldEntries = await isar.rawDatas.filter().timestampLessThan(limit).findAll();
-        final ids = oldEntries
-            .where((e) => e.timestamp.isBefore(hardLimit) || !isStillRelevant(e, now))
-            .map((e) => e.id)
-            .toList();
-        if (ids.isNotEmpty) {
-          await isar.rawDatas.deleteAll(ids);
-          debugPrint('Permanently deleted ${ids.length} notifications no longer relevant.');
-        }
-      });
+      final days = await RetentionSettings.days();
+      final limit = now.subtract(Duration(days: days));
+      final oldEntries = await isar.rawDatas
+          .filter()
+          .timestampLessThan(limit)
+          .findAll();
+      // Worked out before the write: reading dates out of every old message
+      // shouldn't hold up notifications being saved.
+      final ids = oldEntries
+          .where((e) => isExpired(e, now, days))
+          .map((e) => e.id)
+          .toList();
+      if (ids.isEmpty) return;
+      await isar.writeTxn(() => isar.rawDatas.deleteAll(ids));
+      debugPrint('Permanently deleted ${ids.length} notifications no longer relevant.');
     } catch (e) {
       debugPrint('Error cleaning up old notifications: $e');
     }
+  }
+
+  /// Whether [entry] is past keeping at [now], when the owner keeps [days]
+  /// days: older than that and about nothing still ahead, or past the
+  /// hard limit whatever it's about.
+  static bool isExpired(RawData entry, DateTime now, int days) {
+    if (!entry.timestamp.isBefore(now.subtract(Duration(days: days)))) {
+      return false;
+    }
+    return entry.timestamp.isBefore(now.subtract(_maxRetention)) ||
+        !isStillRelevant(entry, now);
   }
 
   static const _maxRetention = Duration(days: 180);

@@ -1,24 +1,26 @@
 package com.chandangs.echo
 
-import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
+import android.os.Bundle
 import android.util.Log
+import android.view.View
 import android.widget.RemoteViews
 
 /**
- * "Today" home-screen widget: a bold streak number on a deep-green gradient
- * with a status pill (countdown → ready). A second, separate widget from the
- * Streak Card — Android has no iOS-style widget stacking, so distinct placeable
- * widgets are the equivalent.
+ * "Echo": just the pearl, with how many people are waiting. Tap to open Today.
+ * (The class keeps its old name so widgets already on home screens carry on.)
  */
 class EchoStreakWidgetProvider : AppWidgetProvider() {
 
     companion object {
-        private const val TAG = "EchoStreakWidget"
+        private const val TAG = "EchoOrbWidget"
+        private const val WIDGET_REQUEST = 3_000_000
+
+        /** Under this the pearl gets the small layout, without its label. */
+        private const val LARGE_MIN_SIZE_DP = 96
 
         fun updateAll(context: Context) {
             val manager = AppWidgetManager.getInstance(context)
@@ -43,30 +45,51 @@ class EchoStreakWidgetProvider : AppWidgetProvider() {
                 Log.e(TAG, "Failed to update widget $id", e)
             }
         }
+        WidgetClock.arm(context)
     }
 
-    private fun updateWidget(context: Context, appWidgetManager: AppWidgetManager, appWidgetId: Int) {
-        val prefs = WidgetData.prefs(context)
-        val streak = WidgetData.streak(prefs)
-
-        val views = RemoteViews(context.packageName, R.layout.widget_streak_ring)
-        views.setTextViewText(R.id.widget_today_num, streak.toString())
-        views.setTextViewText(R.id.widget_today_status, WidgetData.statusText(prefs))
-
-        val launchIntent = Intent(context, MainActivity::class.java).apply {
-            action = Intent.ACTION_MAIN
-            addCategory(Intent.CATEGORY_LAUNCHER)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra(EchoBriefingWidgetProvider.EXTRA_AUTOPLAY, true)
+    // Resized: the pearl has its small and large layouts.
+    override fun onAppWidgetOptionsChanged(
+        context: Context,
+        appWidgetManager: AppWidgetManager,
+        appWidgetId: Int,
+        newOptions: Bundle,
+    ) {
+        try {
+            updateWidget(context, appWidgetManager, appWidgetId)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to resize widget $appWidgetId", e)
         }
-        val pendingIntent = PendingIntent.getActivity(
-            context,
-            appWidgetId,
-            launchIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-        views.setOnClickPendingIntent(R.id.widget_today_root, pendingIntent)
+    }
 
-        appWidgetManager.updateAppWidget(appWidgetId, views)
+    private fun updateWidget(context: Context, manager: AppWidgetManager, widgetId: Int) {
+        val size = WidgetData.size(manager, widgetId, 72, 72)
+        val large = size.widthDp >= LARGE_MIN_SIZE_DP && size.heightDp >= LARGE_MIN_SIZE_DP
+        val views = RemoteViews(context.packageName, if (large) R.layout.widget_orb else R.layout.widget_orb_small)
+
+        val waiting = WaitingWidgetData.load(context)
+        val now = System.currentTimeMillis()
+        val count = waiting.people.size
+        if (count > 0) {
+            val oldest = waiting.people.minOf { it.since }
+            views.setViewVisibility(R.id.orb_badge, View.VISIBLE)
+            views.setTextViewText(R.id.orb_badge, if (count > 99) "99+" else "$count")
+            views.setInt(
+                R.id.orb_badge, "setBackgroundResource",
+                when (WaitingWidgetData.ageBand(oldest, now)) {
+                    0 -> R.drawable.widget_orb_badge_0
+                    1 -> R.drawable.widget_orb_badge_1
+                    else -> R.drawable.widget_orb_badge_2
+                },
+            )
+        } else {
+            views.setViewVisibility(R.id.orb_badge, View.GONE)
+        }
+
+        views.setOnClickPendingIntent(
+            R.id.orb_root,
+            WidgetData.openRoute(context, WIDGET_REQUEST + widgetId, WidgetData.ROUTE_TODAY),
+        )
+        manager.updateAppWidget(widgetId, views)
     }
 }

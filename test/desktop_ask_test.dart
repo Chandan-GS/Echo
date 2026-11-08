@@ -37,8 +37,13 @@ void main() {
         app(AnswerView(message: answer, onOpenSource: (e) => opened = e)),
       );
       expect(find.text(arjun.content), findsOneWidget);
+      // A citation points at its card; the card opens the source.
       await tester.tap(find.widgetWithText(CiteDot, '3').first);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(opened, isNull);
+      await tester.tap(find.text(arjun.content));
       expect(opened, arjun);
+      await tester.pump(const Duration(seconds: 2));
     });
 
     testWidgets('beside a sources pane reports hovers and clicks instead', (

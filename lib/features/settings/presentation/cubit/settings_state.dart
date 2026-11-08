@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:project_echo/features/settings/data/schedule_prefs.dart';
 
 class SettingsState {
   final ThemeMode themeMode;
@@ -32,6 +33,14 @@ class SettingsState {
   /// it round-trips normally through the same prefs/Cubit machinery.
   final bool runDesktopEngineHere;
 
+  /// The morning briefing's master switch. Off, [briefingTimes] is kept but
+  /// nothing is scheduled.
+  final bool briefingEnabled;
+
+  /// The evening wrap, and when it arrives ("HH:mm").
+  final bool eveningWrapEnabled;
+  final String eveningWrapTime;
+
   const SettingsState({
     required this.themeMode,
     required this.speechRate,
@@ -42,6 +51,9 @@ class SettingsState {
     this.desktopEngineHost,
     this.desktopEngineName,
     this.runDesktopEngineHere = false,
+    this.briefingEnabled = true,
+    this.eveningWrapEnabled = true,
+    this.eveningWrapTime = defaultEveningWrapTime,
   });
 
   factory SettingsState.initial() {
@@ -68,6 +80,9 @@ class SettingsState {
     String? desktopEngineHost,
     String? desktopEngineName,
     bool? runDesktopEngineHere,
+    bool? briefingEnabled,
+    bool? eveningWrapEnabled,
+    String? eveningWrapTime,
   }) {
     return SettingsState(
       themeMode: themeMode ?? this.themeMode,
@@ -79,6 +94,9 @@ class SettingsState {
       desktopEngineHost: desktopEngineHost ?? this.desktopEngineHost,
       desktopEngineName: desktopEngineName ?? this.desktopEngineName,
       runDesktopEngineHere: runDesktopEngineHere ?? this.runDesktopEngineHere,
+      briefingEnabled: briefingEnabled ?? this.briefingEnabled,
+      eveningWrapEnabled: eveningWrapEnabled ?? this.eveningWrapEnabled,
+      eveningWrapTime: eveningWrapTime ?? this.eveningWrapTime,
     );
   }
 
@@ -94,6 +112,9 @@ class SettingsState {
         other.desktopEngineHost == desktopEngineHost &&
         other.desktopEngineName == desktopEngineName &&
         other.runDesktopEngineHere == runDesktopEngineHere &&
+        other.briefingEnabled == briefingEnabled &&
+        other.eveningWrapEnabled == eveningWrapEnabled &&
+        other.eveningWrapTime == eveningWrapTime &&
         _listEquals(other.briefingTimes, briefingTimes);
   }
 
@@ -115,5 +136,8 @@ class SettingsState {
       preferDesktopEngine.hashCode ^
       desktopEngineHost.hashCode ^
       desktopEngineName.hashCode ^
-      runDesktopEngineHere.hashCode;
+      runDesktopEngineHere.hashCode ^
+      briefingEnabled.hashCode ^
+      eveningWrapEnabled.hashCode ^
+      eveningWrapTime.hashCode;
 }

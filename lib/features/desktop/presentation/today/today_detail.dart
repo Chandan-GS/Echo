@@ -194,7 +194,7 @@ class _Header extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                item.kind == TriageKind.promise ? 'You promised' : item.name,
+                item.kind == TriageKind.promise ? 'To-do' : item.name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: GoogleFonts.oldStandardTt(

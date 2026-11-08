@@ -18,14 +18,33 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// Vault → Apps Echo hears: a switch for every app on the phone. Apps that
 /// are off aren't captured, and what they already sent stays out of the
 /// briefing, Ask Echo and the to-do list (it's still in the Vault).
-class AppAccessScreen extends StatefulWidget {
+class AppAccessScreen extends StatelessWidget {
   const AppAccessScreen({super.key});
 
   @override
-  State<AppAccessScreen> createState() => _AppAccessScreenState();
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: context.colors.background,
+    appBar: const EchoAppBar(title: ''),
+    body: const AppAccessPanel(),
+  );
 }
 
-class _AppAccessScreenState extends State<AppAccessScreen> {
+/// The list of apps and their switches, for [AppAccessScreen] and the Apps
+/// tab of What Echo hears.
+class AppAccessPanel extends StatefulWidget {
+  /// Show the page's own title and explanation.
+  final bool header;
+
+  /// A switch changed what Echo hears.
+  final VoidCallback? onChanged;
+
+  const AppAccessPanel({super.key, this.header = true, this.onChanged});
+
+  @override
+  State<AppAccessPanel> createState() => _AppAccessPanelState();
+}
+
+class _AppAccessPanelState extends State<AppAccessPanel> {
   List<InstalledApp>? _apps;
   AppAccess _access = const AppAccess();
 
@@ -106,6 +125,7 @@ class _AppAccessScreenState extends State<AppAccessScreen> {
     // Turning an app back on also lifts a Vault block on its category, so
     // there's one switch per app, not two.
     if (hear) await _unblockCategoriesOf(app.package);
+    widget.onChanged?.call();
   }
 
   static Future<void> _unblockCategoriesOf(String package) async {
@@ -142,26 +162,22 @@ class _AppAccessScreenState extends State<AppAccessScreen> {
       );
     });
     await _access.save();
+    widget.onChanged?.call();
   }
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.colors;
     final apps = _apps;
-
-    return Scaffold(
-      backgroundColor: colors.background,
-      appBar: const EchoAppBar(title: ''),
-      body: apps == null
-          ? const Center(
-              child: SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            )
-          : _list(apps),
-    );
+    if (apps == null) {
+      return const Center(
+        child: SizedBox(
+          width: 24,
+          height: 24,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+    }
+    return _list(apps);
   }
 
   Widget _list(List<InstalledApp> apps) {
@@ -176,6 +192,7 @@ class _AppAccessScreenState extends State<AppAccessScreen> {
     // Built lazily: a phone can have a hundred-odd apps, each with an icon
     // to fetch from Android.
     final children = <Widget>[
+      if (widget.header) ...[
       FadeSlideIn(
         child: Text(
           'Apps Echo hears',
@@ -198,7 +215,8 @@ class _AppAccessScreenState extends State<AppAccessScreen> {
           color: colors.textSecondary,
         ),
       ),
-      const SizedBox(height: 18),
+      ],
+      if (widget.header) const SizedBox(height: 18),
       Text.rich(
         TextSpan(
           children: [
@@ -265,7 +283,12 @@ class _AppAccessScreenState extends State<AppAccessScreen> {
     ];
     return ListView.builder(
       physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(24, 8, 24, 48),
+      padding: EdgeInsets.fromLTRB(
+        24,
+        8,
+        24,
+        MediaQuery.paddingOf(context).bottom + 48,
+      ),
       itemCount: children.length,
       itemBuilder: (context, i) => children[i],
     );

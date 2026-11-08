@@ -3,10 +3,12 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:project_echo/core/presentation/widgets/echo_app_bar.dart';
+import 'package:project_echo/core/services/engine_gate.dart';
 import 'package:project_echo/core/services/voice/echo_voice.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/demo/demo_mode.dart';
+import 'package:project_echo/features/echo/data/ask/citations.dart';
 import 'package:project_echo/features/echo/data/ask/for_you.dart';
 import 'package:project_echo/features/echo/data/context/addressed.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
@@ -15,7 +17,9 @@ import 'package:project_echo/features/echo/presentation/cubit/ask_ai_cubit.dart'
 import 'package:project_echo/features/echo/presentation/widgets/ask/action_cards.dart';
 import 'package:project_echo/features/echo/presentation/widgets/ask/answer_view.dart';
 import 'package:project_echo/features/echo/presentation/widgets/ask/ask_input_bar.dart';
+import 'package:project_echo/features/echo/presentation/widgets/ask/ask_voice_overlay.dart';
 import 'package:project_echo/features/echo/presentation/widgets/ask/for_you_view.dart';
+import 'package:project_echo/features/echo/presentation/widgets/ask/search_results.dart';
 import 'package:project_echo/features/echo/presentation/widgets/echo_mascot.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:project_echo/core/presentation/widgets/press_feedback.dart';
@@ -100,11 +104,27 @@ class _AskAiViewState extends State<_AskAiView> {
   String? _name;
   ForYou? _forYou;
 
+  late final AskAiCubit _cubit = context.read<AskAiCubit>();
+
+  /// Listening for a spoken question.
+  var _listening = false;
+
+  /// The question was spoken, so the answer is said out loud too.
+  var _speakNext = false;
+
   @override
   void initState() {
     super.initState();
     _load();
-    if (!_desktop) EchoVoice.instance.warmUp();
+    if (!_desktop) {
+      EchoVoice.instance.warmUp();
+      _cubit.attachEngineGate(
+        ensure: (reason) async =>
+            mounted && await EngineGate.ensure(context, reason: reason),
+        choose: (reason) async =>
+            mounted && await EngineGate.choose(context, reason: reason),
+      );
+    }
     final replyTo = widget.replyTo;
     if (replyTo != null) context.read<AskAiCubit>().draftReply(replyTo);
     final question = widget.initialQuestion?.trim();
@@ -131,6 +151,7 @@ class _AskAiViewState extends State<_AskAiView> {
 
   @override
   void dispose() {
+    if (!_desktop) _cubit.detachEngineGate();
     EchoVoice.instance.stop();
     _input.dispose();
     _scroll.dispose();
@@ -161,6 +182,39 @@ class _AskAiViewState extends State<_AskAiView> {
   void _ask(String question) =>
       context.read<AskAiCubit>().sendMessage(question);
 
+  void _startVoice() {
+    _focus.unfocus();
+    setState(() => _listening = true);
+  }
+
+  void _heardVoice(String words) {
+    setState(() => _listening = false);
+    if (words.isEmpty) return;
+    _speakNext = true;
+    _ask(words);
+  }
+
+  void _voiceFailed(String why) {
+    setState(() => _listening = false);
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(why)));
+  }
+
+  /// Once a spoken question's answer is ready, says it. Only ever follows the
+  /// owner tapping the mic.
+  void _sayAnswer(AskAiState state) {
+    if (!_speakNext || state is! AskAiMessageReceived) return;
+    if (state.isSearching || state.awaitingEngine != null) return;
+    if (state.messages.isEmpty) return;
+    final last = state.messages.last;
+    if (last.isUser || last.isGenerating) return;
+    _speakNext = false;
+    if (last.kind == MessageKind.text && last.text.isNotEmpty) {
+      EchoVoice.instance.sayAll(plainAnswer(last.text));
+    }
+  }
+
   void _openSource(RawData source) async {
     if (await ReplySender.open(source) || !mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -178,8 +232,12 @@ class _AskAiViewState extends State<_AskAiView> {
             current is AskAiMessageReceived &&
             (previous is! AskAiMessageReceived ||
                 previous.messages.length != current.messages.length ||
-                current.messages.last.isGenerating),
-        listener: (context, state) => _scrollToBottom(),
+                current.messages.last.isGenerating ||
+                _speakNext),
+        listener: (context, state) {
+          _scrollToBottom();
+          _sayAnswer(state);
+        },
         builder: (context, state) {
           final received = state is AskAiMessageReceived ? state : null;
           final messages = received?.messages ?? const <ChatMessage>[];
@@ -197,8 +255,12 @@ class _AskAiViewState extends State<_AskAiView> {
                         controller: _scroll,
                         physics: const BouncingScrollPhysics(),
                         padding: EdgeInsets.fromLTRB(side, side, side, 170),
-                        itemCount: messages.length,
-                        itemBuilder: (context, i) => _Entrance(
+                        itemCount:
+                            messages.length +
+                            (received?.awaitingEngine != null ? 1 : 0),
+                        itemBuilder: (context, i) => i == messages.length
+                            ? EngineGateCard(reason: received!.awaitingEngine!)
+                            : _Entrance(
                           key: ValueKey('msg_$i'),
                           fromRight: messages[i].isUser,
                           child: Padding(
@@ -242,12 +304,20 @@ class _AskAiViewState extends State<_AskAiView> {
                               : 'Ask a follow-up…',
                           onSend: _send,
                           dictation: !_desktop,
+                          onVoice: _desktop ? null : _startVoice,
                         ),
                       ],
                     ),
                   ),
                 ),
               ),
+              if (_listening)
+                Positioned.fill(
+                  child: AskVoiceOverlay(
+                    onDone: _heardVoice,
+                    onError: _voiceFailed,
+                  ),
+                ),
             ],
           );
 
@@ -293,6 +363,16 @@ class _AskAiViewState extends State<_AskAiView> {
         onEdit: (text) => cubit.editDraft(i, text),
         onQuickReply: (emoji) => cubit.quickReply(i, emoji),
       ),
+      MessageKind.search => SearchResults(
+        message: m,
+        onOpen: _openSource,
+        onWrite: m.question.isNotEmpty ? () => cubit.writeAnswer(i) : null,
+      ),
+      MessageKind.gate => EngineGateCard(
+        reason: 'draft',
+        onChoose: () => cubit.chooseEngineForDraft(i),
+        onWriteMyself: () => cubit.writeDraftMyself(i),
+      ),
     };
   }
 
@@ -309,20 +389,25 @@ class _AskAiViewState extends State<_AskAiView> {
       ];
     }
     final last = messages.last;
-    if (last.isUser || last.kind != MessageKind.text) return const [];
+    if (last.isUser ||
+        (last.kind != MessageKind.text && last.kind != MessageKind.search)) {
+      return const [];
+    }
     final cubit = context.read<AskAiCubit>();
     final seen = <String>{};
     String who(RawData e) =>
         e.sender.isEmpty ? e.threadTitle ?? e.source : e.sender;
+    // Search results have no citations; what matched stands in for them.
+    final about = last.kind == MessageKind.search ? last.ragSources : last.cited;
     return [
       // Chats that want the owner: offer to answer them.
-      for (final e in last.cited)
+      for (final e in about)
         if (e.thread != null &&
             Addressed.parse(e.addressed) != null &&
             seen.add(e.thread ?? who(e)))
           ('Draft a reply to ${who(e)}', () => cubit.draftReply(e)),
       // Anyone else the answer drew on: ask more about them.
-      for (final e in last.cited)
+      for (final e in about)
         if (seen.add(e.thread ?? who(e)))
           (
             'What else did ${who(e)} say?',

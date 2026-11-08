@@ -144,7 +144,7 @@ class _Row extends StatelessWidget {
                     Expanded(
                       child: Text(
                         item.kind == TriageKind.promise
-                            ? 'You promised'
+                            ? 'To-do'
                             : item.name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,

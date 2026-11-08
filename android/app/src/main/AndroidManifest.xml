@@ -72,6 +72,16 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+        <!-- Quiet hours: the end-of-window alarm, and setting it again after
+             a restart, an update or a clock or time zone change. -->
+        <receiver android:name=".QuietHoursReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+        </receiver>
         <service android:name=".EchoNotificationListenerService"
             android:label="Echo Notification Listener"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
@@ -102,7 +112,7 @@
         <receiver
             android:name=".EchoBriefingWidgetProvider"
             android:exported="false"
-            android:label="Echo Briefing">
+            android:label="@string/echo_today_widget_label">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
@@ -114,7 +124,7 @@
         <receiver
             android:name=".EchoStreakWidgetProvider"
             android:exported="false"
-            android:label="Echo Streak">
+            android:label="@string/echo_orb_widget_label">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
@@ -145,6 +155,18 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/echo_todo_orb_widget_info" />
+        </receiver>
+
+        <!-- Keeps the widgets right at midnight, and after a reboot, an update,
+             or a change of time zone or clock. -->
+        <receiver android:name=".EchoWidgetRefreshReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.LOCALE_CHANGED" />
+            </intent-filter>
         </receiver>
 
         <meta-data

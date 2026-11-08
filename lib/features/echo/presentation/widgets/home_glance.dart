@@ -1,209 +1,11 @@
 import 'dart:async';
-import 'dart:math' as math;
-
-import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
-import 'package:project_echo/features/echo/presentation/widgets/timer/next_briefing_timer.dart';
 import 'package:project_echo/features/todo/data/todo_item.dart';
 import 'package:project_echo/features/todo/presentation/cubit/todo_cubit.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-
-/// The top of Home: sections to swipe through — the [masthead], the day as a
-/// line, and the next-briefing countdown. Home opens on whichever section it
-/// was last left on; there's no setting beyond that.
-class HomeGlance extends StatefulWidget {
-  final Widget masthead;
-
-  const HomeGlance({super.key, required this.masthead});
-
-  @override
-  State<HomeGlance> createState() => _HomeGlanceState();
-}
-
-class _HomeGlanceState extends State<HomeGlance> {
-  static const _pageKey = 'home_glance_page';
-  static const _pages = 3;
-
-  PageController? _controller;
-  int _page = 0;
-
-  /// The masthead's own height; the other sections share the countdown's.
-  double? _mastheadHeight;
-
-  @override
-  void initState() {
-    super.initState();
-    SharedPreferences.getInstance().then((prefs) {
-      final saved = (prefs.getInt(_pageKey) ?? 0).clamp(0, _pages - 1);
-      if (!mounted) return;
-      setState(() {
-        _page = saved;
-        _controller = PageController(initialPage: saved);
-      });
-    });
-  }
-
-  @override
-  void dispose() {
-    _controller?.dispose();
-    super.dispose();
-  }
-
-  Future<void> _onPage(int page) async {
-    setState(() => _page = page);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_pageKey, page);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        // The countdown is a 1.6:1 drawing; the day line shares its height,
-        // while the masthead takes only what its text needs. Mid-swipe the
-        // height eases between the two.
-        final full = (constraints.maxWidth - 48) / 1.6;
-        final heights = [_mastheadHeight ?? full, full, full];
-        final controller = _controller;
-        return Column(
-          children: [
-            if (controller == null)
-              SizedBox(height: heights[_page])
-            else
-              AnimatedBuilder(
-                animation: controller,
-                builder: (context, child) {
-                  final page =
-                      controller.hasClients &&
-                          controller.position.haveDimensions
-                      ? controller.page ?? _page.toDouble()
-                      : _page.toDouble();
-                  final lo = page.floor().clamp(0, _pages - 1);
-                  final hi = page.ceil().clamp(0, _pages - 1);
-                  final height = lerpDouble(
-                    heights[lo],
-                    heights[hi],
-                    page - page.floor(),
-                  )!;
-                  // Sections always lay out at full height; only what's
-                  // shown shrinks, so none is squeezed mid-swipe.
-                  return SizedBox(
-                    height: height,
-                    child: ClipRect(
-                      child: OverflowBox(
-                        alignment: Alignment.topCenter,
-                        minHeight: full,
-                        maxHeight: math.max(full, heights[0]),
-                        child: child,
-                      ),
-                    ),
-                  );
-                },
-                child: PageView(
-                  controller: controller,
-                  onPageChanged: _onPage,
-                  children: [
-                    _Section(
-                      child: Align(
-                        alignment: Alignment.topCenter,
-                        child: _SizeReporter(
-                          onHeight: (h) {
-                            if (h != _mastheadHeight) {
-                              setState(() => _mastheadHeight = h);
-                            }
-                          },
-                          child: widget.masthead,
-                        ),
-                      ),
-                    ),
-                    const _Section(child: DayLine()),
-                    const _Section(child: NextBriefingTimer()),
-                  ],
-                ),
-              ),
-            const SizedBox(height: 12),
-            _Dots(count: _pages, current: _page),
-          ],
-        );
-      },
-    );
-  }
-}
-
-/// Reports its child's laid-out height (after the frame, so it can setState).
-class _SizeReporter extends SingleChildRenderObjectWidget {
-  final ValueChanged<double> onHeight;
-  const _SizeReporter({required this.onHeight, required super.child});
-
-  @override
-  RenderObject createRenderObject(BuildContext context) =>
-      _RenderSizeReporter(onHeight);
-
-  @override
-  void updateRenderObject(
-    BuildContext context,
-    _RenderSizeReporter renderObject,
-  ) => renderObject.onHeight = onHeight;
-}
-
-class _RenderSizeReporter extends RenderProxyBox {
-  ValueChanged<double> onHeight;
-  double? _last;
-  _RenderSizeReporter(this.onHeight);
-
-  @override
-  void performLayout() {
-    super.performLayout();
-    final h = size.height;
-    if (h == _last) return;
-    _last = h;
-    WidgetsBinding.instance.addPostFrameCallback((_) => onHeight(h));
-  }
-}
-
-class _Section extends StatelessWidget {
-  final Widget child;
-  const _Section({required this.child});
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 24),
-    child: child,
-  );
-}
-
-class _Dots extends StatelessWidget {
-  final int count;
-  final int current;
-  const _Dots({required this.count, required this.current});
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        for (var i = 0; i < count; i++)
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 250),
-            curve: Curves.easeOutCubic,
-            margin: const EdgeInsets.symmetric(horizontal: 3),
-            width: i == current ? 18 : 6,
-            height: 6,
-            decoration: BoxDecoration(
-              color: i == current ? c.textPrimary : c.dividerColor,
-              borderRadius: BorderRadius.circular(3),
-            ),
-          ),
-      ],
-    );
-  }
-}
 
 /// A to-do with a time, placed on the line.
 class DayStop {
@@ -268,12 +70,11 @@ class _DayLineState extends State<DayLine> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            const SizedBox(height: 14),
+            selected == null
+                ? _nothing(context)
+                : _next(context, selected, now),
             const SizedBox(height: 18),
-            Expanded(
-              child: selected == null
-                  ? _nothing(context)
-                  : _next(context, selected, now),
-            ),
             _Line(
               now: now,
               stops: stops,

@@ -8,6 +8,7 @@ import 'package:project_echo/core/services/widget_refresh_service.dart';
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:project_echo/features/echo/data/relevance/temporal_relevance.dart';
+import 'package:project_echo/features/todo/data/loop_closer.dart';
 import 'package:project_echo/features/todo/data/todo_generator.dart';
 import 'package:project_echo/features/todo/data/todo_item.dart';
 import 'package:project_echo/features/todo/data/todo_planner.dart';
@@ -132,8 +133,21 @@ class TodoCubit extends Cubit<TodoState> {
     final now = DateTime.now();
     final (items, meta) = await _store.load();
     if (isClosed) return;
+    if (state.loaded) _closeLoopsTickedElsewhere(items);
     emit(state.copyWith(loaded: true, items: items, meta: meta, now: now));
     await _countNew();
+  }
+
+  /// Items ticked on a home-screen widget or a reminder's Done button close
+  /// their person's loop too, once the app sees them.
+  void _closeLoopsTickedElsewhere(List<TodoItem> items) {
+    final before = {for (final i in state.items) i.id: i};
+    for (final item in items) {
+      final old = before[item.id];
+      if (old != null && !old.done && item.done) {
+        unawaited(LoopCloser.closed(item, true));
+      }
+    }
   }
 
   /// [reveal] false holds the entrance until [reveal] is called.
@@ -235,6 +249,8 @@ class TodoCubit extends Cubit<TodoState> {
     emit(state.copyWith(items: items, justAdded: {}, justChanged: {}));
     await _store.save(items, state.meta);
     WidgetRefreshService.refresh();
+    final ticked = items.where((i) => i.id == id).firstOrNull;
+    if (ticked != null) unawaited(LoopCloser.closed(ticked, ticked.done));
     final allDone =
         state.today.isNotEmpty && state.doneToday == state.today.length;
     return allDone && !wasAllDone;

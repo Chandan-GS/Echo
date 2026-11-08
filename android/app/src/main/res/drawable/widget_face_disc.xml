@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A face's disc. The grey is only seen in the widget picker; a placed
+     widget tints it per person (see WaitingWidgetData.tintFor). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
+    <solid android:color="#FF6B6F7A" />
+</shape>

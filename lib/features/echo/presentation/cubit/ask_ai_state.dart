@@ -13,6 +13,12 @@ enum MessageKind {
 
   /// A reply Echo drafted, waiting for the owner's yes.
   draft,
+
+  /// No engine to write with: the messages that matched, as they are.
+  search,
+
+  /// A reply Echo can't draft yet, with the way to set that up.
+  gate,
 }
 
 class ChatMessage {
@@ -38,6 +44,13 @@ class ChatMessage {
   /// An answer that names things to do which aren't on the list yet.
   final bool addable;
 
+  /// [MessageKind.search]: the question it was for, kept so a written answer
+  /// can be asked for once an engine is ready. Empty once that's happened.
+  final String question;
+
+  /// [MessageKind.gate]: who the reply would go to.
+  final RawData? replyTo;
+
   ChatMessage({
     required this.sender,
     required this.text,
@@ -49,6 +62,8 @@ class ChatMessage {
     this.undone = false,
     this.draft,
     this.addable = false,
+    this.question = '',
+    this.replyTo,
   });
 
   bool get isUser => sender == 'user';
@@ -70,6 +85,7 @@ class ChatMessage {
     bool? undone,
     ReplyDraft? draft,
     bool? addable,
+    String? question,
   }) {
     return ChatMessage(
       sender: sender,
@@ -82,6 +98,8 @@ class ChatMessage {
       undone: undone ?? this.undone,
       draft: draft ?? this.draft,
       addable: addable ?? this.addable,
+      question: question ?? this.question,
+      replyTo: replyTo,
     );
   }
 }
@@ -162,10 +180,14 @@ class AskAiMessageReceived extends AskAiState {
   final bool isSearching;
   final AskProgress? progress;
 
+  /// 'ask' or 'draft' while the sheet asking how Echo should write is open.
+  final String? awaitingEngine;
+
   AskAiMessageReceived({
     required this.messages,
     this.isSearching = false,
     this.progress,
+    this.awaitingEngine,
   });
 }
 

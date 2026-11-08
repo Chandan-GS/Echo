@@ -18,18 +18,7 @@ class TodoStore {
   Future<(List<TodoItem>, TodoMeta)> load() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.reload();
-    final items = <TodoItem>[];
-    try {
-      final raw = prefs.getString(itemsKey);
-      if (raw != null) {
-        for (final j in jsonDecode(raw) as List) {
-          items.add(TodoItem.fromJson(j as Map<String, dynamic>));
-        }
-      }
-    } catch (_) {
-      // Unreadable list: show nothing rather than crash. It is not
-      // overwritten until the next save.
-    }
+    final items = decodeItems(prefs.getString(itemsKey));
     var meta = const TodoMeta();
     try {
       final raw = prefs.getString(metaKey);
@@ -38,6 +27,26 @@ class TodoStore {
       }
     } catch (_) {}
     return (items, meta);
+  }
+
+  /// Stored items, from any version of the app. One unreadable item is
+  /// skipped instead of costing the whole list.
+  static List<TodoItem> decodeItems(String? raw) {
+    if (raw == null) return [];
+    final Object? list;
+    try {
+      list = jsonDecode(raw);
+    } catch (_) {
+      return [];
+    }
+    if (list is! List) return [];
+    final items = <TodoItem>[];
+    for (final j in list) {
+      try {
+        items.add(TodoItem.fromJson(j as Map<String, dynamic>));
+      } catch (_) {}
+    }
+    return items;
   }
 
   Future<void> save(List<TodoItem> items, TodoMeta meta) async {

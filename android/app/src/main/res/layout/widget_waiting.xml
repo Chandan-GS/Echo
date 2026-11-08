@@ -1,0 +1,197 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Waiting on you (4×2): the people Echo thinks are waiting on a reply, ringed
+     by how long. Every colour comes from resources so it follows light / dark
+     mode; the only bitmaps are the rings, drawn as white masks and tinted. The
+     sample names are only ever seen in the widget picker. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/wait_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_todo_bg"
+    android:gravity="center_vertical"
+    android:orientation="vertical"
+    android:paddingStart="16dp"
+    android:paddingTop="14dp"
+    android:paddingEnd="14dp"
+    android:paddingBottom="12dp">
+
+    <LinearLayout
+        android:id="@+id/wait_header"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <ImageView
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:importantForAccessibility="no"
+            android:src="@drawable/ic_widget_pearl" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:fontFamily="@font/old_standard_tt_bold"
+            android:includeFontPadding="false"
+            android:maxLines="1"
+            android:text="Waiting on you"
+            android:textColor="@color/todo_widget_text"
+            android:textSize="19sp" />
+
+        <TextView
+            android:id="@+id/wait_count"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:maxLines="1"
+            android:text="4 waiting"
+            android:textColor="@color/todo_widget_green"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/wait_empty"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:visibility="gone">
+
+        <ImageView
+            android:id="@+id/wait_empty_icon"
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:layout_marginEnd="10dp"
+            android:importantForAccessibility="no"
+            android:src="@drawable/todo_check_on" />
+
+        <TextView
+            android:id="@+id/wait_empty_text"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:maxLines="3"
+            android:ellipsize="end"
+            android:textColor="@color/todo_widget_text2"
+            android:textSize="13.5sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/wait_faces"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:gravity="top"
+        android:orientation="horizontal">
+
+        <LinearLayout
+            android:id="@+id/wait_face0"
+            style="@style/WaitFace">
+            <FrameLayout style="@style/WaitFaceAvatar">
+                <ImageView style="@style/WaitFaceTrack" />
+                <ImageView
+                    android:id="@+id/wait_face0_ring"
+                    style="@style/WaitFaceRing" />
+                <ImageView
+                    android:id="@+id/wait_face0_disc"
+                    style="@style/WaitFaceDisc" />
+                <TextView
+                    android:id="@+id/wait_face0_initial"
+                    style="@style/WaitFaceInitial"
+                    android:text="A" />
+            </FrameLayout>
+            <TextView
+                android:id="@+id/wait_face0_name"
+                style="@style/WaitFaceName"
+                android:text="Amma" />
+            <TextView
+                android:id="@+id/wait_face0_age"
+                style="@style/WaitFaceAge"
+                android:text="2d" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/wait_face1"
+            style="@style/WaitFace">
+            <FrameLayout style="@style/WaitFaceAvatar">
+                <ImageView style="@style/WaitFaceTrack" />
+                <ImageView
+                    android:id="@+id/wait_face1_ring"
+                    style="@style/WaitFaceRing" />
+                <ImageView
+                    android:id="@+id/wait_face1_disc"
+                    style="@style/WaitFaceDisc" />
+                <TextView
+                    android:id="@+id/wait_face1_initial"
+                    style="@style/WaitFaceInitial"
+                    android:text="R" />
+            </FrameLayout>
+            <TextView
+                android:id="@+id/wait_face1_name"
+                style="@style/WaitFaceName"
+                android:text="Rohan" />
+            <TextView
+                android:id="@+id/wait_face1_age"
+                style="@style/WaitFaceAge"
+                android:text="1d" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/wait_face2"
+            style="@style/WaitFace">
+            <FrameLayout style="@style/WaitFaceAvatar">
+                <ImageView style="@style/WaitFaceTrack" />
+                <ImageView
+                    android:id="@+id/wait_face2_ring"
+                    style="@style/WaitFaceRing" />
+                <ImageView
+                    android:id="@+id/wait_face2_disc"
+                    style="@style/WaitFaceDisc" />
+                <TextView
+                    android:id="@+id/wait_face2_initial"
+                    style="@style/WaitFaceInitial"
+                    android:text="N" />
+            </FrameLayout>
+            <TextView
+                android:id="@+id/wait_face2_name"
+                style="@style/WaitFaceName"
+                android:text="Neha" />
+            <TextView
+                android:id="@+id/wait_face2_age"
+                style="@style/WaitFaceAge"
+                android:text="1h" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/wait_face3"
+            style="@style/WaitFace">
+            <FrameLayout style="@style/WaitFaceAvatar">
+                <ImageView style="@style/WaitFaceTrack" />
+                <ImageView
+                    android:id="@+id/wait_face3_ring"
+                    style="@style/WaitFaceRing" />
+                <ImageView
+                    android:id="@+id/wait_face3_disc"
+                    style="@style/WaitFaceDisc" />
+                <TextView
+                    android:id="@+id/wait_face3_initial"
+                    style="@style/WaitFaceInitial"
+                    android:text="V" />
+            </FrameLayout>
+            <TextView
+                android:id="@+id/wait_face3_name"
+                style="@style/WaitFaceName"
+                android:text="Vikram" />
+            <TextView
+                android:id="@+id/wait_face3_age"
+                style="@style/WaitFaceAge"
+                android:text="40m" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

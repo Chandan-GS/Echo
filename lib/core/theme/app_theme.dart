@@ -102,14 +102,14 @@ class AppTheme {
   static const Color dividerColorDark = Color(0xFF333333);
 
   /// How heavy every icon is drawn (Material Symbols' weight axis).
-  static const double iconWeight = 600;
+  static const double iconWeight = 600.0;
 
   static ThemeData get lightTheme {
     return ThemeData(
       useMaterial3: true,
       scaffoldBackgroundColor: backgroundLight,
       // Material Symbols at semibold: the default 400 reads thin on a phone.
-      iconTheme: const IconThemeData(weight: iconWeight),
+      iconTheme: const IconThemeData(weight: iconWeight, opticalSize: 24),
       colorScheme: const ColorScheme.light(
         primary: primaryGreen,
         secondary: lightGreenBackground,
@@ -177,7 +177,7 @@ class AppTheme {
       useMaterial3: true,
       scaffoldBackgroundColor: backgroundDark,
       // Material Symbols at semibold: the default 400 reads thin on a phone.
-      iconTheme: const IconThemeData(weight: iconWeight),
+      iconTheme: const IconThemeData(weight: iconWeight, opticalSize: 24),
       colorScheme: const ColorScheme.dark(
         primary: primaryGreenDark,
         secondary: darkGreenBackground,

@@ -171,7 +171,7 @@ class _CloudEngineCardState extends State<CloudEngineCard> {
                         ),
                       ],
                     ),
-                    const _GeminiToday(),
+                    const GeminiTodayUsage(),
                   ],
                 )
               else
@@ -305,8 +305,8 @@ class _CloudEngineCardState extends State<CloudEngineCard> {
 
 /// Today's Gemini use under the key: what's left when the daily limit is
 /// known, otherwise the count so far. An estimate from this phone.
-class _GeminiToday extends StatelessWidget {
-  const _GeminiToday();
+class GeminiTodayUsage extends StatelessWidget {
+  const GeminiTodayUsage({super.key});
 
   static final _aiStudio = Uri.parse('https://aistudio.google.com/rate-limit');
 

@@ -100,7 +100,7 @@ class _EchoTurnState extends State<EchoTurn> {
 
 /// An answer: what Echo looked through, the answer itself with its sources,
 /// and one next step.
-class AnswerView extends StatelessWidget {
+class AnswerView extends StatefulWidget {
   final ChatMessage message;
   final VoidCallback? onAdd;
   final void Function(RawData source)? onOpenSource;
@@ -126,9 +126,56 @@ class AnswerView extends StatelessWidget {
   });
 
   @override
+  State<AnswerView> createState() => _AnswerViewState();
+}
+
+class _AnswerViewState extends State<AnswerView> {
+  final _cards = ScrollController();
+  int? _flashing;
+  Timer? _flash;
+
+  static const _cardStride = 218.0;
+
+  @override
+  void dispose() {
+    _flash?.cancel();
+    _cards.dispose();
+    super.dispose();
+  }
+
+  /// A citation tapped: slides its source card into view and rings it.
+  void _showSource(int number, List<(int, RawData)> numbered) {
+    final at = numbered.indexWhere((p) => p.$1 == number);
+    if (at < 0) return;
+    if (_cards.hasClients) {
+      _cards.animateTo(
+        (at * _cardStride).clamp(0.0, _cards.position.maxScrollExtent),
+        duration: const Duration(milliseconds: 320),
+        curve: Curves.easeOutCubic,
+      );
+    }
+    _flash?.cancel();
+    setState(() => _flashing = number);
+    _flash = Timer(const Duration(milliseconds: 1200), () {
+      if (mounted) setState(() => _flashing = null);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final message = widget.message;
+    final onAdd = widget.onAdd;
+    final onOpenSource = widget.onOpenSource;
+    final earlier = widget.earlier;
+    final onCite = widget.onCite;
+    final litCite = widget.litCite;
     final sources = message.ragSources;
     final cited = message.cited;
+    final numbered = [
+      for (final n in citedNumbers(message.text, sources.length))
+        (n, sources[n - 1]),
+    ];
+    final showCards = cited.isNotEmpty && !earlier && onCite == null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -141,20 +188,21 @@ class AnswerView extends StatelessWidget {
           sources: sources.length,
           onCite:
               onCite ??
-              (onOpenSource == null
-                  ? null
-                  : (n) => onOpenSource!(sources[n - 1])),
+              (showCards
+                  ? (n) => _showSource(n, numbered)
+                  : (onOpenSource == null
+                        ? null
+                        : (n) => onOpenSource(sources[n - 1]))),
           onCiteHover: onCite,
           litCite: litCite,
         ),
-        if (cited.isNotEmpty && !earlier && onCite == null) ...[
+        if (showCards) ...[
           const SizedBox(height: 12),
           _SourceCards(
-            numbered: [
-              for (final n in citedNumbers(message.text, sources.length))
-                (n, sources[n - 1]),
-            ],
+            numbered: numbered,
             onOpen: onOpenSource,
+            controller: _cards,
+            flashing: _flashing,
           ),
         ],
         if (!message.isGenerating && message.text.isNotEmpty && !earlier) ...[
@@ -290,7 +338,17 @@ class _CheckedLineState extends State<_CheckedLine> {
 class _SourceCards extends StatelessWidget {
   final List<(int, RawData)> numbered;
   final void Function(RawData source)? onOpen;
-  const _SourceCards({required this.numbered, this.onOpen});
+  final ScrollController controller;
+
+  /// The number of the card a tapped citation just pointed at.
+  final int? flashing;
+
+  const _SourceCards({
+    required this.numbered,
+    required this.controller,
+    this.onOpen,
+    this.flashing,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -298,6 +356,7 @@ class _SourceCards extends StatelessWidget {
     return SizedBox(
       height: 76,
       child: ListView.separated(
+        controller: controller,
         scrollDirection: Axis.horizontal,
         clipBehavior: Clip.none,
         itemCount: numbered.length,
@@ -310,7 +369,8 @@ class _SourceCards extends StatelessWidget {
             child: InkWell(
               borderRadius: BorderRadius.circular(16),
               onTap: onOpen == null ? null : () => onOpen!(e),
-              child: Container(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
                 width: 210,
                 padding: const EdgeInsets.symmetric(
                   horizontal: 12,
@@ -319,7 +379,10 @@ class _SourceCards extends StatelessWidget {
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: colors.dividerColor.withValues(alpha: 0.5),
+                    color: flashing == n
+                        ? colors.primaryGreen
+                        : colors.dividerColor.withValues(alpha: 0.5),
+                    width: flashing == n ? 2 : 1,
                   ),
                 ),
                 child: Column(

@@ -8,6 +8,8 @@ import 'package:project_echo/core/presentation/animations/fade_slide_in.dart';
 import 'package:project_echo/core/presentation/animations/page_transitions.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
+import 'package:project_echo/features/people/presentation/widgets/people_parts.dart'
+    show appLabel;
 import 'package:project_echo/features/todo/data/todo_item.dart';
 import 'package:project_echo/features/todo/presentation/cubit/todo_cubit.dart';
 import 'package:project_echo/features/todo/presentation/screens/todo_celebration_screen.dart';
@@ -785,7 +787,7 @@ class _TodoRow extends StatelessWidget {
         ),
       ),
       TextSpan(
-        text: ' · ${item.sender}${item.app.isEmpty ? '' : ', ${item.app}'}',
+        text: ' · ${item.sender}${item.app.isEmpty ? '' : ', ${appLabel(item.app)}'}',
       ),
       if (item.movedFrom != null)
         TextSpan(text: ' · moved from ${item.movedFrom}'),

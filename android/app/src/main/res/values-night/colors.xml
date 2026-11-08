@@ -10,4 +10,10 @@
     <color name="todo_widget_divider">#26A0A0A0</color>
     <color name="todo_widget_text_done">#73EFEFEF</color>
     <color name="todo_widget_green_done">#736EBC76</color>
+    <color name="widget_age_fresh">#6EBC76</color>
+    <color name="widget_age_yesterday">#E6C77A</color>
+    <color name="widget_age_old">#E58C76</color>
+    <color name="widget_day_future">#3A3A3A</color>
+    <color name="widget_day_missed">#4A2A24</color>
+    <color name="widget_day_missed_mark">#F0A08E</color>
 </resources>

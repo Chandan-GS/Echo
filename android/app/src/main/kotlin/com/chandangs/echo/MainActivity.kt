@@ -22,6 +22,7 @@ class MainActivity : FlutterActivity() {
     private val APP_ICONS_CHANNEL = "project_echo/app_icons"
     private val REPLY_CHANNEL = "project_echo/reply"
     private val REMINDERS_CHANNEL = "project_echo/reminders"
+    private val PERSON_PHOTOS_CHANNEL = "project_echo/person_photos"
 
     // Drawing and PNG-encoding icons stays off the main thread.
     private val iconExecutor = Executors.newFixedThreadPool(2)
@@ -35,11 +36,12 @@ class MainActivity : FlutterActivity() {
         "streak" to EchoStreakWidgetProvider::class.java,
     )
     private var eventSink: EventChannel.EventSink? = null
+    private var widgetChannel: MethodChannel? = null
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         // Must run before super.onCreate(), which is what boots the Flutter
         // engine / runs Dart main() — the autoplay flag needs to already be
-        // written by the time EchoHomeScreen reads it.
+        // written by the time TodayScreen reads it.
         handleWidgetLaunchIntent(intent)
         super.onCreate(savedInstanceState)
     }
@@ -49,27 +51,49 @@ class MainActivity : FlutterActivity() {
         handleWidgetLaunchIntent(intent)
     }
 
-    /** If this launch came from tapping the home-screen widget, mark today's
-     * briefing to autoplay — the same one-shot flag the notification "Play"
-     * action uses, so EchoHomeScreen needs no widget-specific handling. */
+    /** If this launch came from tapping a home-screen widget, mark today's
+     * briefing to autoplay when asked — the same one-shot flag the
+     * notification "Play" action uses, so TodayScreen needs no
+     * widget-specific handling — and hand the route to Dart (see
+     * WidgetDeepLinks): kept in prefs, and on a running engine Dart is told
+     * to pick it up. */
     private fun handleWidgetLaunchIntent(intent: Intent?) {
+        val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
         if (intent?.getBooleanExtra(EchoBriefingWidgetProvider.EXTRA_AUTOPLAY, false) == true) {
-            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
             prefs.edit().putBoolean("flutter.pending_autoplay", true).apply()
             intent.removeExtra(EchoBriefingWidgetProvider.EXTRA_AUTOPLAY)
+        }
+        val route = intent?.getStringExtra(WidgetData.EXTRA_ROUTE) ?: return
+        val open = org.json.JSONObject()
+            .put("route", route)
+            .put("sender", intent.getStringExtra(WidgetData.EXTRA_SENDER))
+            .put("source", intent.getStringExtra(WidgetData.EXTRA_SOURCE))
+        intent.removeExtra(WidgetData.EXTRA_ROUTE)
+        prefs.edit().putString("flutter.pending_widget_route", open.toString()).apply()
+        widgetChannel?.invokeMethod("openRoute", null)
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (!PersonPhotos.onPickResult(this, requestCode, resultCode, data)) {
+            super.onActivityResult(requestCode, resultCode, data)
         }
     }
 
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, WIDGET_CHANNEL).setMethodCallHandler { call, result ->
+        QuietHours.attachChannel(flutterEngine.dartExecutor.binaryMessenger, this)
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, PERSON_PHOTOS_CHANNEL).let { channel ->
+            PersonPhotos.attach(channel)
+            channel.setMethodCallHandler { call, result -> PersonPhotos.handle(this, call, result) }
+        }
+
+        widgetChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, WIDGET_CHANNEL)
+        widgetChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
                 "refresh" -> {
-                    EchoBriefingWidgetProvider.updateAll(this)
-                    EchoStreakWidgetProvider.updateAll(this)
-                    EchoTodoWidgetProvider.updateAll(this)
-                    EchoTodoOrbWidgetProvider.updateAll(this)
+                    WidgetData.refreshAll(this)
                     result.success(null)
                 }
                 // For Profile → Widgets: what's placed, whether the launcher
@@ -86,7 +110,7 @@ class MainActivity : FlutterActivity() {
                             "streak" to WidgetData.streak(prefs),
                             "status" to WidgetData.statusText(prefs),
                             "week" to WidgetData.weekStates(prefs).toList(),
-                        ),
+                        ) + WidgetData.previewState(this),
                     )
                 }
                 // Ask the launcher to add one of Echo's widgets. Android shows
@@ -155,6 +179,8 @@ class MainActivity : FlutterActivity() {
                     ReplyActions.write(this, call.argument<String>("thread") ?: "", call.argument<String>("text") ?: ""),
                 )
                 "openChat" -> result.success(ReplyActions.openChat(this, call.argument<String>("thread") ?: ""))
+                "saveCard" -> result.success(ShareCard.saveToPhotos(this, call.argument<ByteArray>("png")))
+                "shareCard" -> result.success(ShareCard.share(this, call.argument<ByteArray>("png")))
                 "openApp" -> {
                     val launch = call.argument<String>("package")?.let { packageManager.getLaunchIntentForPackage(it) }
                     if (launch == null) {

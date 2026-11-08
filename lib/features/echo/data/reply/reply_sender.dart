@@ -3,6 +3,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:project_echo/demo/demo_mode.dart';
 import 'package:project_echo/features/echo/data/context/chat_context_store.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
+import 'package:project_echo/features/history/data/history_store.dart';
 import 'package:project_echo/features/profile/data/week_stats.dart';
 
 /// How a reply leaves Echo, best first (see ReplyActions.kt).
@@ -47,8 +48,10 @@ class ReplySender {
     final thread = to.thread;
     if (thread != null &&
         await _call<bool>('send', {'thread': thread, 'text': text}) == true) {
-      await ChatContextStore.recordMyTurn(thread, DateTime.now(), text);
-      await WeekStats.countReply(DateTime.now());
+      final at = DateTime.now();
+      await ChatContextStore.recordMyTurn(thread, at, text);
+      await WeekStats.countReply(at);
+      await HistoryStore.recordSent(to, text, at);
       return ReplyOutcome.sent;
     }
     // A WhatsApp chat seen before Echo kept chat ids is found through the

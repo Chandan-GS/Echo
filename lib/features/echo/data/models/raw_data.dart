@@ -12,6 +12,7 @@ class RawData {
 
   late String content;
 
+  @Index()
   late DateTime timestamp;
 
   /// Which conversation this came from (app + hashed chat id), when the app
@@ -41,6 +42,28 @@ class RawData {
   @Index()
   String? captureKey;
 
+  /// The notification's key in the system shade, so that swiping it away
+  /// later finds the messages it carried. Null for anything saved before
+  /// History, and for calendar events.
+  @Index()
+  String? noticeKey;
+
+  /// How it left the shade: one of [NoticeRemoval]'s names. Null while it's
+  /// still there, or when Echo never saw it go.
+  String? removal;
+
+  /// When the owner swiped it away. Null if they never did.
+  @Index()
+  DateTime? swipedAt;
+
+  /// When quiet hours held it back. Null if it reached the owner as it came.
+  @Index()
+  DateTime? heldAt;
+
+  /// The owner wrote this, through Echo: a "you sent" line in History rather
+  /// than something they were sent. Null for everything else.
+  bool? sent;
+
   // 384-dimensional vector from all-MiniLM-L6-v2
   List<double>? embedding;
 
@@ -56,6 +79,10 @@ class RawData {
         if (threadTitle != null) 'threadTitle': threadTitle,
         if (isGroup) 'isGroup': true,
         if (addressed != null) 'addressed': addressed,
+        if (removal != null) 'removal': removal,
+        if (swipedAt != null) 'swipedAt': swipedAt!.toIso8601String(),
+        if (heldAt != null) 'heldAt': heldAt!.toIso8601String(),
+        if (sent == true) 'sent': true,
       };
 
   static RawData fromSyncMap(Map<String, dynamic> m) => RawData()
@@ -67,5 +94,21 @@ class RawData {
     ..thread = m['thread']?.toString()
     ..threadTitle = m['threadTitle']?.toString()
     ..isGroup = m['isGroup'] == true
-    ..addressed = m['addressed']?.toString();
+    ..addressed = m['addressed']?.toString()
+    ..removal = m['removal']?.toString()
+    ..swipedAt = DateTime.tryParse((m['swipedAt'] ?? '').toString())
+    ..heldAt = DateTime.tryParse((m['heldAt'] ?? '').toString())
+    ..sent = m['sent'] == true ? true : null;
+}
+
+/// How a notification left the shade, as saved in [RawData.removal].
+abstract final class NoticeRemoval {
+  /// The owner swiped it away, or cleared the shade.
+  static const swiped = 'swiped';
+
+  /// The owner tapped it.
+  static const opened = 'opened';
+
+  /// The app took it back, usually because the chat was read elsewhere.
+  static const app = 'app';
 }

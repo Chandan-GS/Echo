@@ -8,12 +8,19 @@ import 'package:material_symbols_icons/symbols.dart';
 class EchoAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String title;
   final VoidCallback? onBackPressed;
+  final List<Widget>? actions;
 
-  const EchoAppBar({super.key, required this.title, this.onBackPressed});
+  const EchoAppBar({
+    super.key,
+    required this.title,
+    this.onBackPressed,
+    this.actions,
+  });
 
   @override
   Widget build(BuildContext context) {
     return AppBar(
+      actions: actions,
       scrolledUnderElevation: 0,
       systemOverlayStyle: Theme.of(context).brightness == Brightness.dark
           ? SystemUiOverlayStyle.light

@@ -8,6 +8,8 @@ import 'package:project_echo/features/echo/data/reply/reply_sender.dart';
 import 'package:project_echo/features/echo/presentation/cubit/ask_ai_cubit.dart';
 import 'package:project_echo/features/echo/presentation/widgets/ask/ask_parts.dart';
 import 'package:project_echo/features/echo/presentation/widgets/echo_mascot.dart';
+import 'package:project_echo/features/people/presentation/widgets/people_parts.dart'
+    show appLabel;
 import 'package:material_symbols_icons/symbols.dart';
 
 /// What Echo put on the to-do list: the same rows as on Home, under a
@@ -152,10 +154,7 @@ class _DraftCardState extends State<DraftCard> {
   };
 
   /// "WhatsApp", "Slack": the app the chat is in.
-  String _app() {
-    final source = widget.draft.to.source;
-    return source.toLowerCase() == 'whatsapp' ? 'WhatsApp' : source;
-  }
+  String _app() => appLabel(widget.draft.to.source);
 
   @override
   Widget build(BuildContext context) {

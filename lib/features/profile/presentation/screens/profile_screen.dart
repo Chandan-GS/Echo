@@ -1,146 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:project_echo/core/presentation/animations/app_motion.dart';
-import 'package:project_echo/core/presentation/animations/fade_slide_in.dart';
-import 'package:project_echo/core/presentation/animations/page_transitions.dart';
-import 'package:project_echo/core/presentation/widgets/header_icon_button.dart';
 import 'package:project_echo/core/presentation/widgets/press_feedback.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/features/profile/data/week_stats.dart';
-import 'package:project_echo/features/profile/presentation/widgets/streak_calendar.dart';
-import 'package:project_echo/features/settings/presentation/screens/phone_settings_screen.dart';
-import 'package:project_echo/features/todo/data/todo_store.dart';
-import 'package:project_echo/features/todo/presentation/cubit/todo_cubit.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-
-/// The phone's Profile tab: the owner and Echo, their streak, and their week
-/// in numbers. Every setting is behind the gear.
-class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
-
-  @override
-  State<ProfileScreen> createState() => _ProfileScreenState();
-}
-
-class _ProfileScreenState extends State<ProfileScreen>
-    with WidgetsBindingObserver {
-  final _calendarKey = GlobalKey<StreakCalendarState>();
-  String _name = '';
-  DateTime? _since;
-  WeekStats? _week;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    TodoStore.changed.addListener(_loadWeek);
-    _load();
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    TodoStore.changed.removeListener(_loadWeek);
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _calendarKey.currentState?.reload();
-      _loadWeek();
-    }
-  }
-
-  Future<void> _load() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (!mounted) return;
-    setState(() {
-      _name = prefs.getString('user_name')?.trim() ?? '';
-      _since = DateTime.tryParse(prefs.getString('first_launch_date') ?? '');
-    });
-    await _loadWeek();
-  }
-
-  Future<void> _loadWeek() async {
-    final week = await WeekStats.load(DateTime.now());
-    if (mounted) setState(() => _week = week);
-  }
-
-  Future<void> _rename(String name) async {
-    final trimmed = name.trim();
-    if (trimmed.isEmpty || trimmed == _name) return;
-    setState(() => _name = trimmed);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('user_name', trimmed);
-  }
-
-  Future<void> _openSettings() async {
-    await Navigator.of(context, rootNavigator: true).push(
-      bouncyRoute(PhoneSettingsScreen(todoCubit: context.read<TodoCubit>())),
-    );
-    _calendarKey.currentState?.reload();
-    await _load();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    var n = 0;
-    Widget enter(Widget child) =>
-        FadeSlideIn(delay: AppMotion.staggerDelay(n++), child: child);
-    return Scaffold(
-      backgroundColor: c.background,
-      body: SafeArea(
-        bottom: false,
-        child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          // Clears the nav dock (MainScaffold sets the bottom padding).
-          padding: EdgeInsets.fromLTRB(
-            24,
-            24,
-            24,
-            MediaQuery.paddingOf(context).bottom + 16,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              enter(
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Profile',
-                        style: GoogleFonts.oldStandardTt(
-                          fontSize: 40,
-                          fontWeight: FontWeight.w700,
-                          height: 1.15,
-                          color: c.textPrimary,
-                        ),
-                      ),
-                    ),
-                    HeaderIconButton(
-                      icon: Symbols.settings_rounded,
-                      label: 'Settings',
-                      onTap: _openSettings,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 18),
-              enter(ProfileIdentity(name: _name, since: _since, onRename: _rename)),
-              const SizedBox(height: 22),
-              enter(StreakCalendar(key: _calendarKey)),
-              enter(WeekInNumbers(week: _week)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 /// The owner's name, which a tap on the pencil edits, and how long they've
 /// had Echo.
@@ -269,19 +133,19 @@ class _ProfileIdentityState extends State<ProfileIdentity> {
                       ),
                     ),
                     if (widget.onRename != null)
-                    PressFeedback(
-                      scale: 0.85,
-                      child: IconButton(
-                        tooltip: 'Edit your name',
-                        onPressed: _edit,
-                        visualDensity: VisualDensity.compact,
-                        icon: Icon(
-                          Symbols.edit_rounded,
-                          size: 18,
-                          color: c.textSecondary,
+                      PressFeedback(
+                        scale: 0.85,
+                        child: IconButton(
+                          tooltip: 'Edit your name',
+                          onPressed: _edit,
+                          visualDensity: VisualDensity.compact,
+                          icon: Icon(
+                            Symbols.edit_rounded,
+                            size: 18,
+                            color: c.textSecondary,
+                          ),
                         ),
                       ),
-                    ),
                   ],
                 ),
               if (since != null) ...[
@@ -374,7 +238,11 @@ class WeekInNumbers extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 10),
-        _ReadChart(byDay: w?.readByDay ?? List.filled(7, 0), from: from),
+        WeekBarChart(
+          title: 'Messages Echo read',
+          byDay: w?.readByDay ?? List.filled(7, 0),
+          from: from,
+        ),
       ],
     );
   }
@@ -439,10 +307,16 @@ class _Tile extends StatelessWidget {
 }
 
 /// A bar a day, to scale, today's in green; the count over each bar.
-class _ReadChart extends StatelessWidget {
+class WeekBarChart extends StatelessWidget {
+  final String title;
   final List<int> byDay;
   final DateTime from;
-  const _ReadChart({required this.byDay, required this.from});
+  const WeekBarChart({
+    super.key,
+    required this.title,
+    required this.byDay,
+    required this.from,
+  });
 
   static const _letters = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
   static const _barMax = 92.0;
@@ -463,15 +337,19 @@ class _ReadChart extends StatelessWidget {
         children: [
           Row(
             children: [
-              Text(
-                'Messages Echo read',
-                style: GoogleFonts.nunito(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  color: c.textPrimary,
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.nunito(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: c.textPrimary,
+                  ),
                 ),
               ),
-              const Spacer(),
+              const SizedBox(width: 8),
               Text(
                 'a day',
                 style: GoogleFonts.nunito(
@@ -482,22 +360,32 @@ class _ReadChart extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          SizedBox(
-            height: _barMax + 40,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                for (final (i, n) in byDay.indexed)
-                  Expanded(
-                    child: _Bar(
-                      count: n,
-                      height: most == 0 ? 0 : _barMax * n / most,
-                      today: i == byDay.length - 1,
-                      letter: _letters[from.add(Duration(days: i)).weekday - 1],
-                      delay: Duration(milliseconds: 60 * i),
+          // The bars have a fixed height, so their labels can't grow far.
+          MediaQuery.withClampedTextScaling(
+            maxScaleFactor: 1.3,
+            child: SizedBox(
+              height: _barMax + 52,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  for (final (i, n) in byDay.indexed)
+                    Expanded(
+                      child: _Bar(
+                        count: n,
+                        height: most == 0 ? 0 : _barMax * n / most,
+                        today: i == byDay.length - 1,
+                        letter:
+                            _letters[DateTime(
+                                  from.year,
+                                  from.month,
+                                  from.day + i,
+                                ).weekday -
+                                1],
+                        delay: Duration(milliseconds: 60 * i),
+                      ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
