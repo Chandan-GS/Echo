@@ -3,11 +3,10 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:fllama/fllama.dart';
 import 'package:project_echo/core/services/analytics_service.dart';
-import 'package:project_echo/core/services/desktop_engine_client.dart';
+import 'package:project_echo/core/services/engine_gate.dart';
 import 'package:project_echo/core/services/gemini_service.dart';
-import 'package:project_echo/core/services/offline_model_repository.dart';
+import 'package:project_echo/core/services/writing_engine.dart';
 import 'package:project_echo/demo/demo_mode.dart';
 import 'package:project_echo/features/echo/data/ask/ask_intents.dart';
 import 'package:project_echo/features/echo/data/ask/ask_retrieval.dart';
@@ -35,24 +34,59 @@ part 'ask_ai_state.dart';
 
 class AskAiCubit extends Cubit<AskAiState> {
   final List<ChatMessage> _messages = [];
-  int? _activeRequestId;
+  WritingCancel? _activeWrite;
   final TodoGenerator _todos;
+
+  /// Set by the phone's Ask screen, so asking can open the engine sheet. Left
+  /// unset (desktop, tests), Echo just writes.
+  Future<bool> Function(String reason)? _ensureEngine;
+  Future<bool> Function(String reason)? _chooseEngine;
 
   AskAiCubit({TodoGenerator? todos})
     : _todos = todos ?? TodoGenerator(),
       super(AskAiInitial());
 
+  void attachEngineGate({
+    required Future<bool> Function(String reason) ensure,
+    required Future<bool> Function(String reason) choose,
+  }) {
+    _ensureEngine = ensure;
+    _chooseEngine = choose;
+  }
+
+  void detachEngineGate() {
+    _ensureEngine = null;
+    _chooseEngine = null;
+  }
+
   List<ChatMessage> get messages => List.unmodifiable(_messages);
 
-  void _emit({bool searching = false, AskProgress? progress}) {
+  void _emit({
+    bool searching = false,
+    AskProgress? progress,
+    String? awaitingEngine,
+  }) {
     if (isClosed) return;
     emit(
       AskAiMessageReceived(
         messages: List.from(_messages),
         isSearching: searching,
         progress: progress,
+        awaitingEngine: awaitingEngine,
       ),
     );
+  }
+
+  /// Whether Echo can write for [reason], asking the owner first if nothing
+  /// is set yet. Without a gate attached it can.
+  Future<bool> _canWrite(String reason) async {
+    final ensure = _ensureEngine;
+    if (ensure == null) return true;
+    if (await EngineGate.current() != null) return true;
+    if (await EngineGate.willAsk(reason)) {
+      _emit(searching: true, awaitingEngine: reason);
+    }
+    return ensure(reason);
   }
 
   /// The filming build: a scripted answer, found and streamed in the same
@@ -123,6 +157,11 @@ class AskAiCubit extends Cubit<AskAiState> {
 
     if (kEchoDemo) return _demoAnswer(text);
 
+    await _answer(text);
+  }
+
+  /// Answers [text], whose question is already in the chat.
+  Future<void> _answer(String text) async {
     // Index of the echo placeholder for THIS request. Captured once so that
     // streaming callbacks always write to their own message even if the list
     // grows from a later request (appends never shift earlier indices).
@@ -143,6 +182,10 @@ class AskAiCubit extends Cubit<AskAiState> {
       // questions to answer.
       final intent = parseIntent(text, replyCandidates(allNotifications));
       if (await _act(intent)) return;
+
+      // Asked here, once it's clear this is a question to answer.
+      final canWrite = await _canWrite('ask');
+      _emit(searching: true);
 
       final now = DateTime.now();
       final smallTalk = isSmallTalk(text);
@@ -193,6 +236,18 @@ class AskAiCubit extends Cubit<AskAiState> {
       if (ragSources.isEmpty && followUp) {
         final ids = previous!.sourceIds.toSet();
         ragSources = allNotifications.where((e) => ids.contains(e.id)).toList();
+      }
+
+      // Nothing to write with: show what matched, as it is.
+      if (!canWrite) {
+        await _showSearch(
+          text,
+          ragSources,
+          checked: allNotifications.length,
+          smallTalk: smallTalk,
+          allNotifications: allNotifications,
+        );
+        return;
       }
 
       // No real match on an actual lookup question: don't hand a small local
@@ -271,7 +326,7 @@ class AskAiCubit extends Cubit<AskAiState> {
         _emit(progress: _progress(reading, ragSources.length));
       }
       final finished = _messages[echoIndex].copyWith(
-        text: _withoutChatTokens(answer.toString()),
+        text: withoutChatTokens(answer.toString()),
       );
       _messages[echoIndex] = finished.copyWith(
         isGenerating: false,
@@ -323,92 +378,25 @@ class AskAiCubit extends Cubit<AskAiState> {
     required String? history,
     required DateTime now,
   }) async* {
-    final isOfflineEngine = prefs.getBool('is_offline_engine') ?? true;
-    final geminiApiKey = prefs.getString('gemini_api_key') ?? '';
-    final prompt = buildAskAiQwenPrompt(
-      question,
-      context,
-      userName,
-      now: now,
-      history: history,
-    );
-
-    // Phone-first, computer-optional — same bounded reachability check as
-    // the briefing cubit; falls straight through to on-device/Gemini if no
-    // desktop engine answers in time. Desktop builds never offload to
-    // another desktop engine.
-    final preferDesktopEngine =
-        !(Platform.isMacOS || Platform.isWindows) &&
-        (prefs.getBool('prefer_desktop_engine') ?? false);
-    if (preferDesktopEngine) {
-      final host = await DesktopEngineClient.discoverHost(
-        cachedHost: prefs.getString('desktop_engine_host'),
-      );
-      if (host != null) {
-        await prefs.setString('desktop_engine_host', host);
-        yield* DesktopEngineClient.generateStream(
-          host: host,
-          endpoint: 'ask',
-          prompt: prompt,
-        );
-        return;
-      }
-    }
-
-    if (!isOfflineEngine && geminiApiKey.isNotEmpty) {
-      // Gemini gets a real system instruction and a plain user turn, not
-      // the offline model's chat template.
-      await for (final response in GeminiService.instance.generateStream(
-        geminiApiKey,
-        buildAskAiUserMessage(question, context, history: history),
-        systemInstruction: getAskAiSystemInstruction(userName, now: now),
-      )) {
-        final chunk = response.text ?? '';
-        if (chunk.isNotEmpty) yield chunk;
-      }
+    final route = await currentWritingRoute(prefs);
+    if (route is NoWritingRoute) {
+      yield route.computerWanted
+          ? "I can't reach your computer right now. Make sure it's awake and "
+                "on the same Wi-Fi, then ask again."
+          : "The on-device model isn't installed. Download it in Settings, "
+                'or switch to the cloud engine to use Ask Echo without it.';
       return;
     }
-
-    final modelPath = await createOfflineModelRepository()
-        .downloadedPathOrNull();
-    if (modelPath == null) {
-      yield "The on-device model isn't installed. Download it in Settings, "
-          'or switch to the cloud engine to use Ask Echo without it.';
-      return;
-    }
-    final deltas = StreamController<String>();
-    var sent = 0;
-    _activeRequestId = await fllamaInference(
-      FllamaInferenceRequest(
-        // fllama splits the context across parallel slots, so the usable
-        // window is only contextSize / n_parallel. 16384 keeps the usable
-        // slot at ~2048+ tokens, and keeping it identical to the briefing
-        // request lets the loaded model be reused instead of reloaded when
-        // switching between the two.
-        contextSize: 16384,
-        input: prompt,
-        maxTokens: 500,
-        modelPath: modelPath,
-        numGpuLayers: 99,
-        numThreads: 4,
-        temperature: 0.3,
-        penaltyFrequency: 0.0,
-        penaltyRepeat: 1.1,
-        topP: 0.9,
+    yield* writeWith(
+      route,
+      WritingPrompt(
+        system: getAskAiSystemInstruction(userName, now: now),
+        user: buildAskAiUserMessage(question, context, history: history),
       ),
-      (cumulative, openaiJson, isDone) {
-        if (deltas.isClosed) return;
-        if (cumulative.length > sent) {
-          deltas.add(cumulative.substring(sent));
-          sent = cumulative.length;
-        }
-        if (isDone) {
-          _activeRequestId = null;
-          deltas.close();
-        }
-      },
+      maxTokens: 500,
+      temperature: 0.3,
+      cancel: _activeWrite = WritingCancel(),
     );
-    yield* deltas.stream;
   }
 
   static AskProgress? _progress(int? reading, [int? found]) =>
@@ -431,7 +419,9 @@ class AskAiCubit extends Cubit<AskAiState> {
   int? _lastAnswerIndex() {
     for (var i = _messages.length - 1; i >= 0; i--) {
       final m = _messages[i];
-      if (!m.isUser && m.kind == MessageKind.text && m.ragSources.isNotEmpty) {
+      if (!m.isUser &&
+          (m.kind == MessageKind.text || m.kind == MessageKind.search) &&
+          m.ragSources.isNotEmpty) {
         return i;
       }
     }
@@ -477,8 +467,45 @@ class AskAiCubit extends Cubit<AskAiState> {
   }
 
   /// Drafts a reply to [to]: from the owner's own words ([gist]) when given,
-  /// otherwise a suggestion.
+  /// otherwise a suggestion, which needs an engine.
   Future<void> draftReply(RawData to, {String? gist}) async {
+    if (gist == null && !await _canWrite('draft')) {
+      _messages.add(
+        ChatMessage(
+          sender: 'echo',
+          text: '',
+          kind: MessageKind.gate,
+          replyTo: to,
+        ),
+      );
+      _emit();
+      return;
+    }
+    _emit();
+    await _writeDraft(to, gist: gist);
+  }
+
+  /// Under a gate card: choose an engine, then draft the reply it was for.
+  Future<void> chooseEngineForDraft(int index) async {
+    final to = _messages[index].replyTo;
+    final choose = _chooseEngine;
+    if (to == null || choose == null) return;
+    if (!await choose('draft')) return;
+    _messages.removeAt(index);
+    _emit();
+    await _writeDraft(to);
+  }
+
+  /// Under a gate card: an empty draft to type into, no engine needed.
+  Future<void> writeDraftMyself(int index) async {
+    final to = _messages[index].replyTo;
+    if (to == null) return;
+    _messages.removeAt(index);
+    _emit();
+    await _writeDraft(to);
+  }
+
+  Future<void> _writeDraft(RawData to, {String? gist}) async {
     final route = await ReplySender.routeFor(to);
     _messages.add(
       ChatMessage(
@@ -584,6 +611,51 @@ class AskAiCubit extends Cubit<AskAiState> {
     _emit();
   }
 
+  // ── Search-only ──────────────────────────────────────────────────────────
+
+  /// Shows the messages that matched, for when nothing can write sentences.
+  Future<void> _showSearch(
+    String question,
+    List<RawData> matches, {
+    required int checked,
+    required bool smallTalk,
+    required List<RawData> allNotifications,
+  }) async {
+    var note = '';
+    if (matches.isEmpty) {
+      final prefs = await SharedPreferences.getInstance();
+      final name = prefs.getString('user_name') ?? 'sir';
+      note = smallTalk
+          ? "I can search your messages, but chatting back needs a way to write."
+          : _noMatchFallback(name, allNotifications);
+    }
+    _messages.add(
+      ChatMessage(
+        sender: 'echo',
+        text: note,
+        kind: MessageKind.search,
+        ragSources: matches,
+        checked: checked,
+        question: question,
+      ),
+    );
+    _emit();
+  }
+
+  /// "Get a written answer instead": choose an engine if needed, then answer
+  /// the same question in sentences.
+  Future<void> writeAnswer(int index) async {
+    final m = _messages[index];
+    final question = m.question;
+    final choose = _chooseEngine;
+    if (question.isEmpty || choose == null) return;
+    if (await EngineGate.current() == null && !await choose('ask')) return;
+    if (isClosed) return;
+    _messages[index] = m.copyWith(question: '');
+    _emit(searching: true);
+    await _answer(question);
+  }
+
   // ── Helpers ──────────────────────────────────────────────────────────────
 
   /// A dead-end "I don't know" helps no one — point $name at what's actually
@@ -619,17 +691,9 @@ class AskAiCubit extends Cubit<AskAiState> {
   static String _clip(String s, int max) =>
       s.length <= max ? s : '${s.substring(0, max).trimRight()}…';
 
-  /// Chat-template tokens a local model sometimes leaves in its output.
-  static String _withoutChatTokens(String text) => text
-      .replaceAll(RegExp(r'<\|im_start\|>.*', dotAll: true), '')
-      .replaceAll(RegExp(r'<\|[^|]*\|>'), '')
-      .trim();
-
   void cancelInference() {
-    if (_activeRequestId != null) {
-      fllamaCancelInference(_activeRequestId!);
-      _activeRequestId = null;
-    }
+    _activeWrite?.cancel();
+    _activeWrite = null;
   }
 
   @override

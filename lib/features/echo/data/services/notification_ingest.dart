@@ -5,14 +5,16 @@ import 'package:echo_native/echo_native.dart';
 import 'package:flutter/foundation.dart';
 import 'package:isar/isar.dart';
 import 'package:project_echo/core/services/app_icon_service.dart';
+import 'package:project_echo/core/services/retention_settings.dart';
 import 'package:project_echo/features/echo/data/context/addressed.dart';
 import 'package:project_echo/features/echo/data/context/chat_context_store.dart';
 import 'package:project_echo/features/vault/data/daily_stats.dart';
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
 import 'package:project_echo/features/echo/data/datasources/tflite_embedding_service.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
-import 'package:project_echo/features/echo/data/relevance/briefing_selection.dart';
 import 'package:project_echo/features/echo/data/relevance/temporal_relevance.dart';
+import 'package:project_echo/features/history/data/history_store.dart';
+import 'package:project_echo/features/people/data/people_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Moves captured notifications and calendar events into Isar. Uses only the
@@ -20,8 +22,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// and in the background briefing alarm.
 ///
 /// Catching up after days closed is quick: the backlog is saved in one go,
-/// without embeddings, and what the Vault would delete anyway (more than a
-/// day old and about nothing still ahead) isn't saved at all. Embeddings are
+/// without embeddings, and what the cleanup would delete anyway (past the
+/// retention setting and about nothing still ahead) isn't saved at all. Embeddings are
 /// made afterwards, newest first ([EmbeddingBackfill]); until then search
 /// still finds a message by its words, sender and time.
 ///
@@ -168,7 +170,13 @@ class NotificationIngest {
     final myTurns = <({String thread, DateTime at, String text})>[];
     final engagements = <({String thread, String action, DateTime at})>[];
     final notifications = <Map<String, dynamic>>[];
+    final removals = <ShadeRemoval>[];
     for (final json in ordered) {
+      if (json['kind'] == 'removal') {
+        final removal = ShadeRemoval.fromJson(json);
+        if (removal != null) removals.add(removal);
+        continue;
+      }
       final thread = json['thread'] as String?;
       if (json['kind'] == 'engagement') {
         if (thread != null) {
@@ -198,7 +206,14 @@ class NotificationIngest {
     await ChatContextStore.learnSelfNames(selfNames);
     await ChatContextStore.recordMyTurns(myTurns);
     await ChatContextStore.recordEngagements(engagements);
-    if (notifications.isEmpty) return 0;
+    await PeopleStore.recordSignals(
+      myTurns: myTurns,
+      engagements: engagements,
+    );
+    if (notifications.isEmpty) {
+      await HistoryStore.applyRemovals(await IsarDataSource.instance, removals);
+      return 0;
+    }
 
     // What every notification needs, read once.
     final prefs = await SharedPreferences.getInstance();
@@ -211,8 +226,10 @@ class NotificationIngest {
     );
     final turns = await ChatContextStore.loadMyTurns();
     final isar = await IsarDataSource.instance;
+    final retentionDays = await RetentionSettings.days();
 
     final keep = <RawData>[];
+    final heard = <RawData>[];
     final counted = <({String source, DateTime at})>[];
     final packages = <String, Map<String, int>>{};
     // Per group: messages already saved after the owner last spoke there,
@@ -271,15 +288,23 @@ class NotificationIngest {
         ..threadTitle = json['threadTitle'] as String?
         ..isGroup = isGroup
         ..addressed = addressed?.name
-        ..captureKey = json['captureKey'] as String?;
+        ..captureKey = json['captureKey'] as String?
+        ..noticeKey = json['noticeKey'] as String?
+        ..heldAt = json['heldAt'] is int
+            ? DateTime.fromMillisecondsSinceEpoch(json['heldAt'] as int)
+            : null;
 
-      // The Vault's week keeps only these numbers, past the Vault's own
-      // 24-hour life of a notification, so everything is counted…
+      // The Vault's week keeps only these numbers, past a notification's
+      // own life, so everything is counted…
       counted.add((source: entry.source, at: time));
+      heard.add(entry);
       // …but what the Vault would delete straight away isn't saved.
-      if (_stale(entry, at)) continue;
+      if (IsarDataSource.isExpired(entry, at, retentionDays)) continue;
       keep.add(entry);
     }
+
+    // Before saving: the first tally reads what's already saved.
+    await PeopleStore.recordAll(heard);
 
     var saved = 0;
     for (var i = 0; i < keep.length; i += _chunk) {
@@ -290,6 +315,8 @@ class NotificationIngest {
         saved += fresh.length;
       });
     }
+    // After the saving: a swipe in this round is about a message saved in it.
+    await HistoryStore.applyRemovals(isar, removals);
     await DailyStats.countAll(counted);
     await AppIconService.rememberAll(packages);
     debugPrint(
@@ -327,12 +354,6 @@ class NotificationIngest {
   /// Saved per Isar transaction.
   static const _chunk = 200;
 
-  /// What [IsarDataSource.deleteOldNotifications] would remove at once: more
-  /// than a day old and about nothing still ahead.
-  static bool _stale(RawData entry, DateTime now) =>
-      entry.timestamp.isBefore(now.subtract(const Duration(hours: 24))) &&
-      !isStillRelevant(entry, now);
-
   static DateTime _time(Map<String, dynamic> json) =>
       DateTime.fromMillisecondsSinceEpoch(
         json['timestamp'] as int? ?? DateTime.now().millisecondsSinceEpoch,
@@ -351,6 +372,7 @@ class NotificationIngest {
         .filter()
         .threadEqualTo(thread)
         .timestampGreaterThan(spokeAt)
+        .sentIsNull()
         .count();
   }
 }

@@ -12,6 +12,7 @@ import 'package:project_echo/features/settings/presentation/widgets/desktop_engi
 import 'package:project_echo/features/settings/presentation/widgets/ai_engine_section.dart';
 import 'package:project_echo/features/settings/presentation/widgets/debug_tools.dart';
 import 'package:project_echo/features/settings/presentation/widgets/analytics_toggle_section.dart';
+import 'package:project_echo/features/settings/presentation/screens/phone_settings_screen.dart';
 import 'package:project_echo/core/presentation/animations/app_motion.dart';
 import 'package:project_echo/core/presentation/animations/fade_slide_in.dart';
 import 'package:project_echo/core/presentation/animations/page_transitions.dart';
@@ -24,8 +25,9 @@ import 'package:material_symbols_icons/symbols.dart';
 
 bool get _isDesktop => Platform.isMacOS || Platform.isWindows;
 
-/// The Profile tab: your streak calendar up top, then all app settings merged
-/// into the same screen (appearance, voice, tone, AI engine, schedule, debug).
+/// Settings: the phone's hub of rows, or on the computer all the settings on
+/// one screen under the Profile (appearance, voice, tone, AI engine, schedule,
+/// debug).
 class SettingsScreen extends StatelessWidget {
   /// Shown up top in place of the streak calendar, with the settings under
   /// a "Settings" heading: the computer's Profile (see DesktopProfile).
@@ -35,6 +37,7 @@ class SettingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (profile == null && !_isDesktop) return const PhoneSettingsScreen();
     return _ProfileView(profile: profile);
   }
 }

@@ -18,7 +18,8 @@ class TodoItem {
   /// Minutes into [day] used for ordering; items without a time sort last.
   final int sort;
 
-  /// Where it came from, shown under the title and when expanded.
+  /// Where it came from, shown under the title and when expanded. For a group
+  /// message this is "Rahul · College gang" (see [asker] and [chat]).
   final String sender;
   final String app;
   final String sourceText;
@@ -58,6 +59,20 @@ class TodoItem {
   });
 
   static const noTimeSort = 24 * 60;
+
+  /// Typed in by the owner, so nobody is waiting on it.
+  bool get typed => sourceKey.startsWith('you|');
+
+  /// The person who asked, without the group they asked in.
+  String get asker => sender.split(' · ').first.trim();
+
+  /// The group it was asked in, if it was.
+  String? get chat {
+    final at = sender.indexOf(' · ');
+    if (at < 0) return null;
+    final name = sender.substring(at + 3).trim();
+    return name.isEmpty ? null : name;
+  }
 
   /// When it starts, if it names a time.
   DateTime? get startsAt => time == null ? null : startOfTime(time!, day);
@@ -125,22 +140,24 @@ class TodoItem {
   };
 
   static TodoItem fromJson(Map<String, dynamic> j) => TodoItem(
-    id: j['id'] as int,
+    id: (j['id'] as num).toInt(),
     title: j['title'] as String,
     day: parseDayKey(j['day'] as String),
     time: j['time'] as String?,
-    sort: (j['sort'] as int?) ?? noTimeSort,
+    sort: (j['sort'] as num?)?.toInt() ?? noTimeSort,
     sender: (j['sender'] as String?) ?? '',
     app: (j['app'] as String?) ?? '',
     sourceText: (j['source'] as String?) ?? '',
     sourceKey: (j['key'] as String?) ?? '',
     done: (j['done'] as bool?) ?? false,
-    doneAt: j['doneAt'] is int
-        ? DateTime.fromMillisecondsSinceEpoch(j['doneAt'] as int)
+    doneAt: j['doneAt'] is num
+        ? DateTime.fromMillisecondsSinceEpoch((j['doneAt'] as num).toInt())
         : null,
     isNew: (j['new'] as bool?) ?? false,
     movedFrom: j['movedFrom'] as String?,
-    created: DateTime.fromMillisecondsSinceEpoch((j['created'] as int?) ?? 0),
+    created: DateTime.fromMillisecondsSinceEpoch(
+      (j['created'] as num?)?.toInt() ?? 0,
+    ),
   );
 }
 

@@ -14,4 +14,12 @@
     <color name="todo_widget_divider">#1F5A5A5A</color>
     <color name="todo_widget_text_done">#731E1E1E</color>
     <color name="todo_widget_green_done">#7349884F</color>
+
+    <!-- Ageing rings: fresh, since yesterday, two days or more. -->
+    <color name="widget_age_fresh">#49884F</color>
+    <color name="widget_age_yesterday">#C9962E</color>
+    <color name="widget_age_old">#C0503B</color>
+    <color name="widget_day_future">#EAE6DD</color>
+    <color name="widget_day_missed">#FBDCD4</color>
+    <color name="widget_day_missed_mark">#C0503B</color>
 </resources>

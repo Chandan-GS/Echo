@@ -3,6 +3,7 @@ import 'package:project_echo/features/echo/data/context/chat_context_store.dart'
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:project_echo/features/echo/data/relevance/temporal_relevance.dart';
+import 'package:project_echo/features/echo/data/waiting/wait_intent.dart';
 import 'package:project_echo/features/todo/data/todo_planner.dart';
 import 'package:project_echo/features/todo/data/todo_store.dart';
 import 'package:project_echo/features/vault/data/app_access.dart';
@@ -23,10 +24,18 @@ class HomeFeed {
   /// Groups with the most messages not meant for the owner.
   final List<BusyGroup> busyGroups;
 
+  /// Every group busy today, muted or not, busiest first.
+  final List<BusyGroup> allGroups;
+
+  /// Direct chats where the owner asked and hasn't heard back, oldest first.
+  final List<OwedToYou> owed;
+
   const HomeFeed({
     this.needsYou = const [],
     this.promises = const [],
     this.busyGroups = const [],
+    this.allGroups = const [],
+    this.owed = const [],
   });
 
   static const empty = HomeFeed();
@@ -40,14 +49,23 @@ class HomeFeed {
 
   static const _doneKey = 'home_promises_done_v1';
 
-  static Future<HomeFeed> load(DateTime now) async {
-    final entries = await withoutExcludedSources(
-      await IsarDataSource.getAllEntries(),
-    );
+  /// Today shows at most this many.
+  static const owedShown = 3;
+
+  /// Asked this recently, there's been no time to answer.
+  static const owedAfter = Duration(hours: 3);
+
+  /// Asked longer ago than this, it's stopped being owed.
+  static const owedWithin = Duration(days: 7);
+
+  static Future<HomeFeed> load(DateTime now, {List<RawData>? entries}) async {
+    final kept =
+        entries ??
+        await withoutExcludedSources(await IsarDataSource.getAllEntries());
     final (todos, _) = await TodoStore().load();
     final prefs = await SharedPreferences.getInstance();
     return summarise(
-      entries,
+      kept,
       await ChatContextStore.loadMyTurns(),
       now,
       skip: {
@@ -87,11 +105,16 @@ class HomeFeed {
     final waiting = <String, RawData>{};
     final answered = <String>{};
     final groups = <String, List<RawData>>{};
+    final allGroups = <String, List<RawData>>{};
     final chats = <String, RawData>{};
     for (final e in fresh) {
       if (e.thread != null) chats.putIfAbsent(e.thread!, () => e);
       final addressed = Addressed.parse(e.addressed);
       if (addressed == null) continue;
+      final title = e.threadTitle;
+      if (e.isGroup && title != null && title.isNotEmpty) {
+        (allGroups[title] ??= []).add(e);
+      }
       if (addressed == Addressed.group) {
         final name = e.threadTitle;
         if (name != null && name.isNotEmpty) {
@@ -106,7 +129,11 @@ class HomeFeed {
       final mine = turns.lastBefore(e.thread, now);
       if (mine != null && mine.at.isAfter(e.timestamp)) {
         answered.add(chat);
-      } else {
+      } else if (classifyWait(
+        e.content,
+        isGroup: e.isGroup,
+        addressed: e.addressed,
+      ).needsReply) {
         waiting[chat] = e;
       }
     }
@@ -137,12 +164,93 @@ class HomeFeed {
               : b.latest.timestamp.compareTo(a.latest.timestamp);
         });
 
+    final everyGroup =
+        [
+          for (final MapEntry(key: name, value: list) in allGroups.entries)
+            if (list.length >= busyAt)
+              BusyGroup(
+                name: name,
+                count: list.length,
+                messages: list,
+                needs: _needsOwner(list, turns, now),
+              ),
+        ]..sort((a, b) {
+          final byCount = b.count.compareTo(a.count);
+          return byCount != 0
+              ? byCount
+              : b.latest.timestamp.compareTo(a.latest.timestamp);
+        });
+
     return HomeFeed(
       needsYou: waiting.values.toList(),
       promises: promises.take(promisesShown).toList(),
       busyGroups: busy.take(groupsShown).toList(),
+      allGroups: everyGroup,
+      owed: _owed(entries, turns, now),
     );
   }
+
+  /// A message in the group meant for the owner, that they haven't answered.
+  static bool _needsOwner(
+    List<RawData> messages,
+    MyTurns turns,
+    DateTime now,
+  ) {
+    for (final e in messages) {
+      final addressed = Addressed.parse(e.addressed);
+      if (addressed != Addressed.mentioned && addressed != Addressed.reply) {
+        continue;
+      }
+      final mine = turns.lastBefore(e.thread, now);
+      if (mine != null && mine.at.isAfter(e.timestamp)) continue;
+      final reason = classifyWait(
+        e.content,
+        isGroup: true,
+        addressed: e.addressed,
+      );
+      if (reason.needsReply && reason.kind != WaitKind.unsure) return true;
+    }
+    return false;
+  }
+
+  /// One-to-one chats whose last word is the owner asking something.
+  static List<OwedToYou> _owed(
+    Iterable<RawData> entries,
+    MyTurns turns,
+    DateTime now,
+  ) {
+    final latest = <String, RawData>{};
+    for (final e in entries) {
+      final thread = e.thread;
+      if (thread == null || e.isGroup || Addressed.parse(e.addressed) == null) {
+        continue;
+      }
+      final seen = latest[thread];
+      if (seen == null || e.timestamp.isAfter(seen.timestamp)) {
+        latest[thread] = e;
+      }
+    }
+    final owed = <OwedToYou>[];
+    for (final MapEntry(key: thread, value: chat) in latest.entries) {
+      final turn = turns.lastBefore(thread, now);
+      if (turn == null || !turn.at.isAfter(chat.timestamp)) continue;
+      final waited = now.difference(turn.at);
+      if (waited < owedAfter || waited > owedWithin) continue;
+      final asked = classifyWait(turn.text, isGroup: false).kind;
+      if (asked == WaitKind.unsure || !_asking.contains(asked)) continue;
+      owed.add(OwedToYou(chat: chat, turn: turn));
+    }
+    owed.sort((a, b) => a.turn.at.compareTo(b.turn.at));
+    return owed.take(owedShown).toList();
+  }
+
+  static const _asking = {
+    WaitKind.question,
+    WaitKind.request,
+    WaitKind.call,
+    WaitKind.invite,
+    WaitKind.deadline,
+  };
 }
 
 /// "I'll send it by 5", "will do tonight", "let me call you at 9".
@@ -178,7 +286,7 @@ class Promise {
   String get key => sourceKeyOf(entry);
 }
 
-/// A group that was busy today without the owner.
+/// A group that was busy today.
 class BusyGroup {
   final String name;
   final int count;
@@ -186,11 +294,26 @@ class BusyGroup {
   /// Today's messages in it, newest first.
   final List<RawData> messages;
 
+  /// Someone in it asked the owner something they haven't answered.
+  final bool needs;
+
   const BusyGroup({
     required this.name,
     required this.count,
     required this.messages,
+    this.needs = false,
   });
 
   RawData get latest => messages.first;
+}
+
+/// Something the owner asked in a chat that hasn't been answered.
+class OwedToYou {
+  /// The chat's latest message, for its name and app.
+  final RawData chat;
+  final MyTurn turn;
+
+  const OwedToYou({required this.chat, required this.turn});
+
+  String get who => chat.sender;
 }

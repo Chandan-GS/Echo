@@ -6,6 +6,8 @@ import 'package:project_echo/core/services/widget_refresh_service.dart';
 import 'package:project_echo/features/echo/presentation/cubit/briefing_cubit.dart';
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
 import 'package:project_echo/features/echo/data/services/notification_ingest.dart';
+import 'package:project_echo/features/settings/data/evening_wrap_service.dart';
+import 'package:project_echo/features/settings/data/schedule_prefs.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
@@ -18,6 +20,9 @@ Future<void> alarmCallback() async {
     final prefs = await SharedPreferences.getInstance();
     final today = DateTime.now().toIso8601String().split('T').first;
     final now = DateTime.now();
+
+    // Turned off after this alarm was set.
+    if (prefs.getBool(briefingEnabledKey) == false) return;
 
     // We check which schedule this alarm belongs to
     final briefingTimes = prefs.getStringList('briefing_times') ?? ['07:00'];
@@ -95,6 +100,32 @@ Future<void> alarmCallback() async {
   }
 }
 
+/// The evening wrap: who's still waiting and tomorrow's to-dos, built on the
+/// phone. Sets itself for tomorrow whether or not tonight's went out.
+@pragma('vm:entry-point')
+Future<void> eveningWrapAlarmCallback() async {
+  try {
+    WidgetsFlutterBinding.ensureInitialized();
+    final prefs = await SharedPreferences.getInstance();
+    try {
+      if (prefs.getBool(eveningWrapEnabledKey) ?? true) {
+        await IsarDataSource.instance;
+        await NotificationIngest.drainBuffer();
+        await EveningWrapService.post(DateTime.now());
+      }
+    } finally {
+      await ScheduleService.updateSchedules(
+        prefs.getStringList('briefing_times') ?? ['07:00'],
+      );
+    }
+  } catch (e) {
+    debugPrint('Evening wrap alarm failed: $e');
+  } finally {
+    // Same as the briefing alarm: this isolate must let go of Isar.
+    await IsarDataSource.close();
+  }
+}
+
 // Keep the old workmanager logic for iOS fallback
 @pragma('vm:entry-point')
 void callbackDispatcher() {
@@ -135,6 +166,8 @@ class ScheduleService {
   static Future<void> _update(List<String> times) async {
     if (Platform.isAndroid) {
       final prefs = await SharedPreferences.getInstance();
+      // Off, the times are kept but nothing is set for them.
+      if (prefs.getBool(briefingEnabledKey) == false) times = const [];
       final ids = {
         for (final t in times)
           if (parseBriefingTime(t) case final p?) p.hour * 100 + p.minute,
@@ -207,7 +240,13 @@ class ScheduleService {
           earliest.millisecondsSinceEpoch,
         );
         await WidgetRefreshService.refresh();
+      } else {
+        // Nothing scheduled: no countdown to a briefing that won't come.
+        await prefs.remove('next_briefing_epoch_ms');
+        await WidgetRefreshService.refresh();
       }
+
+      await _scheduleEveningWrap(prefs);
     } else if (Platform.isIOS) {
       // iOS uses generic periodic task, exact scheduling is not possible
       Workmanager().cancelAll();
@@ -223,5 +262,48 @@ class ScheduleService {
       );
     }
     // macOS/Windows: no-op — see initialize() above.
+  }
+
+  /// Clear of the briefings' hour*100+minute ids.
+  static const _eveningWrapAlarmId = 91000;
+
+  /// Sets the wrap for its next occurrence, or cancels it when it's off.
+  static Future<void> _scheduleEveningWrap(SharedPreferences prefs) async {
+    await AndroidAlarmManager.cancel(_eveningWrapAlarmId);
+    if (!(prefs.getBool(eveningWrapEnabledKey) ?? true)) return;
+    final parsed = parseBriefingTime(
+      eveningWrapTimeOrDefault(prefs.getString(eveningWrapTimeKey)),
+    );
+    if (parsed == null) return;
+    final now = DateTime.now();
+    var at = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      parsed.hour,
+      parsed.minute,
+    );
+    if (!at.isAfter(now)) {
+      at = DateTime(
+        now.year,
+        now.month,
+        now.day + 1,
+        parsed.hour,
+        parsed.minute,
+      );
+    }
+    try {
+      await AndroidAlarmManager.oneShotAt(
+        at,
+        _eveningWrapAlarmId,
+        eveningWrapAlarmCallback,
+        exact: false,
+        wakeup: true,
+        allowWhileIdle: true,
+        rescheduleOnReboot: true,
+      );
+    } catch (e) {
+      debugPrint('Failed to schedule the evening wrap: $e');
+    }
   }
 }

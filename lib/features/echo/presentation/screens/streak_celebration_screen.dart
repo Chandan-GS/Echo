@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/core/presentation/widgets/echo_button.dart';
+import 'package:project_echo/features/echo/presentation/widgets/echo_mascot.dart';
 import 'package:project_echo/features/echo/presentation/widgets/streak_flame.dart';
 
 /// A full-screen, immersive celebration shown the moment the user's streak
@@ -22,6 +23,25 @@ class StreakCelebrationScreen extends StatefulWidget {
 
 class _StreakCelebrationScreenState extends State<StreakCelebrationScreen>
     with TickerProviderStateMixin {
+  /// Echo's line under the number. About people, and silent on any miss.
+  static String _line(int days) {
+    const words = [
+      'One',
+      'Two',
+      'Three',
+      'Four',
+      'Five',
+      'Six',
+      'Seven',
+      'Eight',
+      'Nine',
+      'Ten',
+    ];
+    final count = days >= 1 && days <= 10 ? words[days - 1] : '$days';
+    return '$count day${days == 1 ? '' : 's'} in a row with nobody left '
+        "waiting. I'm proud of you.";
+  }
+
   late final AnimationController _entrance = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1100),
@@ -138,14 +158,22 @@ class _StreakCelebrationScreenState extends State<StreakCelebrationScreen>
 
                   FadeTransition(
                     opacity: _fadeIn,
-                    child: Text(
-                      "You're keeping the habit alive. Echo's proud of you.",
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.nunito(
-                        fontSize: 16,
-                        color: Colors.white.withValues(alpha: 0.75),
-                        height: 1.4,
-                      ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const EchoMascot(state: EchoState.happy, size: 40),
+                        const SizedBox(width: 10),
+                        Flexible(
+                          child: Text(
+                            _line(widget.days),
+                            style: GoogleFonts.nunito(
+                              fontSize: 16,
+                              color: Colors.white.withValues(alpha: 0.75),
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
 

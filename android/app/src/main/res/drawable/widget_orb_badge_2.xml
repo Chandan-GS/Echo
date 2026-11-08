@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The count on the pearl, ringed by how long the oldest has waited. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/todo_widget_bg" />
+    <stroke android:width="2dp" android:color="@color/widget_age_old" />
+    <corners android:radius="13dp" />
+</shape>

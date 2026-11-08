@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:project_echo/core/services/analytics_service.dart';
+import 'package:project_echo/features/settings/data/schedule_prefs.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'settings_state.dart';
 import 'package:project_echo/core/services/schedule_service.dart';
@@ -36,6 +37,11 @@ class SettingsCubit extends Cubit<SettingsState> {
       final desktopEngineName = prefs.getString('desktop_engine_name');
       final runDesktopEngineHere =
           prefs.getBool('run_desktop_engine_here') ?? false;
+      final briefingEnabled = prefs.getBool(briefingEnabledKey) ?? true;
+      final eveningWrapEnabled = prefs.getBool(eveningWrapEnabledKey) ?? true;
+      final eveningWrapTime = eveningWrapTimeOrDefault(
+        prefs.getString(eveningWrapTimeKey),
+      );
 
       emit(
         state.copyWith(
@@ -48,6 +54,9 @@ class SettingsCubit extends Cubit<SettingsState> {
           desktopEngineHost: desktopEngineHost,
           desktopEngineName: desktopEngineName,
           runDesktopEngineHere: runDesktopEngineHere,
+          briefingEnabled: briefingEnabled,
+          eveningWrapEnabled: eveningWrapEnabled,
+          eveningWrapTime: eveningWrapTime,
         ),
       );
 
@@ -120,6 +129,9 @@ class SettingsCubit extends Cubit<SettingsState> {
             ? null
             : state.desktopEngineName,
         runDesktopEngineHere: state.runDesktopEngineHere,
+        briefingEnabled: state.briefingEnabled,
+        eveningWrapEnabled: state.eveningWrapEnabled,
+        eveningWrapTime: state.eveningWrapTime,
       ),
     );
   }
@@ -194,5 +206,31 @@ class SettingsCubit extends Cubit<SettingsState> {
       await ScheduleService.updateSchedules(times);
       emit(state.copyWith(briefingTimes: times));
     }
+  }
+
+  /// The morning briefing's master switch. The times stay, so turning it
+  /// back on brings them back.
+  Future<void> setBriefingEnabled(bool on) async {
+    if (on) await NotifyPermission.askIfNeeded();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(briefingEnabledKey, on);
+    emit(state.copyWith(briefingEnabled: on));
+    await ScheduleService.updateSchedules(state.briefingTimes);
+  }
+
+  Future<void> setEveningWrapEnabled(bool on) async {
+    if (on) await NotifyPermission.askIfNeeded();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(eveningWrapEnabledKey, on);
+    emit(state.copyWith(eveningWrapEnabled: on));
+    await ScheduleService.updateSchedules(state.briefingTimes);
+  }
+
+  /// Moves the evening wrap to [time] ("HH:mm") and reschedules it.
+  Future<void> setEveningWrapTime(String time) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(eveningWrapTimeKey, time);
+    emit(state.copyWith(eveningWrapTime: time));
+    await ScheduleService.updateSchedules(state.briefingTimes);
   }
 }

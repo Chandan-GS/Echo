@@ -5,9 +5,12 @@ import 'package:project_echo/core/presentation/launch_wake.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:project_echo/features/echo/presentation/cubit/briefing_cubit.dart';
 import 'package:project_echo/features/onboarding/presentation/cubit/on_boarding_cubit.dart';
+import 'package:project_echo/features/todo/presentation/cubit/todo_cubit.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:project_echo/core/routes/app_router.dart';
+import 'package:project_echo/features/widgets/widget_deep_links.dart';
 import 'package:project_echo/features/settings/presentation/cubit/settings_cubit.dart';
 import 'package:project_echo/features/settings/presentation/cubit/settings_state.dart';
 import 'package:go_router/go_router.dart';
@@ -61,12 +64,14 @@ void main() async {
   // (covers taps while the app is alive), and detect a cold start caused by
   // tapping the notification body itself (the background-action case is
   // handled separately by `notificationTapBackgroundHandler`) — either way,
-  // marks today's briefing to autoplay once EchoHomeScreen loads it.
+  // marks today's briefing to autoplay once TodayScreen loads it.
   final localNotifications = LocalNotificationService();
   await localNotifications.init();
   final launchDetails = await localNotifications.flutterLocalNotificationsPlugin
       .getNotificationAppLaunchDetails();
-  if (launchDetails?.didNotificationLaunchApp ?? false) {
+  // The evening wrap's notification opens Echo quietly.
+  if ((launchDetails?.didNotificationLaunchApp ?? false) &&
+      launchDetails?.notificationResponse?.payload != eveningWrapPayload) {
     await prefs.setBool('pending_autoplay', true);
   }
 
@@ -141,6 +146,7 @@ class Echo extends StatelessWidget {
 
   Echo({super.key, required this.isOnboardingFinished}) {
     _router = createRouter(isOnboardingFinished);
+    WidgetDeepLinks.attach(_router, isOnboardingFinished: isOnboardingFinished);
   }
 
   @override
@@ -152,6 +158,10 @@ class Echo extends StatelessWidget {
               OnBoardingCubit(isFinished: isOnboardingFinished),
         ),
         BlocProvider(create: (context) => SettingsCubit()),
+        // Above the router so the tabs and the screens pushed over them
+        // share one: a briefing keeps generating whatever is on screen.
+        BlocProvider(create: (context) => BriefingCubit()),
+        BlocProvider(create: (context) => TodoCubit()),
       ],
       child: BlocBuilder<SettingsCubit, SettingsState>(
         builder: (context, state) {

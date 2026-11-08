@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="todo_widget_label">Echo To-do</string>
-    <string name="todo_widget_description">Today\'s to-dos from your briefing. Tick them off here.</string>
-    <string name="todo_orb_widget_label">Echo To-do Progress</string>
-    <string name="todo_orb_widget_description">Echo with today\'s progress and what\'s next.</string>
+    <string name="todo_widget_label">Next to-do</string>
+    <string name="todo_widget_description">The next thing you said you\'d do, and when. Tick it off right there.</string>
+    <string name="todo_orb_widget_label">Waiting on you</string>
+    <string name="todo_orb_widget_description">The people waiting on you, ringed by how long.</string>
+    <string name="echo_orb_widget_label">Echo</string>
+    <string name="echo_orb_widget_description">Just the pearl, with how many people are waiting.</string>
+    <string name="echo_today_widget_label">Today</string>
+    <string name="echo_today_widget_description">Who\'s waiting and what\'s due, with your week of briefings.</string>
 </resources>

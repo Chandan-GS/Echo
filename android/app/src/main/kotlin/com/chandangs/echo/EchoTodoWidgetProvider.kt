@@ -7,6 +7,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.text.SpannableString
@@ -20,10 +21,11 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * "Echo To-do": up to four of today's to-dos, unfinished first, which can be
- * ticked right in the widget. On Android 12+ each check is a real CheckBox, so
+ * "Next to-do": the next thing on today's list and when, ticked right in the
+ * widget. Sized up (including placements from before this was Next to-do) it
+ * shows today's list instead. On Android 12+ each check is a real CheckBox, so
  * the tick animates in place; the ticked item then holds its spot for a moment
- * before the list settles. Also handles ticks for the small progress widget.
+ * before the next one moves up.
  */
 class EchoTodoWidgetProvider : AppWidgetProvider() {
 
@@ -33,11 +35,19 @@ class EchoTodoWidgetProvider : AppWidgetProvider() {
         const val EXTRA_TODO_ID = "todo_id"
         private const val ROWS = 4
 
+        /** Below this it's the one-line card; at it and above, today's list. */
+        private const val LIST_MIN_HEIGHT_DP = 150
+
+        /** Below this there's no room for the line about where it came from. */
+        private const val SUB_MIN_HEIGHT_DP = 96
+
         /** How long a just-ticked item stays in place before the list re-sorts. */
         private const val SETTLE_MS = 1100L
 
         /** Let the check animation start before the title strikes through. */
         private const val STRIKE_MS = 240L
+
+        private const val WIDGET_REQUEST = 1_000_000
 
         private val rowIds = arrayOf(
             intArrayOf(R.id.todo_row1, R.id.todo_row1_check, R.id.todo_row1_title, R.id.todo_row1_time, 0),
@@ -58,18 +68,6 @@ class EchoTodoWidgetProvider : AppWidgetProvider() {
             }
         }
 
-        fun openApp(context: Context, requestCode: Int): PendingIntent {
-            val intent = Intent(context, MainActivity::class.java).apply {
-                action = Intent.ACTION_MAIN
-                addCategory(Intent.CATEGORY_LAUNCHER)
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            }
-            return PendingIntent.getActivity(
-                context, requestCode, intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-            )
-        }
-
         private fun toggleIntent(context: Context, requestCode: Int, todoId: Int): PendingIntent {
             val intent = Intent(context, EchoTodoWidgetProvider::class.java).apply {
                 action = ACTION_TOGGLE
@@ -83,27 +81,100 @@ class EchoTodoWidgetProvider : AppWidgetProvider() {
             )
         }
 
-        /**
-         * Sets a text colour from a colour *resource*, so the launcher resolves
-         * it in the current light / dark mode. A colour resolved here would be
-         * frozen at whatever mode the phone was in when the widget last drew
-         * (that's how text went invisible after switching modes). Android 12+
-         * can defer it to the launcher; older versions resolve it now.
-         */
-        private fun textColor(context: Context, views: RemoteViews, id: Int, colorRes: Int) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                views.setColor(id, "setTextColor", colorRes)
+        private fun render(context: Context, manager: AppWidgetManager, widgetId: Int, pinnedId: Int) {
+            val size = WidgetData.size(manager, widgetId, 250, 80)
+            if (size.heightDp >= LIST_MIN_HEIGHT_DP) {
+                renderList(context, manager, widgetId, pinnedId)
             } else {
-                views.setTextColor(id, context.getColor(colorRes))
+                renderNext(context, manager, widgetId, pinnedId, size)
             }
         }
 
-        private fun render(context: Context, manager: AppWidgetManager, widgetId: Int, pinnedId: Int) {
+        private fun bindCheck(views: RemoteViews, check: Int, done: Boolean, toggle: PendingIntent) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                views.setCompoundButtonChecked(check, done)
+                views.setOnCheckedChangeResponse(check, RemoteViews.RemoteResponse.fromPendingIntent(toggle))
+            } else {
+                views.setImageViewResource(check, if (done) R.drawable.todo_check_on else R.drawable.todo_check_off)
+                views.setOnClickPendingIntent(check, toggle)
+            }
+        }
+
+        private fun renderNext(
+            context: Context,
+            manager: AppWidgetManager,
+            widgetId: Int,
+            pinnedId: Int,
+            size: WidgetData.WidgetSize,
+        ) {
+            val views = RemoteViews(context.packageName, R.layout.widget_next_todo)
+            views.setOnClickPendingIntent(R.id.next_root, WidgetData.openRoute(context, WIDGET_REQUEST + widgetId, WidgetData.ROUTE_TODO))
+
+            val today = TodoWidgetData.today(context)
+            val tomorrow = TodoWidgetData.tomorrow(context)
+            // A just-ticked item keeps its place until the settle pass.
+            val next = today.firstOrNull { !it.done || it.id == pinnedId }
+
+            views.setViewVisibility(R.id.next_sub, View.GONE)
+            views.setViewVisibility(R.id.next_done, View.GONE)
+            views.setViewVisibility(R.id.next_due_box, View.VISIBLE)
+
+            if (next != null) {
+                views.setViewVisibility(R.id.next_check, View.VISIBLE)
+                bindCheck(views, R.id.next_check, next.done, toggleIntent(context, widgetId * 10, next.id))
+                val title = SpannableString(next.title)
+                if (next.done) title.setSpan(StrikethroughSpan(), 0, title.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                views.setTextViewText(R.id.next_title, title)
+                WidgetData.setColorRes(
+                    context, views, R.id.next_title, "setTextColor",
+                    if (next.done) R.color.todo_widget_text_done else R.color.todo_widget_text,
+                )
+                views.setTextViewText(R.id.next_due, TodoWidgetData.dueLabel(next) ?: "Today")
+                views.setTextViewText(R.id.next_due_small, TodoWidgetData.countdown(next) ?: "")
+                if (size.heightDp >= SUB_MIN_HEIGHT_DP && next.app.isNotBlank()) {
+                    views.setTextViewText(R.id.next_sub, "You said so on ${next.app}")
+                    views.setViewVisibility(R.id.next_sub, View.VISIBLE)
+                }
+                manager.updateAppWidget(widgetId, views)
+                return
+            }
+
+            views.setViewVisibility(R.id.next_check, View.GONE)
+            WidgetData.setColorRes(context, views, R.id.next_title, "setTextColor", R.color.todo_widget_text)
+
+            if (today.isEmpty() && tomorrow.isNotEmpty()) {
+                val first = tomorrow.first()
+                views.setTextViewText(R.id.next_title, first.title)
+                views.setTextViewText(R.id.next_due, "Tomorrow")
+                views.setTextViewText(R.id.next_due_small, first.time?.let { TodoWidgetData.dueLabel(first) } ?: "")
+                manager.updateAppWidget(widgetId, views)
+                return
+            }
+
+            views.setViewVisibility(R.id.next_due_box, View.GONE)
+            when {
+                !TodoWidgetData.hasList(context) -> views.setTextViewText(
+                    R.id.next_title,
+                    if (WidgetData.isReadyToday(WidgetData.prefs(context)))
+                        "Make a list from today's briefing"
+                    else
+                        "Comes from today's briefing",
+                )
+                today.isEmpty() -> views.setTextViewText(R.id.next_title, "Nothing due today")
+                else -> {
+                    views.setTextViewText(R.id.next_title, "Nothing else due today")
+                    views.setViewVisibility(R.id.next_done, View.VISIBLE)
+                }
+            }
+            manager.updateAppWidget(widgetId, views)
+        }
+
+        /** Today's list, for a widget with room for it. */
+        private fun renderList(context: Context, manager: AppWidgetManager, widgetId: Int, pinnedId: Int) {
             val views = RemoteViews(context.packageName, R.layout.widget_todo)
-            val checkBoxes = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
             views.setTextViewText(R.id.todo_date, SimpleDateFormat("EEE d MMM", Locale.getDefault()).format(Date()))
-            views.setOnClickPendingIntent(R.id.todo_root, openApp(context, widgetId))
+            views.setOnClickPendingIntent(R.id.todo_root, WidgetData.openRoute(context, WIDGET_REQUEST + widgetId, WidgetData.ROUTE_TODO))
 
             val today = TodoWidgetData.today(context)
             val tomorrow = TodoWidgetData.tomorrow(context)
@@ -172,18 +243,11 @@ class EchoTodoWidgetProvider : AppWidgetProvider() {
                 val label = SpannableString(item.title)
                 if (item.done) label.setSpan(StrikethroughSpan(), 0, label.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 views.setTextViewText(title, label)
-                textColor(context, views, title, if (item.done) R.color.todo_widget_text_done else R.color.todo_widget_text)
+                WidgetData.setColorRes(context, views, title, "setTextColor", if (item.done) R.color.todo_widget_text_done else R.color.todo_widget_text)
                 views.setTextViewText(time, item.time ?: "")
-                textColor(context, views, time, if (item.done) R.color.todo_widget_green_done else R.color.todo_widget_green)
+                WidgetData.setColorRes(context, views, time, "setTextColor", if (item.done) R.color.todo_widget_green_done else R.color.todo_widget_green)
 
-                val toggle = toggleIntent(context, widgetId * 10 + i, item.id)
-                if (checkBoxes) {
-                    views.setCompoundButtonChecked(check, item.done)
-                    views.setOnCheckedChangeResponse(check, RemoteViews.RemoteResponse.fromPendingIntent(toggle))
-                } else {
-                    views.setImageViewResource(check, if (item.done) R.drawable.todo_check_on else R.drawable.todo_check_off)
-                    views.setOnClickPendingIntent(check, toggle)
-                }
+                bindCheck(views, check, item.done, toggleIntent(context, widgetId * 10 + i, item.id))
             }
 
             views.setTextViewText(R.id.todo_more, if (today.size > ROWS) "+${today.size - ROWS} more today" else "")
@@ -207,7 +271,8 @@ class EchoTodoWidgetProvider : AppWidgetProvider() {
         // in place, then let the list settle. The small widget updates at once.
         val pending = goAsync()
         val handler = Handler(Looper.getMainLooper())
-        EchoTodoOrbWidgetProvider.updateAll(context)
+        // The Today widget's count moves at once; the tick is still animating here.
+        EchoBriefingWidgetProvider.updateAll(context)
         handler.postDelayed({ updateAll(context, pinnedId = id) }, STRIKE_MS)
         handler.postDelayed({
             try {
@@ -225,6 +290,21 @@ class EchoTodoWidgetProvider : AppWidgetProvider() {
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to update widget $id", e)
             }
+        }
+        WidgetClock.arm(context)
+    }
+
+    // Resizing can swap the card for the list and back.
+    override fun onAppWidgetOptionsChanged(
+        context: Context,
+        appWidgetManager: AppWidgetManager,
+        appWidgetId: Int,
+        newOptions: Bundle,
+    ) {
+        try {
+            render(context, appWidgetManager, appWidgetId, -1)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to resize widget $appWidgetId", e)
         }
     }
 }

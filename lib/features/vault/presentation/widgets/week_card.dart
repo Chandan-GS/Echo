@@ -5,6 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/core/services/echo_server_service.dart';
+import 'package:project_echo/features/vault/data/app_access.dart';
 import 'package:project_echo/features/vault/data/daily_stats.dart';
 import 'package:project_echo/features/vault/presentation/cubit/vault_cubit.dart';
 import 'package:project_echo/features/vault/presentation/widgets/source_icon.dart';
@@ -26,6 +27,9 @@ class WeekCard extends StatefulWidget {
 class _WeekCardState extends State<WeekCard> {
   List<DayStats>? _week;
   int _selected = DailyStats.days - 1; // today
+
+  /// Apps switched off or blocked, whose icons never show here.
+  Set<String> _excluded = const {};
 
   static const _weekdays = [
     'Monday',
@@ -68,7 +72,13 @@ class _WeekCardState extends State<WeekCard> {
   Future<void> _load() async {
     try {
       final week = await DailyStats.week(DateTime.now());
-      if (mounted) setState(() => _week = week);
+      final excluded = await loadExcludedSources();
+      if (mounted) {
+        setState(() {
+          _week = week;
+          _excluded = excluded;
+        });
+      }
     } catch (_) {}
   }
 
@@ -187,7 +197,11 @@ class _WeekCardState extends State<WeekCard> {
             ],
           ),
         ),
-        for (final app in day.top(3))
+        for (final app
+            in day
+                .top(3 + _excluded.length)
+                .where((a) => !_excluded.contains(a.key))
+                .take(3))
           Padding(
             padding: const EdgeInsets.only(left: 12, bottom: 4),
             child: Column(

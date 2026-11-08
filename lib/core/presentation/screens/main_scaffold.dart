@@ -1,21 +1,20 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/presentation/animations/fade_indexed_stack.dart';
 import 'package:project_echo/core/presentation/widgets/nav_dock.dart';
-import 'package:project_echo/features/echo/presentation/cubit/briefing_cubit.dart';
-import 'package:project_echo/features/todo/presentation/cubit/todo_cubit.dart';
 import 'package:project_echo/features/desktop/presentation/desktop_workspace.dart';
-import 'package:project_echo/features/echo/presentation/screens/echo_home_screen.dart';
-import 'package:project_echo/features/todo/presentation/screens/todo_screen.dart';
-import 'package:project_echo/features/vault/presentation/screens/vault_screen.dart';
-import 'package:project_echo/features/profile/presentation/screens/profile_screen.dart';
+import 'package:project_echo/features/echo/presentation/screens/today_screen.dart';
+import 'package:project_echo/features/history/presentation/screens/history_screen.dart';
+import 'package:project_echo/features/people/presentation/screens/people_screen.dart';
+import 'package:project_echo/features/profile/presentation/screens/you_screen.dart';
 import 'package:project_echo/demo/demo_mode.dart';
 import 'package:project_echo/core/presentation/widgets/echo_bubble.dart';
 import 'package:project_echo/core/services/echo_says.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class MainScaffold extends StatefulWidget {
   final Widget child;
@@ -26,42 +25,85 @@ class MainScaffold extends StatefulWidget {
   State<MainScaffold> createState() => _MainScaffoldState();
 }
 
-class _MainScaffoldState extends State<MainScaffold> {
+class _MainScaffoldState extends State<MainScaffold>
+    with WidgetsBindingObserver {
   int _selectedIndex = 0;
+
+  /// Tabs the owner has opened. A tab is built the first time it's shown, then
+  /// kept, so launching doesn't load all four at once.
+  final _visited = <int>{0};
+
+  /// The tab screens, built once so a rebuild here doesn't rebuild them.
+  final _tabs = const <Widget>[
+    TodayScreen(),
+    PeopleScreen(),
+    HistoryScreen(),
+    YouScreen(),
+  ];
 
   // Phone only — the nav dock is the Ask Echo bar.
   bool _asking = false;
+
+  /// Whether a tap on the briefing's notification or widget was last seen
+  /// waiting, so each tap only moves the owner once.
+  bool _autoplayPending = false;
 
   @override
   void initState() {
     super.initState();
     _selectedIndex = 0;
+    if (!_desktop) {
+      WidgetsBinding.instance.addObserver(this);
+      // A cold start from that tap already opens on Today.
+      unawaited(_followBriefingTap(navigate: false));
+    }
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final routeIndex = _calculateSelectedIndex(context);
-    if (routeIndex != _selectedIndex) {
-      _selectedIndex = routeIndex;
-    }
+    _syncTabToRoute(context);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) unawaited(_followBriefingTap());
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  /// A tap on the briefing's notification or widget is written as a flag by
+  /// native code or a background isolate, and Today plays it. If the owner
+  /// was somewhere else in the app, this brings them there.
+  Future<void> _followBriefingTap({bool navigate = true}) async {
+    // The tap's handler may still be writing the flag as the app resumes.
+    if (navigate) await Future<void>.delayed(const Duration(milliseconds: 400));
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
+    final pending = prefs.getBool('pending_autoplay') ?? false;
+    final fresh = pending && !_autoplayPending;
+    _autoplayPending = pending;
+    if (fresh && navigate && mounted) context.go('/echo');
   }
 
   static bool get _desktop => Platform.isMacOS || Platform.isWindows;
 
   /// Each phone tab's route, in order. The desktop has its own sections
   /// (see DesktopWorkspace) and stays on '/echo'.
-  static const _tabRoutes = ['/echo', '/todo', '/vault', '/profile'];
+  static const _tabRoutes = ['/echo', '/people', '/history', '/profile'];
 
-  static int _calculateSelectedIndex(BuildContext context) {
-    final location = GoRouterState.of(context).uri.path;
-    final i = _tabRoutes.indexWhere(location.startsWith);
-    return i < 0 ? 0 : i;
+  /// Follows the route to its tab. Pushed screens leave the tab as it was,
+  /// so back lands where the owner came from.
+  void _syncTabToRoute(BuildContext context) {
+    final i = _tabRoutes.indexOf(GoRouterState.of(context).uri.path);
+    if (i < 0 || i == _selectedIndex) return;
+    _selectedIndex = i;
+    _visited.add(i);
+    _asking = false;
   }
 
   void _onItemTapped(int index) {
@@ -70,6 +112,7 @@ class _MainScaffoldState extends State<MainScaffold> {
     HapticFeedback.selectionClick();
     setState(() {
       _selectedIndex = index;
+      _visited.add(index);
     });
 
     _updateRoute(index);
@@ -91,32 +134,17 @@ class _MainScaffoldState extends State<MainScaffold> {
 
   @override
   Widget build(BuildContext context) {
-    final routeIndex = _calculateSelectedIndex(context);
-    if (routeIndex != _selectedIndex) {
-      _selectedIndex = routeIndex;
-    }
+    _syncTabToRoute(context);
 
-    // BriefingCubit is provided here (above the tabs) rather than inside
-    // EchoHomeScreen so a briefing keeps generating across tab switches and can
-    // never be torn down by incidental navigation — and so the whole shell can
-    // surface a "working in background" indicator.
-    return MultiBlocProvider(
-      providers: [
-        BlocProvider(create: (_) => BriefingCubit()),
-        // The to-do list lives beside the briefing: home shows it, the
-        // briefing screen can make or update it.
-        BlocProvider(create: (_) => TodoCubit()),
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // go_router's shell Navigator. The tabs below are drawn here, not
+        // by its (empty) pages, but it has to be mounted: back presses and
+        // pops look it up, and without it system back quits the app.
+        Offstage(child: widget.child),
+        _shell(context),
       ],
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          // go_router's shell Navigator. The tabs below are drawn here, not
-          // by its (empty) pages, but it has to be mounted: back presses and
-          // pops look it up, and without it system back quits the app.
-          Offstage(child: widget.child),
-          _shell(context),
-        ],
-      ),
     );
   }
 
@@ -171,11 +199,12 @@ class _MainScaffoldState extends State<MainScaffold> {
                   },
                   child: FadeIndexedStack(
                     index: _selectedIndex,
-                    children: const [
-                      EchoHomeScreen(),
-                      TodoScreen(),
-                      VaultScreen(),
-                      ProfileScreen(),
+                    children: [
+                      for (var i = 0; i < _tabs.length; i++)
+                        if (_visited.contains(i))
+                          _tabs[i]
+                        else
+                          const SizedBox.shrink(),
                     ],
                   ),
                 ),

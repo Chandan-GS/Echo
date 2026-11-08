@@ -40,16 +40,16 @@ class NavDock extends StatefulWidget {
 
 class _NavDockState extends State<NavDock> {
   static const _tabItems = [
-    (Symbols.home_rounded, Symbols.home_rounded, 'Home'),
-    (Symbols.checklist_rounded, Symbols.checklist_rounded, 'To-do'),
-    (Symbols.inbox_rounded, Symbols.inbox_rounded, 'Vault'),
-    (Symbols.person_rounded, Symbols.person_rounded, 'Profile'),
+    (Symbols.home_rounded, Symbols.home_rounded, 'Today'),
+    (Symbols.group_rounded, Symbols.group_rounded, 'People'),
+    (Symbols.inbox_rounded, Symbols.inbox_rounded, 'History'),
+    (Symbols.person_rounded, Symbols.person_rounded, 'You'),
   ];
 
   /// Each tab's width: roomy on most phones, narrower on small ones so the
   /// pill and Echo always fit side by side.
   static const _maxTabWidth = 66.0;
-  static const _minTabWidth = 52.0;
+  static const _minTabWidth = 44.0;
   static const _gap = 16.0;
   static const _pillPadding = 6.0;
   static const _motion = Duration(milliseconds: 380);
@@ -389,9 +389,9 @@ class _NavDockState extends State<NavDock> {
 /// they work on any day, whatever came in.
 const kAskSuggestions = [
   'What did I miss today?',
+  'Who should I reply to?',
   'Anything urgent?',
   "What's on tomorrow?",
-  'Who should I reply to?',
 ];
 
 /// Ready-made questions shown above the question bar.
@@ -418,8 +418,8 @@ class AskSuggestionChips extends StatelessWidget {
         itemBuilder: (context, i) => PressFeedback(
           child: Material(
             color: c.surface,
-            shape: StadiumBorder(
-              side: BorderSide(color: c.dividerColor.withValues(alpha: 0.8)),
+            shape: const StadiumBorder(
+              side: BorderSide(color: Color(0x40808080)),
             ),
             clipBehavior: Clip.antiAlias,
             child: InkWell(

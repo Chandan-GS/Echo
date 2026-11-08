@@ -37,33 +37,58 @@ const RawDataSchema = CollectionSchema(
       name: r'embedding',
       type: IsarType.doubleList,
     ),
-    r'isGroup': PropertySchema(
+    r'heldAt': PropertySchema(
       id: 4,
+      name: r'heldAt',
+      type: IsarType.dateTime,
+    ),
+    r'isGroup': PropertySchema(
+      id: 5,
       name: r'isGroup',
       type: IsarType.bool,
     ),
+    r'noticeKey': PropertySchema(
+      id: 6,
+      name: r'noticeKey',
+      type: IsarType.string,
+    ),
+    r'removal': PropertySchema(
+      id: 7,
+      name: r'removal',
+      type: IsarType.string,
+    ),
     r'sender': PropertySchema(
-      id: 5,
+      id: 8,
       name: r'sender',
       type: IsarType.string,
     ),
+    r'sent': PropertySchema(
+      id: 9,
+      name: r'sent',
+      type: IsarType.bool,
+    ),
     r'source': PropertySchema(
-      id: 6,
+      id: 10,
       name: r'source',
       type: IsarType.string,
     ),
+    r'swipedAt': PropertySchema(
+      id: 11,
+      name: r'swipedAt',
+      type: IsarType.dateTime,
+    ),
     r'thread': PropertySchema(
-      id: 7,
+      id: 12,
       name: r'thread',
       type: IsarType.string,
     ),
     r'threadTitle': PropertySchema(
-      id: 8,
+      id: 13,
       name: r'threadTitle',
       type: IsarType.string,
     ),
     r'timestamp': PropertySchema(
-      id: 9,
+      id: 14,
       name: r'timestamp',
       type: IsarType.dateTime,
     )
@@ -74,6 +99,19 @@ const RawDataSchema = CollectionSchema(
   deserializeProp: _rawDataDeserializeProp,
   idName: r'id',
   indexes: {
+    r'timestamp': IndexSchema(
+      id: 1852253767416892198,
+      name: r'timestamp',
+      unique: false,
+      replace: false,
+      properties: [
+        IndexPropertySchema(
+          name: r'timestamp',
+          type: IndexType.value,
+          caseSensitive: false,
+        )
+      ],
+    ),
     r'thread': IndexSchema(
       id: 2879416675853168189,
       name: r'thread',
@@ -97,6 +135,45 @@ const RawDataSchema = CollectionSchema(
           name: r'captureKey',
           type: IndexType.hash,
           caseSensitive: true,
+        )
+      ],
+    ),
+    r'noticeKey': IndexSchema(
+      id: -233997087784929175,
+      name: r'noticeKey',
+      unique: false,
+      replace: false,
+      properties: [
+        IndexPropertySchema(
+          name: r'noticeKey',
+          type: IndexType.hash,
+          caseSensitive: true,
+        )
+      ],
+    ),
+    r'swipedAt': IndexSchema(
+      id: 4946365284874959658,
+      name: r'swipedAt',
+      unique: false,
+      replace: false,
+      properties: [
+        IndexPropertySchema(
+          name: r'swipedAt',
+          type: IndexType.value,
+          caseSensitive: false,
+        )
+      ],
+    ),
+    r'heldAt': IndexSchema(
+      id: -10185352797084834,
+      name: r'heldAt',
+      unique: false,
+      replace: false,
+      properties: [
+        IndexPropertySchema(
+          name: r'heldAt',
+          type: IndexType.value,
+          caseSensitive: false,
         )
       ],
     )
@@ -134,6 +211,18 @@ int _rawDataEstimateSize(
       bytesCount += 3 + value.length * 8;
     }
   }
+  {
+    final value = object.noticeKey;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
+  {
+    final value = object.removal;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
   bytesCount += 3 + object.sender.length * 3;
   bytesCount += 3 + object.source.length * 3;
   {
@@ -161,12 +250,17 @@ void _rawDataSerialize(
   writer.writeString(offsets[1], object.captureKey);
   writer.writeString(offsets[2], object.content);
   writer.writeDoubleList(offsets[3], object.embedding);
-  writer.writeBool(offsets[4], object.isGroup);
-  writer.writeString(offsets[5], object.sender);
-  writer.writeString(offsets[6], object.source);
-  writer.writeString(offsets[7], object.thread);
-  writer.writeString(offsets[8], object.threadTitle);
-  writer.writeDateTime(offsets[9], object.timestamp);
+  writer.writeDateTime(offsets[4], object.heldAt);
+  writer.writeBool(offsets[5], object.isGroup);
+  writer.writeString(offsets[6], object.noticeKey);
+  writer.writeString(offsets[7], object.removal);
+  writer.writeString(offsets[8], object.sender);
+  writer.writeBool(offsets[9], object.sent);
+  writer.writeString(offsets[10], object.source);
+  writer.writeDateTime(offsets[11], object.swipedAt);
+  writer.writeString(offsets[12], object.thread);
+  writer.writeString(offsets[13], object.threadTitle);
+  writer.writeDateTime(offsets[14], object.timestamp);
 }
 
 RawData _rawDataDeserialize(
@@ -180,13 +274,18 @@ RawData _rawDataDeserialize(
   object.captureKey = reader.readStringOrNull(offsets[1]);
   object.content = reader.readString(offsets[2]);
   object.embedding = reader.readDoubleList(offsets[3]);
+  object.heldAt = reader.readDateTimeOrNull(offsets[4]);
   object.id = id;
-  object.isGroup = reader.readBool(offsets[4]);
-  object.sender = reader.readString(offsets[5]);
-  object.source = reader.readString(offsets[6]);
-  object.thread = reader.readStringOrNull(offsets[7]);
-  object.threadTitle = reader.readStringOrNull(offsets[8]);
-  object.timestamp = reader.readDateTime(offsets[9]);
+  object.isGroup = reader.readBool(offsets[5]);
+  object.noticeKey = reader.readStringOrNull(offsets[6]);
+  object.removal = reader.readStringOrNull(offsets[7]);
+  object.sender = reader.readString(offsets[8]);
+  object.sent = reader.readBoolOrNull(offsets[9]);
+  object.source = reader.readString(offsets[10]);
+  object.swipedAt = reader.readDateTimeOrNull(offsets[11]);
+  object.thread = reader.readStringOrNull(offsets[12]);
+  object.threadTitle = reader.readStringOrNull(offsets[13]);
+  object.timestamp = reader.readDateTime(offsets[14]);
   return object;
 }
 
@@ -206,16 +305,26 @@ P _rawDataDeserializeProp<P>(
     case 3:
       return (reader.readDoubleList(offset)) as P;
     case 4:
-      return (reader.readBool(offset)) as P;
+      return (reader.readDateTimeOrNull(offset)) as P;
     case 5:
-      return (reader.readString(offset)) as P;
+      return (reader.readBool(offset)) as P;
     case 6:
-      return (reader.readString(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 7:
       return (reader.readStringOrNull(offset)) as P;
     case 8:
-      return (reader.readStringOrNull(offset)) as P;
+      return (reader.readString(offset)) as P;
     case 9:
+      return (reader.readBoolOrNull(offset)) as P;
+    case 10:
+      return (reader.readString(offset)) as P;
+    case 11:
+      return (reader.readDateTimeOrNull(offset)) as P;
+    case 12:
+      return (reader.readStringOrNull(offset)) as P;
+    case 13:
+      return (reader.readStringOrNull(offset)) as P;
+    case 14:
       return (reader.readDateTime(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -238,6 +347,30 @@ extension RawDataQueryWhereSort on QueryBuilder<RawData, RawData, QWhere> {
   QueryBuilder<RawData, RawData, QAfterWhere> anyId() {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(const IdWhereClause.any());
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterWhere> anyTimestamp() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(
+        const IndexWhereClause.any(indexName: r'timestamp'),
+      );
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterWhere> anySwipedAt() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(
+        const IndexWhereClause.any(indexName: r'swipedAt'),
+      );
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterWhere> anyHeldAt() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(
+        const IndexWhereClause.any(indexName: r'heldAt'),
+      );
     });
   }
 }
@@ -303,6 +436,96 @@ extension RawDataQueryWhere on QueryBuilder<RawData, RawData, QWhereClause> {
         lower: lowerId,
         includeLower: includeLower,
         upper: upperId,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterWhereClause> timestampEqualTo(
+      DateTime timestamp) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.equalTo(
+        indexName: r'timestamp',
+        value: [timestamp],
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterWhereClause> timestampNotEqualTo(
+      DateTime timestamp) {
+    return QueryBuilder.apply(this, (query) {
+      if (query.whereSort == Sort.asc) {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'timestamp',
+              lower: [],
+              upper: [timestamp],
+              includeUpper: false,
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'timestamp',
+              lower: [timestamp],
+              includeLower: false,
+              upper: [],
+            ));
+      } else {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'timestamp',
+              lower: [timestamp],
+              includeLower: false,
+              upper: [],
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'timestamp',
+              lower: [],
+              upper: [timestamp],
+              includeUpper: false,
+            ));
+      }
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterWhereClause> timestampGreaterThan(
+    DateTime timestamp, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.between(
+        indexName: r'timestamp',
+        lower: [timestamp],
+        includeLower: include,
+        upper: [],
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterWhereClause> timestampLessThan(
+    DateTime timestamp, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.between(
+        indexName: r'timestamp',
+        lower: [],
+        upper: [timestamp],
+        includeUpper: include,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterWhereClause> timestampBetween(
+    DateTime lowerTimestamp,
+    DateTime upperTimestamp, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.between(
+        indexName: r'timestamp',
+        lower: [lowerTimestamp],
+        includeLower: includeLower,
+        upper: [upperTimestamp],
         includeUpper: includeUpper,
       ));
     });
@@ -435,6 +658,291 @@ extension RawDataQueryWhere on QueryBuilder<RawData, RawData, QWhereClause> {
               includeUpper: false,
             ));
       }
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterWhereClause> noticeKeyIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.equalTo(
+        indexName: r'noticeKey',
+        value: [null],
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterWhereClause> noticeKeyIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.between(
+        indexName: r'noticeKey',
+        lower: [null],
+        includeLower: false,
+        upper: [],
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterWhereClause> noticeKeyEqualTo(
+      String? noticeKey) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.equalTo(
+        indexName: r'noticeKey',
+        value: [noticeKey],
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterWhereClause> noticeKeyNotEqualTo(
+      String? noticeKey) {
+    return QueryBuilder.apply(this, (query) {
+      if (query.whereSort == Sort.asc) {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'noticeKey',
+              lower: [],
+              upper: [noticeKey],
+              includeUpper: false,
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'noticeKey',
+              lower: [noticeKey],
+              includeLower: false,
+              upper: [],
+            ));
+      } else {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'noticeKey',
+              lower: [noticeKey],
+              includeLower: false,
+              upper: [],
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'noticeKey',
+              lower: [],
+              upper: [noticeKey],
+              includeUpper: false,
+            ));
+      }
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterWhereClause> swipedAtIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.equalTo(
+        indexName: r'swipedAt',
+        value: [null],
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterWhereClause> swipedAtIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.between(
+        indexName: r'swipedAt',
+        lower: [null],
+        includeLower: false,
+        upper: [],
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterWhereClause> swipedAtEqualTo(
+      DateTime? swipedAt) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.equalTo(
+        indexName: r'swipedAt',
+        value: [swipedAt],
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterWhereClause> swipedAtNotEqualTo(
+      DateTime? swipedAt) {
+    return QueryBuilder.apply(this, (query) {
+      if (query.whereSort == Sort.asc) {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'swipedAt',
+              lower: [],
+              upper: [swipedAt],
+              includeUpper: false,
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'swipedAt',
+              lower: [swipedAt],
+              includeLower: false,
+              upper: [],
+            ));
+      } else {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'swipedAt',
+              lower: [swipedAt],
+              includeLower: false,
+              upper: [],
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'swipedAt',
+              lower: [],
+              upper: [swipedAt],
+              includeUpper: false,
+            ));
+      }
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterWhereClause> swipedAtGreaterThan(
+    DateTime? swipedAt, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.between(
+        indexName: r'swipedAt',
+        lower: [swipedAt],
+        includeLower: include,
+        upper: [],
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterWhereClause> swipedAtLessThan(
+    DateTime? swipedAt, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.between(
+        indexName: r'swipedAt',
+        lower: [],
+        upper: [swipedAt],
+        includeUpper: include,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterWhereClause> swipedAtBetween(
+    DateTime? lowerSwipedAt,
+    DateTime? upperSwipedAt, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.between(
+        indexName: r'swipedAt',
+        lower: [lowerSwipedAt],
+        includeLower: includeLower,
+        upper: [upperSwipedAt],
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterWhereClause> heldAtIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.equalTo(
+        indexName: r'heldAt',
+        value: [null],
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterWhereClause> heldAtIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.between(
+        indexName: r'heldAt',
+        lower: [null],
+        includeLower: false,
+        upper: [],
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterWhereClause> heldAtEqualTo(
+      DateTime? heldAt) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.equalTo(
+        indexName: r'heldAt',
+        value: [heldAt],
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterWhereClause> heldAtNotEqualTo(
+      DateTime? heldAt) {
+    return QueryBuilder.apply(this, (query) {
+      if (query.whereSort == Sort.asc) {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'heldAt',
+              lower: [],
+              upper: [heldAt],
+              includeUpper: false,
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'heldAt',
+              lower: [heldAt],
+              includeLower: false,
+              upper: [],
+            ));
+      } else {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'heldAt',
+              lower: [heldAt],
+              includeLower: false,
+              upper: [],
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'heldAt',
+              lower: [],
+              upper: [heldAt],
+              includeUpper: false,
+            ));
+      }
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterWhereClause> heldAtGreaterThan(
+    DateTime? heldAt, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.between(
+        indexName: r'heldAt',
+        lower: [heldAt],
+        includeLower: include,
+        upper: [],
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterWhereClause> heldAtLessThan(
+    DateTime? heldAt, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.between(
+        indexName: r'heldAt',
+        lower: [],
+        upper: [heldAt],
+        includeUpper: include,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterWhereClause> heldAtBetween(
+    DateTime? lowerHeldAt,
+    DateTime? upperHeldAt, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.between(
+        indexName: r'heldAt',
+        lower: [lowerHeldAt],
+        includeLower: includeLower,
+        upper: [upperHeldAt],
+        includeUpper: includeUpper,
+      ));
     });
   }
 }
@@ -1028,6 +1536,75 @@ extension RawDataQueryFilter
     });
   }
 
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> heldAtIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'heldAt',
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> heldAtIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'heldAt',
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> heldAtEqualTo(
+      DateTime? value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'heldAt',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> heldAtGreaterThan(
+    DateTime? value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'heldAt',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> heldAtLessThan(
+    DateTime? value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'heldAt',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> heldAtBetween(
+    DateTime? lower,
+    DateTime? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'heldAt',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
   QueryBuilder<RawData, RawData, QAfterFilterCondition> idEqualTo(Id value) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(FilterCondition.equalTo(
@@ -1086,6 +1663,298 @@ extension RawDataQueryFilter
       return query.addFilterCondition(FilterCondition.equalTo(
         property: r'isGroup',
         value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> noticeKeyIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'noticeKey',
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> noticeKeyIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'noticeKey',
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> noticeKeyEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'noticeKey',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> noticeKeyGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'noticeKey',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> noticeKeyLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'noticeKey',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> noticeKeyBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'noticeKey',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> noticeKeyStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'noticeKey',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> noticeKeyEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'noticeKey',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> noticeKeyContains(
+      String value,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'noticeKey',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> noticeKeyMatches(
+      String pattern,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'noticeKey',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> noticeKeyIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'noticeKey',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> noticeKeyIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'noticeKey',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> removalIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'removal',
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> removalIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'removal',
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> removalEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'removal',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> removalGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'removal',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> removalLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'removal',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> removalBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'removal',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> removalStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'removal',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> removalEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'removal',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> removalContains(
+      String value,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'removal',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> removalMatches(
+      String pattern,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'removal',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> removalIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'removal',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> removalIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'removal',
+        value: '',
       ));
     });
   }
@@ -1220,6 +2089,32 @@ extension RawDataQueryFilter
     });
   }
 
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> sentIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'sent',
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> sentIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'sent',
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> sentEqualTo(
+      bool? value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'sent',
+        value: value,
+      ));
+    });
+  }
+
   QueryBuilder<RawData, RawData, QAfterFilterCondition> sourceEqualTo(
     String value, {
     bool caseSensitive = true,
@@ -1346,6 +2241,75 @@ extension RawDataQueryFilter
       return query.addFilterCondition(FilterCondition.greaterThan(
         property: r'source',
         value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> swipedAtIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'swipedAt',
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> swipedAtIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'swipedAt',
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> swipedAtEqualTo(
+      DateTime? value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'swipedAt',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> swipedAtGreaterThan(
+    DateTime? value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'swipedAt',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> swipedAtLessThan(
+    DateTime? value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'swipedAt',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterFilterCondition> swipedAtBetween(
+    DateTime? lower,
+    DateTime? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'swipedAt',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
       ));
     });
   }
@@ -1740,6 +2704,18 @@ extension RawDataQuerySortBy on QueryBuilder<RawData, RawData, QSortBy> {
     });
   }
 
+  QueryBuilder<RawData, RawData, QAfterSortBy> sortByHeldAt() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'heldAt', Sort.asc);
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterSortBy> sortByHeldAtDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'heldAt', Sort.desc);
+    });
+  }
+
   QueryBuilder<RawData, RawData, QAfterSortBy> sortByIsGroup() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'isGroup', Sort.asc);
@@ -1749,6 +2725,30 @@ extension RawDataQuerySortBy on QueryBuilder<RawData, RawData, QSortBy> {
   QueryBuilder<RawData, RawData, QAfterSortBy> sortByIsGroupDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'isGroup', Sort.desc);
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterSortBy> sortByNoticeKey() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'noticeKey', Sort.asc);
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterSortBy> sortByNoticeKeyDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'noticeKey', Sort.desc);
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterSortBy> sortByRemoval() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'removal', Sort.asc);
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterSortBy> sortByRemovalDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'removal', Sort.desc);
     });
   }
 
@@ -1764,6 +2764,18 @@ extension RawDataQuerySortBy on QueryBuilder<RawData, RawData, QSortBy> {
     });
   }
 
+  QueryBuilder<RawData, RawData, QAfterSortBy> sortBySent() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'sent', Sort.asc);
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterSortBy> sortBySentDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'sent', Sort.desc);
+    });
+  }
+
   QueryBuilder<RawData, RawData, QAfterSortBy> sortBySource() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'source', Sort.asc);
@@ -1773,6 +2785,18 @@ extension RawDataQuerySortBy on QueryBuilder<RawData, RawData, QSortBy> {
   QueryBuilder<RawData, RawData, QAfterSortBy> sortBySourceDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'source', Sort.desc);
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterSortBy> sortBySwipedAt() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'swipedAt', Sort.asc);
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterSortBy> sortBySwipedAtDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'swipedAt', Sort.desc);
     });
   }
 
@@ -1851,6 +2875,18 @@ extension RawDataQuerySortThenBy
     });
   }
 
+  QueryBuilder<RawData, RawData, QAfterSortBy> thenByHeldAt() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'heldAt', Sort.asc);
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterSortBy> thenByHeldAtDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'heldAt', Sort.desc);
+    });
+  }
+
   QueryBuilder<RawData, RawData, QAfterSortBy> thenById() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'id', Sort.asc);
@@ -1875,6 +2911,30 @@ extension RawDataQuerySortThenBy
     });
   }
 
+  QueryBuilder<RawData, RawData, QAfterSortBy> thenByNoticeKey() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'noticeKey', Sort.asc);
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterSortBy> thenByNoticeKeyDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'noticeKey', Sort.desc);
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterSortBy> thenByRemoval() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'removal', Sort.asc);
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterSortBy> thenByRemovalDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'removal', Sort.desc);
+    });
+  }
+
   QueryBuilder<RawData, RawData, QAfterSortBy> thenBySender() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'sender', Sort.asc);
@@ -1887,6 +2947,18 @@ extension RawDataQuerySortThenBy
     });
   }
 
+  QueryBuilder<RawData, RawData, QAfterSortBy> thenBySent() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'sent', Sort.asc);
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterSortBy> thenBySentDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'sent', Sort.desc);
+    });
+  }
+
   QueryBuilder<RawData, RawData, QAfterSortBy> thenBySource() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'source', Sort.asc);
@@ -1896,6 +2968,18 @@ extension RawDataQuerySortThenBy
   QueryBuilder<RawData, RawData, QAfterSortBy> thenBySourceDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'source', Sort.desc);
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterSortBy> thenBySwipedAt() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'swipedAt', Sort.asc);
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QAfterSortBy> thenBySwipedAtDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'swipedAt', Sort.desc);
     });
   }
 
@@ -1965,9 +3049,29 @@ extension RawDataQueryWhereDistinct
     });
   }
 
+  QueryBuilder<RawData, RawData, QDistinct> distinctByHeldAt() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'heldAt');
+    });
+  }
+
   QueryBuilder<RawData, RawData, QDistinct> distinctByIsGroup() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'isGroup');
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QDistinct> distinctByNoticeKey(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'noticeKey', caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QDistinct> distinctByRemoval(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'removal', caseSensitive: caseSensitive);
     });
   }
 
@@ -1978,10 +3082,22 @@ extension RawDataQueryWhereDistinct
     });
   }
 
+  QueryBuilder<RawData, RawData, QDistinct> distinctBySent() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'sent');
+    });
+  }
+
   QueryBuilder<RawData, RawData, QDistinct> distinctBySource(
       {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'source', caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<RawData, RawData, QDistinct> distinctBySwipedAt() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'swipedAt');
     });
   }
 
@@ -2038,9 +3154,27 @@ extension RawDataQueryProperty
     });
   }
 
+  QueryBuilder<RawData, DateTime?, QQueryOperations> heldAtProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'heldAt');
+    });
+  }
+
   QueryBuilder<RawData, bool, QQueryOperations> isGroupProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'isGroup');
+    });
+  }
+
+  QueryBuilder<RawData, String?, QQueryOperations> noticeKeyProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'noticeKey');
+    });
+  }
+
+  QueryBuilder<RawData, String?, QQueryOperations> removalProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'removal');
     });
   }
 
@@ -2050,9 +3184,21 @@ extension RawDataQueryProperty
     });
   }
 
+  QueryBuilder<RawData, bool?, QQueryOperations> sentProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'sent');
+    });
+  }
+
   QueryBuilder<RawData, String, QQueryOperations> sourceProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'source');
+    });
+  }
+
+  QueryBuilder<RawData, DateTime?, QQueryOperations> swipedAtProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'swipedAt');
     });
   }
 

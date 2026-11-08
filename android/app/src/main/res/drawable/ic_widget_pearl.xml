@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Echo the pearl, eyes open, from echo_mascot.dart's still pose. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="56dp"
+    android:height="56dp"
+    android:viewportWidth="180"
+    android:viewportHeight="180">
+    <path android:pathData="M34,90a56,56 0 1,0 112,0a56,56 0 1,0 -112,0Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:centerX="84.4"
+                android:centerY="97.84"
+                android:gradientRadius="80.64"
+                android:type="radial">
+                <item android:color="#FFFFFFFF" android:offset="0" />
+                <item android:color="#FFF4F9F0" android:offset="0.3" />
+                <item android:color="#FFD9E8DB" android:offset="0.6" />
+                <item android:color="#FFB4D1BA" android:offset="0.84" />
+                <item android:color="#FF9EC0A6" android:offset="1" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:pathData="M34,90a56,56 0 1,0 112,0a56,56 0 1,0 -112,0Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:centerX="90"
+                android:centerY="123.6"
+                android:gradientRadius="69.44"
+                android:type="radial">
+                <item android:color="#005E8568" android:offset="0" />
+                <item android:color="#005E8568" android:offset="0.72" />
+                <item android:color="#4D5E8568" android:offset="1" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:pathData="M56.96,64.24a15.12,15.12 0 1,0 30.24,0a15.12,15.12 0 1,0 -30.24,0Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:centerX="72.08"
+                android:centerY="64.24"
+                android:gradientRadius="15.12"
+                android:type="radial">
+                <item android:color="#F2FFFFFF" android:offset="0" />
+                <item android:color="#00FFFFFF" android:offset="1" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path
+        android:fillColor="#F2FFFFFF"
+        android:pathData="M63.12,59.76a5.04,5.04 0 1,0 10.08,0a5.04,5.04 0 1,0 -10.08,0Z" />
+    <path
+        android:fillColor="#FF222F27"
+        android:pathData="M72.5,90a5.5,8.5 0 1,0 11,0a5.5,8.5 0 1,0 -11,0Z" />
+    <path
+        android:fillColor="#FF222F27"
+        android:pathData="M96.5,90a5.5,8.5 0 1,0 11,0a5.5,8.5 0 1,0 -11,0Z" />
+    <path
+        android:fillColor="#F2FFFFFF"
+        android:pathData="M78,86.4a2,2 0 1,0 4,0a2,2 0 1,0 -4,0Z" />
+    <path
+        android:fillColor="#F2FFFFFF"
+        android:pathData="M102,86.4a2,2 0 1,0 4,0a2,2 0 1,0 -4,0Z" />
+</vector>

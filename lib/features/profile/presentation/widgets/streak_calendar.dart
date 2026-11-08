@@ -9,11 +9,16 @@ import 'package:project_echo/features/echo/presentation/screens/streak_celebrati
 import 'package:project_echo/features/echo/presentation/widgets/streak_flame.dart';
 
 /// The default in-app streak view: a bold green hero header with the streak
-/// count, and a month calendar where consecutive listened days join into a
-/// continuous green "streak trail" — today ringed, skipped days marked. The
-/// flame animation is reserved for the celebration (tap the header).
+/// count, and a month calendar where consecutive counted days join into a
+/// continuous green "streak trail" — today ringed, skipped days marked, and
+/// mended days ringed on the trail. A missed day is only ever marked; nothing
+/// here says whose fault it was. The flame animation is reserved for the
+/// celebration (tap the header).
 class StreakCalendar extends StatefulWidget {
-  const StreakCalendar({super.key});
+  /// Opens the streak page. Without it, pushes the celebration directly.
+  final VoidCallback? onOpen;
+
+  const StreakCalendar({super.key, this.onOpen});
 
   @override
   State<StreakCalendar> createState() => StreakCalendarState();
@@ -23,6 +28,7 @@ class StreakCalendarState extends State<StreakCalendar> {
   final _service = StreakService();
   StreakInfo _streak = StreakInfo.zero;
   Set<String> _heard = <String>{};
+  Set<String> _mended = <String>{};
   bool _loaded = false;
 
   @override
@@ -34,10 +40,12 @@ class StreakCalendarState extends State<StreakCalendar> {
   Future<void> _load() async {
     final streak = await _service.current();
     final heard = await _service.heardDates();
+    final mended = await _service.mendedDates();
     if (!mounted) return;
     setState(() {
       _streak = streak;
       _heard = heard;
+      _mended = mended;
       _loaded = true;
     });
   }
@@ -46,10 +54,12 @@ class StreakCalendarState extends State<StreakCalendar> {
   Future<void> reload() => _load();
 
   void _celebrate() {
+    if (widget.onOpen case final open?) return open();
     final days = _streak.current > 0 ? _streak.current : 1;
-    Navigator.of(context, rootNavigator: true).push(
-      bouncyRoute(StreakCelebrationScreen(days: days)),
-    );
+    Navigator.of(
+      context,
+      rootNavigator: true,
+    ).push(bouncyRoute(StreakCelebrationScreen(days: days)));
   }
 
   @override
@@ -74,7 +84,9 @@ class StreakCalendarState extends State<StreakCalendar> {
           _Hero(streak: _streak, onTap: _celebrate),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
-            child: _loaded ? _buildCalendar(context) : const SizedBox(height: 60),
+            child: _loaded
+                ? _buildCalendar(context)
+                : const SizedBox(height: 60),
           ),
         ],
       ),
@@ -85,6 +97,8 @@ class StreakCalendarState extends State<StreakCalendar> {
     final colors = context.colors;
     final now = DateTime.now();
     final todayKey = _service.dateKeyFor(now);
+    final monthPrefix = todayKey.substring(0, 8);
+    final mendedThisMonth = _mended.any((d) => d.startsWith(monthPrefix));
     final earliest = _heard.isEmpty ? null : (_heard.toList()..sort()).first;
 
     final firstOfMonth = DateTime(now.year, now.month, 1);
@@ -139,21 +153,34 @@ class StreakCalendarState extends State<StreakCalendar> {
             final dot = min(cellW - 6, 36.0);
             final weeks = <Widget>[];
             for (int i = 0; i < cells.length; i += 7) {
-              weeks.add(_WeekRow(
-                week: cells.sublist(i, i + 7),
-                cellW: cellW,
-                dot: dot,
-              ));
+              weeks.add(
+                _WeekRow(week: cells.sublist(i, i + 7), cellW: cellW, dot: dot),
+              );
             }
             return Column(children: weeks);
           },
         ),
+        if (_streak.mendable != null || mendedThisMonth) ...[
+          const SizedBox(height: 6),
+          Text(
+            _streak.mendable != null
+                ? 'Yesterday got away. Clear tonight’s wrap or play a briefing '
+                      'and your streak carries on.'
+                : 'A ringed day was mended the day after.',
+            style: GoogleFonts.nunito(
+              fontSize: 13,
+              height: 1.4,
+              color: colors.textSecondary,
+            ),
+          ),
+        ],
       ],
     );
   }
 
   _DayState _stateFor(DateTime date, String todayKey, String? earliest) {
     final key = _service.dateKeyFor(date);
+    if (_mended.contains(key)) return _DayState.mended;
     if (_heard.contains(key)) return _DayState.done;
     if (key == todayKey) return _DayState.today;
     if (key.compareTo(todayKey) < 0 &&
@@ -275,21 +302,24 @@ class _WeekRow extends StatelessWidget {
     final trails = <Widget>[];
     int? start;
     for (int i = 0; i <= 7; i++) {
-      final isDone = i < 7 && week[i]?.state == _DayState.done;
+      final state = i < 7 ? week[i]?.state : null;
+      final isDone = state == _DayState.done || state == _DayState.mended;
       if (isDone && start == null) start = i;
       if (!isDone && start != null) {
-        trails.add(Positioned(
-          left: start * cellW + hPad,
-          top: 0,
-          width: (i - start) * cellW - 2 * hPad,
-          height: dot,
-          child: Container(
-            decoration: BoxDecoration(
-              color: green,
-              borderRadius: BorderRadius.circular(dot / 2),
+        trails.add(
+          Positioned(
+            left: start * cellW + hPad,
+            top: 0,
+            width: (i - start) * cellW - 2 * hPad,
+            height: dot,
+            child: Container(
+              decoration: BoxDecoration(
+                color: green,
+                borderRadius: BorderRadius.circular(dot / 2),
+              ),
             ),
           ),
-        ));
+        );
         start = null;
       }
     }
@@ -339,6 +369,14 @@ class _DayDot extends StatelessWidget {
         fg = Colors.white;
         weight = FontWeight.w800;
         break;
+      case _DayState.mended: // on the trail, but ringed
+        fg = Colors.white;
+        weight = FontWeight.w800;
+        border = Border.all(
+          color: Colors.white.withValues(alpha: 0.75),
+          width: 1.5,
+        );
+        break;
       case _DayState.today:
         border = Border.all(color: colors.primaryGreen, width: 2);
         fg = colors.primaryGreen;
@@ -357,20 +395,20 @@ class _DayDot extends StatelessWidget {
       width: dot,
       height: dot,
       alignment: Alignment.center,
-      decoration: BoxDecoration(color: bg, shape: BoxShape.circle, border: border),
+      decoration: BoxDecoration(
+        color: bg,
+        shape: BoxShape.circle,
+        border: border,
+      ),
       child: Text(
         '${info!.day}',
-        style: GoogleFonts.nunito(
-          fontSize: 13,
-          fontWeight: weight,
-          color: fg,
-        ),
+        style: GoogleFonts.nunito(fontSize: 13, fontWeight: weight, color: fg),
       ),
     );
   }
 }
 
-enum _DayState { done, missed, today, plain }
+enum _DayState { done, mended, missed, today, plain }
 
 class _DayInfo {
   final int day;
@@ -380,6 +418,16 @@ class _DayInfo {
 
 const _weekdayLetters = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 const _monthNames = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
 ];

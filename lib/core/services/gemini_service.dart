@@ -2,6 +2,7 @@ import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:project_echo/core/services/gemini_usage.dart';
+import 'package:project_echo/core/services/one_time_codes.dart';
 import 'package:project_echo/core/services/remote_config_service.dart';
 
 class GeminiService {
@@ -60,14 +61,14 @@ class GeminiService {
       generationConfig: GenerationConfig(temperature: 0.3, topP: 0.9),
       systemInstruction: systemInstruction == null
           ? null
-          : Content.system(systemInstruction),
+          : Content.system(withoutOneTimeCodes(systemInstruction)),
     );
     for (var attempt = 0; ; attempt++) {
       var replied = false;
       var tokens = 0;
       try {
         await for (final r in model.generateContentStream([
-          Content.text(prompt),
+          Content.text(withoutOneTimeCodes(prompt)),
         ])) {
           replied = true;
           tokens = r.usageMetadata?.totalTokenCount ?? tokens;
@@ -101,11 +102,13 @@ class GeminiService {
         temperature: 0.2,
         responseMimeType: 'application/json',
       ),
-      systemInstruction: Content.system(systemInstruction),
+      systemInstruction: Content.system(withoutOneTimeCodes(systemInstruction)),
     );
     for (var attempt = 0; ; attempt++) {
       try {
-        final response = await model.generateContent([Content.text(prompt)]);
+        final response = await model.generateContent([
+          Content.text(withoutOneTimeCodes(prompt)),
+        ]);
         await GeminiUsage.instance.recordCall(
           model: name,
           tokens: response.usageMetadata?.totalTokenCount ?? 0,

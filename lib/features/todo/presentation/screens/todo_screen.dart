@@ -7,6 +7,8 @@ import 'package:go_router/go_router.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:project_echo/core/presentation/animations/app_motion.dart';
 import 'package:project_echo/core/presentation/animations/fade_slide_in.dart';
+import 'package:project_echo/core/presentation/widgets/echo_app_bar.dart';
+import 'package:project_echo/core/presentation/widgets/person_avatar.dart';
 import 'package:project_echo/core/services/reminder_settings.dart';
 import 'package:project_echo/core/services/reminders.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
@@ -18,6 +20,8 @@ import 'package:project_echo/features/echo/data/reply/reply_sender.dart';
 import 'package:project_echo/features/echo/presentation/cubit/briefing_cubit.dart';
 import 'package:project_echo/features/echo/presentation/widgets/ask/ask_parts.dart';
 import 'package:project_echo/features/echo/presentation/widgets/ask/reading_echo.dart';
+import 'package:project_echo/features/people/data/people_store.dart';
+import 'package:project_echo/features/todo/data/owed_store.dart';
 import 'package:project_echo/features/todo/data/todo_item.dart';
 import 'package:project_echo/features/todo/presentation/cubit/todo_cubit.dart';
 import 'package:project_echo/features/todo/presentation/widgets/reminder_sheet.dart';
@@ -26,9 +30,10 @@ import 'package:project_echo/features/todo/presentation/widgets/todo_parts.dart'
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:project_echo/core/presentation/widgets/press_feedback.dart';
 
-/// The phone's To-do tab: everything Echo has put on the owner's list, and
-/// anything they add, each with a reminder they can set — or Echo's
-/// suggestion for one, when it names a time.
+/// The To-do screen, pushed from Today: everything Echo has put on the
+/// owner's list and anything they add, each with who asked and where, and a
+/// reminder they can set — or Echo's suggestion for one, when it names a
+/// time. Below that, what other people owe the owner.
 class TodoScreen extends StatefulWidget {
   const TodoScreen({super.key});
 
@@ -46,7 +51,8 @@ class _TodoScreenState extends State<TodoScreen> {
   /// Rows just ticked: they stay, struck through, then fold away.
   final Set<int> _leaving = {};
 
-  bool _doneOpen = false;
+  /// What other people owe the owner; usually nothing.
+  List<OwedItem> _owed = const [];
 
   /// "Not now" on Echo's offer to set reminders, for the rest of the day.
   bool _offerDismissed = true;
@@ -60,6 +66,7 @@ class _TodoScreenState extends State<TodoScreen> {
   void initState() {
     super.initState();
     _loadReminders();
+    _loadOwed();
     Reminders.changed.addListener(_loadReminders);
     // Settings → Reminders changes Echo's suggestions.
     ReminderSettings.lead.addListener(_settingsChanged);
@@ -89,6 +96,15 @@ class _TodoScreenState extends State<TodoScreen> {
     if (mounted) setState(() => _reminders = all);
   }
 
+  Future<void> _loadOwed() async {
+    try {
+      final owed = await OwedStore.load(DateTime.now());
+      if (mounted) setState(() => _owed = owed);
+    } catch (_) {
+      // The section just stays hidden.
+    }
+  }
+
   // ── Reminders ────────────────────────────────────────────────────────────
 
   Future<void> _remind(TodoItem item, DateTime at) async {
@@ -98,7 +114,7 @@ class _TodoScreenState extends State<TodoScreen> {
       message: item.sourceKey,
       at: at,
       title: item.title,
-      body: _isTyped(item)
+      body: item.typed
           ? 'On your list for ${item.time ?? 'today'}.'
           : '${item.sender}: “${item.sourceText}”',
       todoId: item.id,
@@ -173,12 +189,17 @@ class _TodoScreenState extends State<TodoScreen> {
   }
 
   void _tick(TodoItem item) {
+    final today = !item.day.isAfter(startOfDay(DateTime.now()));
     setState(() {
-      // Unticking happens in place; ticking strikes it, then folds it away.
-      item.done ? _leaving.remove(item.id) : _leaving.add(item.id);
+      // Today's stay in the card, struck through, for the ring to count.
+      // Later ones strike, then fold away; unticking happens in place.
+      if (!today) item.done ? _leaving.remove(item.id) : _leaving.add(item.id);
       _open.remove(item.id);
     });
     toggleTodo(context, item);
+    if (!item.done && !item.typed && item.asker.isNotEmpty) {
+      _toast('Done. ${item.asker}’s thread is closed.');
+    }
   }
 
   Future<void> _move(TodoItem item) async {
@@ -210,7 +231,6 @@ class _TodoScreenState extends State<TodoScreen> {
       ..showSnackBar(
         SnackBar(
           behavior: SnackBarBehavior.floating,
-          // Above the nav dock, which the tab's bottom padding clears.
           margin: EdgeInsets.fromLTRB(
             20,
             0,
@@ -237,104 +257,195 @@ class _TodoScreenState extends State<TodoScreen> {
     );
     return Scaffold(
       backgroundColor: context.colors.background,
-      body: SafeArea(
-        bottom: false,
-        child: BlocBuilder<TodoCubit, TodoState>(
-          builder: (context, s) {
-            final now = s.now;
-            final tomorrow = startOfDay(now).add(const Duration(days: 1));
-            final later =
-                s.items
-                    .where((i) => i.day.isAfter(tomorrow) && !i.done)
-                    .toList()
-                  ..sort((a, b) {
-                    final byDay = a.day.compareTo(b.day);
-                    return byDay != 0 ? byDay : a.sort.compareTo(b.sort);
-                  });
-            final offers = [
-              for (final i in [...s.today, ...s.tomorrow, ...later])
-                if (!i.done && !_reminders.containsKey(i.sourceKey))
-                  if (suggestedReminder(i, now) case final at?) (i, at),
-            ];
-            var n = 0;
-            Widget enter(Widget child) =>
-                FadeSlideIn(delay: AppMotion.staggerDelay(n++), child: child);
-            return SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              // Clears the nav dock (MainScaffold sets the bottom padding).
-              padding: EdgeInsets.fromLTRB(
-                24,
-                24,
-                24,
-                MediaQuery.paddingOf(context).bottom + 16,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
+      appBar: const EchoAppBar(title: 'To-do'),
+      body: BlocBuilder<TodoCubit, TodoState>(
+        builder: (context, s) {
+          final now = s.now;
+          final rest =
+              [
+                for (final i in s.items)
+                  if (i.day.isAfter(startOfDay(now)) &&
+                      (!i.done || _leaving.contains(i.id)))
+                    i,
+              ]..sort((a, b) {
+                final byDay = a.day.compareTo(b.day);
+                return byDay != 0 ? byDay : a.sort.compareTo(b.sort);
+              });
+          final offers = [
+            for (final i in [...s.today, ...rest])
+              if (!i.done && !_reminders.containsKey(i.sourceKey))
+                if (suggestedReminder(i, now) case final at?) (i, at),
+          ];
+          var n = 0;
+          Widget enter(Widget child) =>
+              FadeSlideIn(delay: AppMotion.staggerDelay(n++), child: child);
+          return SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            padding: EdgeInsets.fromLTRB(
+              24,
+              8,
+              24,
+              MediaQuery.paddingOf(context).bottom + 40,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                enter(_AddField(onAdd: _add)),
+                AnimatedSize(
+                  duration: AppMotion.medium,
+                  curve: AppMotion.emphasized,
+                  alignment: Alignment.topCenter,
+                  child: _offerAccepted
+                      ? const Padding(
+                          padding: EdgeInsets.only(top: 12),
+                          child: _OfferCard.done(),
+                        )
+                      : offers.length > 1 && !_offerDismissed
+                      ? Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child: _OfferCard(
+                            count: offers.length,
+                            onAccept: () => _acceptAll(offers),
+                            onDismiss: _dismissOffer,
+                          ),
+                        )
+                      : const SizedBox(width: double.infinity),
+                ),
+                ..._working(context, s, hasBriefing),
+                const SizedBox(height: 18),
+                enter(_today(context, s)),
+                if (rest.isNotEmpty)
                   enter(
-                    Text(
-                      'To-do',
-                      style: GoogleFonts.oldStandardTt(
-                        fontSize: 40,
-                        fontWeight: FontWeight.w700,
-                        color: context.colors.textPrimary,
-                        height: 1.15,
-                      ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _sectionTitle(context, 'Tomorrow and later'),
+                        AskCard(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 2,
+                          ),
+                          child: AnimatedSize(
+                            duration: AppMotion.medium,
+                            curve: AppMotion.emphasized,
+                            alignment: Alignment.topCenter,
+                            child: _rows(context, rest, now, showDay: true),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 18),
-                  enter(_AddField(onAdd: _add)),
-                  AnimatedSize(
-                    duration: AppMotion.medium,
-                    curve: AppMotion.emphasized,
-                    alignment: Alignment.topCenter,
-                    child: _offerAccepted
-                        ? const Padding(
-                            padding: EdgeInsets.only(top: 12),
-                            child: _OfferCard.done(),
-                          )
-                        : offers.length > 1 && !_offerDismissed
-                        ? Padding(
-                            padding: const EdgeInsets.only(top: 12),
-                            child: _OfferCard(
-                              count: offers.length,
-                              onAccept: () => _acceptAll(offers),
-                              onDismiss: _dismissOffer,
-                            ),
-                          )
-                        : const SizedBox(width: double.infinity),
-                  ),
-                  ..._working(context, s, hasBriefing),
-                  enter(_today(context, s)),
-                  if (s.tomorrow.any((i) => !i.done))
-                    enter(
-                      _section(
-                        context,
-                        title: 'Tomorrow',
-                        note: _dateLine(tomorrow),
-                        items: s.tomorrow.where((i) => !i.done).toList(),
-                        now: now,
-                      ),
-                    ),
-                  if (later.isNotEmpty)
-                    enter(
-                      _section(
-                        context,
-                        title: 'Later',
-                        note: 'This week and after',
-                        items: later,
-                        now: now,
-                        showDay: true,
-                      ),
-                    ),
-                ],
-              ),
-            );
-          },
-        ),
+                // Nothing at all when empty: it only fills from replies Echo
+                // saw, so most people have none and a blank section reads as
+                // broken.
+                if (_owed.isNotEmpty) enter(_owedSection(context, now)),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
+
+  Widget _owedSection(BuildContext context, DateTime now) {
+    final c = context.colors;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _sectionTitle(context, 'Owed to you'),
+        AskCard(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+          child: Column(
+            children: [
+              for (final (i, owed) in _owed.indexed)
+                PressFeedback(
+                  scale: 0.98,
+                  child: Semantics(
+                    button: true,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () =>
+                          context.push('/person', extra: owed.personKey),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          border: i == 0
+                              ? null
+                              : Border(
+                                  top: BorderSide(
+                                    color: c.dividerColor.withValues(
+                                      alpha: 0.6,
+                                    ),
+                                  ),
+                                ),
+                        ),
+                        child: Row(
+                          children: [
+                            PersonAvatar(
+                              name: owed.name,
+                              size: 30,
+                              source: owed.source,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    owed.what,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: GoogleFonts.nunito(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w700,
+                                      height: 1.3,
+                                      color: c.textPrimary,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    '${owed.name} · ${owed.askedLabel(now)}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: GoogleFonts.nunito(
+                                      fontSize: 12.5,
+                                      color: c.textSecondary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Icon(
+                              Symbols.chevron_right_rounded,
+                              size: 22,
+                              color: c.textSecondary,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _sectionTitle(BuildContext context, String title) => Padding(
+    padding: const EdgeInsets.only(top: 26, bottom: 10, left: 2),
+    child: Text(
+      title,
+      style: GoogleFonts.oldStandardTt(
+        fontSize: 22,
+        fontWeight: FontWeight.w700,
+        height: 1.1,
+        color: context.colors.textPrimary,
+      ),
+    ),
+  );
 
   /// Making the list, updating it, or the way to make it.
   List<Widget> _working(BuildContext context, TodoState s, bool hasBriefing) {
@@ -365,7 +476,7 @@ class _TodoScreenState extends State<TodoScreen> {
               Text(
                 hasBriefing
                     ? 'Echo can turn today’s briefing into a list for today and tomorrow.'
-                    : 'Make today’s briefing on Home, and Echo can turn it into a list. Or add things above.',
+                    : 'Make today’s briefing on Today, and Echo can turn it into a list. Or add things above.',
                 style: GoogleFonts.nunito(
                   fontSize: 14.5,
                   height: 1.45,
@@ -398,14 +509,12 @@ class _TodoScreenState extends State<TodoScreen> {
     return const [];
   }
 
+  /// The Today card: its progress, every item (ticked ones stay, struck
+  /// through), and the panel once they're all done.
   Widget _today(BuildContext context, TodoState s) {
     final c = context.colors;
     final now = s.now;
     final today = s.today;
-    final left = today.where((i) => !i.done || _leaving.contains(i.id)).toList()
-      ..sort((a, b) => a.sort.compareTo(b.sort));
-    final done = today.where((i) => i.done && !_leaving.contains(i.id)).toList()
-      ..sort((a, b) => (b.doneAt ?? now).compareTo(a.doneAt ?? now));
     final undone = today.where((i) => !i.done).toList();
     final next = undone.where((i) => i.startsAt?.isAfter(now) ?? false).toList()
       ..sort((a, b) => a.sort.compareTo(b.sort));
@@ -413,90 +522,73 @@ class _TodoScreenState extends State<TodoScreen> {
         ? 'Nothing for today yet'
         : undone.isEmpty
         ? 'All ${today.length} done'
-        : '${undone.length} left'
+        : '${undone.length} of ${today.length} left'
               '${next.isEmpty ? '' : ' · next at ${next.first.time!.split(' to ').first}'}';
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _header(
-          context,
-          title: 'Today',
-          note: line,
-          trailing: today.isEmpty
-              ? null
-              : ProgressRing(
-                  done: today.length - undone.length,
-                  total: today.length,
+    return AskCard(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Today',
+                        style: GoogleFonts.oldStandardTt(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w700,
+                          height: 1.1,
+                          color: c.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      AnimatedSwitcher(
+                        duration: AppMotion.fast,
+                        child: Text(
+                          line,
+                          key: ValueKey(line),
+                          style: GoogleFonts.nunito(
+                            fontSize: 13.5,
+                            color: c.textSecondary,
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-        ),
-        if (left.isEmpty && done.isNotEmpty)
-          AllDonePanel(count: today.length, lastDoneAt: s.lastDoneToday)
-        else if (left.isNotEmpty)
-          AskCard(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-            child: AnimatedSize(
+                if (today.isNotEmpty)
+                  ProgressRing(
+                    done: today.length - undone.length,
+                    total: today.length,
+                  ),
+              ],
+            ),
+          ),
+          if (today.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4, bottom: 12),
+              child: Text(
+                'Add something above, or ask Echo to make your list.',
+                style: GoogleFonts.nunito(fontSize: 14, color: c.textSecondary),
+              ),
+            )
+          else
+            AnimatedSize(
               duration: AppMotion.medium,
               curve: AppMotion.emphasized,
               alignment: Alignment.topCenter,
-              child: _rows(context, left, now, justAdded: s.justAdded),
+              child: _rows(context, today, now, justAdded: s.justAdded),
             ),
-          )
-        else
-          Text(
-            'Add something above, or ask Echo to make your list.',
-            style: GoogleFonts.nunito(fontSize: 14, color: c.textSecondary),
-          ),
-        if (done.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          _DoneRow(
-            count: done.length,
-            open: _doneOpen,
-            onTap: () => setState(() => _doneOpen = !_doneOpen),
-          ),
-          Reveal(
-            open: _doneOpen,
-            child: Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: AskCard(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 2,
-                ),
-                child: _rows(context, done, now),
-              ),
-            ),
-          ),
+          if (s.allDoneToday)
+            AllDonePanel(count: today.length, lastDoneAt: s.lastDoneToday),
         ],
-      ],
-    );
-  }
-
-  Widget _section(
-    BuildContext context, {
-    required String title,
-    required String note,
-    required List<TodoItem> items,
-    required DateTime now,
-    bool showDay = false,
-  }) {
-    items.sort((a, b) {
-      final byDay = a.day.compareTo(b.day);
-      return byDay != 0 ? byDay : a.sort.compareTo(b.sort);
-    });
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _header(context, title: title, note: note, small: true),
-        AskCard(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-          child: AnimatedSize(
-            duration: AppMotion.medium,
-            curve: AppMotion.emphasized,
-            alignment: Alignment.topCenter,
-            child: _rows(context, items, now, showDay: showDay),
-          ),
-        ),
-      ],
+      ),
     );
   }
 
@@ -589,85 +681,10 @@ class _TodoScreenState extends State<TodoScreen> {
     );
   }
 
-  Widget _header(
-    BuildContext context, {
-    required String title,
-    required String note,
-    Widget? trailing,
-    bool small = false,
-  }) {
-    final c = context.colors;
-    return Padding(
-      padding: const EdgeInsets.only(top: 28, bottom: 12),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: GoogleFonts.oldStandardTt(
-                    fontSize: small ? 22 : 26,
-                    fontWeight: FontWeight.w700,
-                    height: 1.1,
-                    color: c.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                AnimatedSwitcher(
-                  duration: AppMotion.fast,
-                  child: Text(
-                    note,
-                    key: ValueKey(note),
-                    style: GoogleFonts.nunito(
-                      fontSize: 13.5,
-                      color: c.textSecondary,
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          ?trailing,
-        ],
-      ),
-    );
-  }
-
-  static String _dateLine(DateTime d) {
-    const days = [
-      'Monday',
-      'Tuesday',
-      'Wednesday',
-      'Thursday',
-      'Friday',
-      'Saturday',
-      'Sunday',
-    ];
-    const months = [
-      'January',
-      'February',
-      'March',
-      'April',
-      'May',
-      'June',
-      'July',
-      'August',
-      'September',
-      'October',
-      'November',
-      'December',
-    ];
-    return '${days[d.weekday - 1]} ${d.day} ${months[d.month - 1]}';
-  }
 }
 
 bool _sameDay(DateTime a, DateTime b) =>
     a.year == b.year && a.month == b.month && a.day == b.day;
-
-bool _isTyped(TodoItem item) => item.sourceKey.startsWith('you|');
 
 /// The text field at the top: type a to-do, with its time if it has one.
 class _AddField extends StatefulWidget {
@@ -890,70 +907,6 @@ class _OfferCard extends StatelessWidget {
   }
 }
 
-/// "3 done today ›", opening the ticked-off items.
-class _DoneRow extends StatelessWidget {
-  final int count;
-  final bool open;
-  final VoidCallback onTap;
-  const _DoneRow({
-    required this.count,
-    required this.open,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    return PressFeedback(
-      scale: 0.98,
-      child: Material(
-        color: Colors.transparent,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-          side: BorderSide(color: c.dividerColor),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-            child: Row(
-              children: [
-                Icon(
-                  Symbols.check_circle_rounded,
-                  size: 20,
-                  fill: 1,
-                  color: c.primaryGreen,
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  '$count done today',
-                  style: GoogleFonts.nunito(
-                    fontSize: 14.5,
-                    fontWeight: FontWeight.w700,
-                    color: c.textSecondary,
-                  ),
-                ),
-                const Spacer(),
-                AnimatedRotation(
-                  turns: open ? 0.25 : 0,
-                  duration: Reveal.duration,
-                  curve: Reveal.curve,
-                  child: Icon(
-                    Symbols.chevron_right_rounded,
-                    size: 22,
-                    color: c.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// The parts of one long message, under a line saying whose it was.
 class _Group extends StatelessWidget {
   final bool first;
@@ -1062,6 +1015,26 @@ String _dayLabel(DateTime d) {
   return '${days[d.weekday - 1]} ${d.day} ${months[d.month - 1]}';
 }
 
+/// "Tomorrow" for tomorrow's, otherwise "Thu 12 Nov".
+String _rowDay(DateTime day) {
+  final now = DateTime.now();
+  return day == DateTime(now.year, now.month, now.day + 1)
+      ? 'Tomorrow'
+      : _dayLabel(day);
+}
+
+/// Where the message was: "College gang · WhatsApp · 8:14 PM". The time is
+/// only known while the message itself is still kept.
+String? _sourceLine(TodoItem item, RawData? entry) {
+  final at = entry?.timestamp;
+  final parts = [
+    ?item.chat,
+    if (item.app.isNotEmpty) item.app,
+    if (at != null) clockLabel(at),
+  ];
+  return parts.isEmpty ? null : parts.join(' · ');
+}
+
 /// One to-do: the tick, the title, when and from whom, and its reminder at
 /// the right — set (green bell), Echo's suggestion (dashed, tap to accept),
 /// or none (a bell to set one). Tapping it shows the message it came from
@@ -1073,7 +1046,7 @@ class TodoListRow extends StatefulWidget {
   /// One part of a split message: no "from" line, smaller.
   final bool part;
 
-  /// Say which day (for Later).
+  /// Say which day (for Tomorrow and later).
   final bool showDay;
   final bool open;
   final DateTime? reminder;
@@ -1115,12 +1088,11 @@ class _TodoListRowState extends State<TodoListRow> {
     final c = context.colors;
     final item = widget.item;
     if (widget.open) _entry ??= IsarDataSource.entryForKey(item.sourceKey);
-    final from = [
-      item.sender,
-      item.app,
-    ].where((s) => s.trim().isNotEmpty).join(', ');
+    final from = item.typed
+        ? 'added by you'
+        : [item.asker, item.app].where((s) => s.isNotEmpty).join(', ');
     final when = [
-      if (widget.showDay && !widget.part) _dayLabel(item.day),
+      if (widget.showDay && !widget.part) _rowDay(item.day),
       item.time ?? (widget.part ? null : 'Anytime'),
     ].whereType<String>().join(', ');
     return Container(
@@ -1210,6 +1182,29 @@ class _TodoListRowState extends State<TodoListRow> {
                   onAccept: widget.onAcceptSuggestion,
                 ),
               ],
+              if (!widget.part)
+                Semantics(
+                  button: true,
+                  label: widget.open ? 'Hide details' : 'Show where it came from',
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: widget.onToggleOpen,
+                    child: SizedBox(
+                      width: 30,
+                      height: 28,
+                      child: AnimatedRotation(
+                        turns: widget.open ? 0.5 : 0,
+                        duration: Reveal.duration,
+                        curve: Reveal.curve,
+                        child: Icon(
+                          Symbols.expand_more_rounded,
+                          size: 22,
+                          color: c.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
           if (!widget.part) Reveal(open: widget.open, child: _details(context)),
@@ -1232,7 +1227,7 @@ class _TodoListRowState extends State<TodoListRow> {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (!_isTyped(item) && item.sourceText.isNotEmpty) ...[
+              if (!item.typed && item.sourceText.isNotEmpty) ...[
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 12,
@@ -1242,24 +1237,40 @@ class _TodoListRowState extends State<TodoListRow> {
                     color: Color.lerp(c.background, c.surface, 0.2),
                     borderRadius: BorderRadius.circular(14),
                   ),
-                  child: Text.rich(
-                    TextSpan(
-                      children: [
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text.rich(
                         TextSpan(
-                          text: '${item.sender}: ',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            color: c.textPrimary,
+                          children: [
+                            if (item.asker.isNotEmpty)
+                              TextSpan(
+                                text: '${item.asker}: ',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  color: c.textPrimary,
+                                ),
+                              ),
+                            TextSpan(text: '“${item.sourceText}”'),
+                          ],
+                        ),
+                        style: GoogleFonts.nunito(
+                          fontSize: 13.5,
+                          height: 1.45,
+                          color: c.textSecondary,
+                        ),
+                      ),
+                      if (_sourceLine(item, entry) case final line?) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          line,
+                          style: GoogleFonts.nunito(
+                            fontSize: 12,
+                            color: c.textSecondary,
                           ),
                         ),
-                        TextSpan(text: '“${item.sourceText}”'),
                       ],
-                    ),
-                    style: GoogleFonts.nunito(
-                      fontSize: 13.5,
-                      height: 1.45,
-                      color: c.textSecondary,
-                    ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -1288,6 +1299,18 @@ class _TodoListRowState extends State<TodoListRow> {
                     icon: Symbols.alarm_rounded,
                     onTap: widget.onRemind,
                   ),
+                  if (!item.typed && item.asker.isNotEmpty)
+                    AskPill(
+                      label: item.asker,
+                      icon: Symbols.person_rounded,
+                      onTap: () => context.push(
+                        '/person',
+                        extra: personKeyFor(
+                          item.asker,
+                          entry?.source ?? item.app,
+                        ),
+                      ),
+                    ),
                   AskPill(
                     label: today ? 'Tomorrow' : 'Today',
                     icon: Symbols.event_rounded,

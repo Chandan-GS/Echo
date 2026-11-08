@@ -49,6 +49,14 @@ object ConversationReader {
     /** "College gang (3 messages)" / "College gang: 3 new messages" → "College gang". */
     private val countSuffix = Regex("""\s*(\(\d+ (new )?messages?\)|:\s*\d+ new messages?)$""", RegexOption.IGNORE_CASE)
 
+    /**
+     * Whether [sbn] is a chat. For a removed notification the system has
+     * already stripped the messages, so [read] can't say; the style's name
+     * is still there.
+     */
+    fun isChat(sbn: StatusBarNotification): Boolean =
+        sbn.notification?.extras?.getString(Notification.EXTRA_TEMPLATE)?.endsWith("MessagingStyle") == true
+
     fun read(sbn: StatusBarNotification): Conversation? {
         val n = sbn.notification ?: return null
         val extras = n.extras ?: return null

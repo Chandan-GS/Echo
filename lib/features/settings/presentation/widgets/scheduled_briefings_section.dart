@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
+import 'package:project_echo/core/utils/time_utils.dart';
 import 'package:project_echo/features/settings/presentation/cubit/settings_cubit.dart';
 import 'package:project_echo/features/settings/presentation/cubit/settings_state.dart';
 import 'package:material_symbols_icons/symbols.dart';
@@ -54,12 +55,14 @@ class ScheduledBriefingsSection extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            parsedTime.format(context),
-            style: GoogleFonts.nunito(
-              fontWeight: FontWeight.bold,
-              color: context.colors.textPrimary,
-              fontSize: 16,
+          Flexible(
+            child: Text(
+              parsedTime.format(context),
+              style: GoogleFonts.nunito(
+                fontWeight: FontWeight.bold,
+                color: context.colors.textPrimary,
+                fontSize: 16,
+              ),
             ),
           ),
           const SizedBox(width: 16),
@@ -137,13 +140,15 @@ class ScheduledBriefingsSection extends StatelessWidget {
               size: 20,
               color: context.colors.textSecondary,
             ),
-            const SizedBox(width: 16),
-            Text(
-              'Add Time',
-              style: GoogleFonts.nunito(
-                fontWeight: FontWeight.w600,
-                color: context.colors.textSecondary,
-                fontSize: 16,
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                'Add Time',
+                style: GoogleFonts.nunito(
+                  fontWeight: FontWeight.w600,
+                  color: context.colors.textSecondary,
+                  fontSize: 16,
+                ),
               ),
             ),
           ],
@@ -153,7 +158,9 @@ class ScheduledBriefingsSection extends StatelessWidget {
   }
 
   TimeOfDay _parseTime(String time) {
-    final parts = time.split(':');
-    return TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+    final parsed = parseBriefingTime(time);
+    return parsed == null
+        ? const TimeOfDay(hour: 7, minute: 0)
+        : TimeOfDay(hour: parsed.hour, minute: parsed.minute);
   }
 }

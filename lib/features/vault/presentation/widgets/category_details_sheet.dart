@@ -10,16 +10,107 @@ import 'package:project_echo/features/vault/presentation/widgets/source_icon.dar
 import 'package:project_echo/features/vault/presentation/widgets/vault_utils.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
-void showCategoryDetailsSheet(BuildContext context, String category) {
+Future<void> showCategoryDetailsSheet(BuildContext context, String category) {
   // Ensure the cubit has this category selected before opening
   context.read<VaultCubit>().selectCategory(category);
 
-  showModalBottomSheet(
+  return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     builder: (sheetContext) {
       return _CategoryDetailsSheet(category: category, parentContext: context);
+    },
+  );
+}
+
+/// The categories Echo ignores, each with Unblock.
+void showBlockedCategoriesSheet(BuildContext parentContext) {
+  showModalBottomSheet(
+    context: parentContext,
+    backgroundColor: Colors.transparent,
+    isScrollControlled: true,
+    builder: (sheetContext) {
+      return Container(
+        height: MediaQuery.of(parentContext).size.height * 0.6,
+        decoration: BoxDecoration(
+          color: parentContext.colors.background,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+        ),
+        child: Column(
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 48,
+              height: 6,
+              decoration: BoxDecoration(
+                color: parentContext.colors.dividerColor,
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            const SizedBox(height: 24),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+              child: Text(
+                'Blocked Categories',
+                style: GoogleFonts.oldStandardTt(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                  color: parentContext.colors.textPrimary,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Expanded(
+              child: BlocBuilder<VaultCubit, VaultState>(
+                bloc: parentContext.read<VaultCubit>(),
+                builder: (context, currentState) {
+                  if (currentState is! VaultLoaded ||
+                      currentState.blockedCategories.isEmpty) {
+                    return Center(
+                      child: Text(
+                        'No blocked categories',
+                        style: GoogleFonts.nunito(
+                          color: parentContext.colors.textSecondary,
+                        ),
+                      ),
+                    );
+                  }
+
+                  return ListView.builder(
+                    itemCount: currentState.blockedCategories.length,
+                    itemBuilder: (context, index) {
+                      final cat = currentState.blockedCategories[index];
+                      return ListTile(
+                        title: Text(
+                          cat,
+                          style: GoogleFonts.nunito(
+                            color: parentContext.colors.textPrimary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        trailing: TextButton(
+                          onPressed: () {
+                            parentContext
+                                .read<VaultCubit>()
+                                .toggleBlockCategory(cat);
+                          },
+                          child: Text(
+                            'Unblock',
+                            style: GoogleFonts.nunito(
+                              color: parentContext.colors.primaryGreen,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      );
     },
   );
 }
@@ -184,7 +275,7 @@ class _CategoryDetailsSheet extends StatelessWidget {
             ),
           ),
           content: Text(
-            'Are you sure you want to block $category? It will be hidden from your vault and ignored by Echo.',
+            'Are you sure you want to block $category? It will be hidden from History and ignored by Echo.',
             style: GoogleFonts.nunito(color: context.colors.textPrimary),
           ),
           actions: [

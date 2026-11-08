@@ -3,13 +3,11 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:project_echo/core/presentation/animations/fade_slide_in.dart';
 import 'package:project_echo/core/presentation/widgets/echo_app_bar.dart';
 import 'package:project_echo/core/services/home_widgets_service.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
-import 'package:project_echo/features/todo/presentation/cubit/todo_cubit.dart';
 import 'package:project_echo/features/widgets/presentation/widgets/widget_previews.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
@@ -27,34 +25,35 @@ class _Kind {
 
 const _kinds = [
   _Kind(
-    'todo',
-    'Echo To-do',
-    '4 × 3',
-    "Today's to-dos from your briefing. Tick them off right on your home screen.",
+    'ring',
+    'Waiting on you',
+    '4 × 2',
+    'Faces of the people waiting on you, ringed by how long. Tap a face to reply.',
     wide: true,
   ),
   _Kind(
-    'ring',
-    'Echo To-do Progress',
-    '2 × 2',
-    "How much of today is done, and what's next.",
-  ),
-  _Kind(
-    'brief',
-    'Echo Briefing',
-    '4 × 2',
-    "Your streak and this week at a glance. Tap to play today's briefing.",
+    'todo',
+    'Next to-do',
+    '4 × 1',
+    "The next thing you said you'd do, and when. Tick it off right there.",
     wide: true,
   ),
   _Kind(
     'streak',
-    'Echo Streak',
-    '2 × 2',
-    'Your streak, big and bold, with when the next briefing is ready.',
+    'Echo',
+    '1 × 1',
+    'Just the pearl, with how many people are waiting. Tap to open Today.',
+  ),
+  _Kind(
+    'brief',
+    'Today',
+    '4 × 2',
+    "Who's waiting, what's due and your week of briefings. Tap the button to play.",
+    wide: true,
   ),
 ];
 
-/// Profile → Widgets: previews of Echo's home-screen widgets with a way to
+/// You → Widgets: previews of Echo's home-screen widgets with a way to
 /// add each one. Adding asks Android to pin it; the widget lifts out of its
 /// card and flies up out of the app, Android confirms, and the launcher
 /// places it. On return Echo recounts what's placed.
@@ -230,43 +229,43 @@ class _WidgetsScreenState extends State<WidgetsScreen>
     controller.dispose();
   }
 
-  Widget _preview(_Kind kind) {
-    final todo = context.read<TodoCubit>().state;
-    return switch (kind.id) {
-      'todo' => TodoWidgetPreview(todo: todo),
-      'ring' => RingWidgetPreview(todo: todo),
-      'brief' => BriefingWidgetPreview(data: _state),
-      _ => StreakWidgetPreview(data: _state),
-    };
-  }
+  Widget _preview(_Kind kind) => switch (kind.id) {
+    'ring' => WaitingWidgetPreview(data: _state),
+    'todo' => NextTodoWidgetPreview(data: _state),
+    'streak' => OrbWidgetPreview(data: _state),
+    _ => TodayWidgetPreview(data: _state),
+  };
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: context.colors.background,
       appBar: const EchoAppBar(title: 'Widgets'),
-      body: BlocBuilder<TodoCubit, TodoState>(
-        builder: (context, _) => ListView(
-          physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(22, 6, 22, 48),
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(2, 0, 2, 18),
-              child: Text(
-                'Keep Echo on your home screen. These show your live data and update on their own.',
-                style: GoogleFonts.nunito(
-                  fontSize: 14.5,
-                  color: context.colors.textSecondary,
-                ),
+      body: ListView(
+        physics: const BouncingScrollPhysics(),
+        padding: EdgeInsets.fromLTRB(
+          22,
+          6,
+          22,
+          48 + MediaQuery.paddingOf(context).bottom,
+        ),
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(2, 0, 2, 18),
+            child: Text(
+              'Keep Echo on your home screen. These show your live data and update on their own.',
+              style: GoogleFonts.nunito(
+                fontSize: 14.5,
+                color: context.colors.textSecondary,
               ),
             ),
-            for (var i = 0; i < _kinds.length; i++)
-              FadeSlideIn(
-                delay: Duration(milliseconds: 60 * i),
-                child: _card(context, _kinds[i]),
-              ),
-          ],
-        ),
+          ),
+          for (var i = 0; i < _kinds.length; i++)
+            FadeSlideIn(
+              delay: Duration(milliseconds: 60 * i),
+              child: _card(context, _kinds[i]),
+            ),
+        ],
       ),
     );
   }

@@ -25,6 +25,8 @@ object TodoWidgetData {
         val time: String?,
         val sort: Int,
         val done: Boolean,
+        val sender: String,
+        val app: String,
     )
 
     private fun dayKey(offsetDays: Int): String {
@@ -46,6 +48,8 @@ object TodoWidgetData {
                     time = if (o.isNull("time")) null else o.optString("time"),
                     sort = o.optInt("sort", 24 * 60),
                     done = o.optBoolean("done", false),
+                    sender = o.optString("sender"),
+                    app = o.optString("app"),
                 )
             }
         } catch (e: Exception) {
@@ -59,6 +63,24 @@ object TodoWidgetData {
 
     fun tomorrow(context: Context): List<Todo> =
         all(context).filter { it.day == dayKey(1) }.sortedBy { it.sort }
+
+    /** The first thing on today's list that isn't done, by time. */
+    fun next(context: Context): Todo? =
+        today(context).firstOrNull { !it.done }
+
+    /** When [todo] is due, as shown on the widget: "6 PM" from "6 PM to 7 PM". */
+    fun dueLabel(todo: Todo): String? = todo.time?.substringBefore(" to ")?.trim()
+
+    /** "in 28 min", "in 2 hr" or "earlier", against the clock now. */
+    fun countdown(todo: Todo, now: Calendar = Calendar.getInstance()): String? {
+        if (todo.time == null) return null
+        val minutes = todo.sort - (now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE))
+        return when {
+            minutes <= 0 -> "earlier"
+            minutes < 60 -> "in ${maxOf(5, (minutes + 4) / 5 * 5)} min"
+            else -> "in ${(minutes + 30) / 60} hr"
+        }
+    }
 
     /** Mirrors TodoState.hasList: anything for today/tomorrow, or a list made today. */
     fun hasList(context: Context): Boolean {

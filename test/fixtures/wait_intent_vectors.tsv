@@ -1,0 +1,61 @@
+# Shared by test/wait_intent_test.dart and WaitingIntent.kt. Change the rules on
+# both sides together and keep this list passing on both.
+# kind	needsReply	isGroup	addressed	text
+code	false	false	direct	Your login code is 482913. Do not share.
+code	false	false	direct	482913 is the OTP for your txn of Rs 500
+call	true	false	direct	Call when free. Electricity bill is due tomorrow.
+call	true	false	direct	Missed voice call
+call	true	false	direct	mujhe call karo jab free ho
+call	true	false	direct	फोन करो जल्दी
+question	true	false	direct	Coorg on Friday? I'm driving, leaving early. You in?
+question	true	false	direct	Are you eating?
+question	true	false	direct	where are you
+question	true	false	direct	kab aa raha hai
+question	true	false	direct	Kal office aa rahe ho kya
+question	true	false	direct	ghar pe ho kya
+question	true	false	direct	?
+question	true	false	direct	क्या तुम आ रहे हो
+question	true	false	direct	ok?
+request	true	false	direct	Can you share the Figma link before the 4 o’clock review?
+request	true	false	direct	Thanks! Can you send it again?
+request	true	false	direct	file bhej dena
+request	true	false	direct	ye kar do yaar
+request	true	false	direct	mujhe batana kab free ho
+request	true	false	direct	report भेज दो
+request	true	false	direct	please check once
+request	true	false	direct	Send me the deck
+request	true	false	direct	kindly confirm receipt
+mention	true	true	mentioned	Can you sign off the release notes before 5?
+mention	true	true	mentioned	@Chandan are you joining?
+mention	true	true	mentioned	Chandan call me
+invite	true	false	direct	come over tonight
+invite	true	false	direct	we are all at Rahul's, join us
+invite	true	false	direct	chalo movie dekhne
+invite	true	false	direct	aa jao ghar
+deadline	true	false	direct	Rent is due tomorrow
+deadline	true	false	direct	Need the numbers by 6pm
+deadline	true	false	direct	Report kal tak chahiye
+deadline	true	false	direct	This one is urgent
+ack	false	false	direct	Thanks so much! 🙏
+ack	false	false	direct	ok cool
+ack	false	false	direct	ok thanks
+ack	false	false	direct	haan ji
+ack	false	false	direct	धन्यवाद
+ack	false	false	direct	thanks for the update
+closer	false	false	direct	haha yes, see you there
+closer	false	false	direct	good night
+closer	false	false	direct	sounds good, take care
+closer	false	false	direct	theek hai
+closer	false	false	direct	bhej diya
+closer	false	false	direct	ठीक है भाई
+closer	false	false	direct	no worries
+emojiOnly	false	false	direct	👍
+emojiOnly	false	false	direct	😂😂😂
+emojiOnly	false	false	direct	Sticker
+emojiOnly	false	false	direct	...
+unsure	true	false	direct	Flight lands 7:40, terminal 2
+unsure	true	false	direct	Can you believe it?
+unsure	true	false	direct	yes please
+unsure	true	false	direct	Hey
+unsure	true	false	direct	Voice message
+unsure	true	true	reply	that was a wild game last night

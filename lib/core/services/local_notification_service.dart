@@ -1,7 +1,7 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Marks that the next time the app reaches `EchoHomeScreen`, today's
+/// Marks that the next time the app reaches `TodayScreen`, today's
 /// briefing should start playing immediately rather than waiting for a tap —
 /// used when the user reached the app via the notification's "Play" action or
 /// by tapping the notification itself.
@@ -15,8 +15,13 @@ Future<void> _markPendingAutoplay() async {
 /// mirroring the `alarmCallback` entry point in `schedule_service.dart`.
 @pragma('vm:entry-point')
 void notificationTapBackgroundHandler(NotificationResponse response) {
+  if (response.payload == eveningWrapPayload) return;
   _markPendingAutoplay();
 }
+
+/// Marks the evening wrap's notification: tapping it opens Echo and must not
+/// start the morning briefing playing.
+const eveningWrapPayload = 'evening_wrap';
 
 class LocalNotificationService {
   static final LocalNotificationService _instance =
@@ -60,6 +65,7 @@ class LocalNotificationService {
       // Tapping the notification body or its "Play" action while the app
       // process is alive (foreground or backgrounded) lands here.
       onDidReceiveNotificationResponse: (details) {
+        if (details.payload == eveningWrapPayload) return;
         _markPendingAutoplay();
       },
       // Tapping the "Play" action while the app is fully terminated lands

@@ -4,6 +4,7 @@ import 'package:project_echo/core/services/gemini_json.dart';
 import 'package:project_echo/features/desktop/presentation/today/today_logic.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:project_echo/features/echo/data/reply/reply_drafter.dart';
+import 'package:project_echo/features/settings/data/tone_voice.dart';
 import 'package:project_echo/features/todo/data/todo_planner.dart';
 
 /// Three short replies to offer for a message, to pick from and send.
@@ -22,7 +23,7 @@ class ReplySuggestions {
   static Future<List<String>> forEntry(RawData to, List<ChatLine> chat) =>
       _cache.putIfAbsent(sourceKeyOf(to), () async {
         final reply = await askGeminiJson(
-          _instruction,
+          '$_instruction ${toneDraftNote(await currentTone())}',
           prompt(to, chat),
           label: 'REPLIES',
         );

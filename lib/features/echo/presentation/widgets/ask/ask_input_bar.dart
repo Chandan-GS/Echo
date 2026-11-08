@@ -17,6 +17,9 @@ class AskInputBar extends StatefulWidget {
   /// Whether the mic is offered (not on desktop).
   final bool dictation;
 
+  /// Opens voice asking instead of dictating into the field.
+  final VoidCallback? onVoice;
+
   const AskInputBar({
     super.key,
     required this.controller,
@@ -25,6 +28,7 @@ class AskInputBar extends StatefulWidget {
     required this.hint,
     required this.onSend,
     this.dictation = true,
+    this.onVoice,
   });
 
   @override
@@ -190,7 +194,7 @@ class _AskInputBarState extends State<AskInputBar> {
                                   colors.textPrimary,
                                   context.isDarkMode ? 0.08 : 0.05,
                                 )!,
-                          onTap: widget.enabled ? _dictate : null,
+                          onTap: widget.enabled ? (widget.onVoice ?? _dictate) : null,
                           child: Icon(
                             Symbols.mic_rounded,
                             fill: _dictating ? 1 : 0,
