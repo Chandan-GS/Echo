@@ -1,4 +1,5 @@
 import 'package:aptabase_flutter/aptabase_flutter.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Thin, privacy-respecting wrapper over Aptabase.
@@ -27,9 +28,18 @@ class Analytics {
     await prefs.setBool(_prefKey, value);
   }
 
+  /// Where events go instead of Aptabase, in tests, so they can check which
+  /// were sent. Null in the app.
+  @visibleForTesting
+  static void Function(String event, Map<String, dynamic>? props)? debugSink;
+
   /// Record an anonymous usage event. No-op when the user has opted out.
   static void track(String event, [Map<String, dynamic>? props]) {
     if (!_enabled) return;
-    Aptabase.instance.trackEvent(event, props);
+    final sink = debugSink;
+    if (sink != null) return sink(event, props);
+    // Never let a failed send (offline, or Aptabase not started, as in
+    // tests) surface as an error where the event was recorded.
+    Aptabase.instance.trackEvent(event, props).catchError((Object _) {});
   }
 }

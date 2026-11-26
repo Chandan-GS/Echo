@@ -16,13 +16,21 @@ class ReminderSettings {
   static final lead = ValueNotifier<Duration>(const Duration(minutes: 20));
   static final suggest = ValueNotifier<bool>(true);
 
+  /// Settings → Briefings: whether Echo may send its two gentle reminders
+  /// (the day-one evening note and the one nudge after missed mornings).
+  static final gentle = ValueNotifier<bool>(true);
+
   static const _leadKey = 'reminder_lead_minutes';
   static const _suggestKey = 'reminder_suggestions';
+
+  /// Read directly by the background alarms, which don't run [load].
+  static const gentleKey = 'gentle_reminders';
 
   static Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
     lead.value = Duration(minutes: prefs.getInt(_leadKey) ?? 20);
     suggest.value = prefs.getBool(_suggestKey) ?? true;
+    gentle.value = prefs.getBool(gentleKey) ?? true;
   }
 
   static Future<void> setLead(Duration d) async {
@@ -35,6 +43,12 @@ class ReminderSettings {
     suggest.value = on;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_suggestKey, on);
+  }
+
+  static Future<void> setGentle(bool on) async {
+    gentle.value = on;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(gentleKey, on);
   }
 
   /// "20 minutes", "1 hour".

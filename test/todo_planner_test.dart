@@ -375,4 +375,102 @@ void main() {
       expect(looksLikeList('call me when you can'), isFalse);
     });
   });
+
+  group('an update changing an item', () {
+    final demo = applyMake(
+      existing: const [],
+      candidates: pick([neha]),
+      todos: [(title: 'Prep the deck', source: 1, when: null)],
+      firstId: 1,
+      now: now,
+    ).single;
+
+    List<TodoItem> changeWith(RawData message) {
+      final fresh = pick([message]);
+      return applyUpdate(
+        existing: [demo],
+        candidates: fresh,
+        add: const [],
+        change: [(id: demo.id, source: 1)],
+        firstId: 2,
+        now: at(26, 15),
+      );
+    }
+
+    test('keeps its key, so its reminder stays attached', () {
+      final moved = note(
+        'Neha',
+        'Demo pushed to 7 PM',
+        at(26, 14, 20),
+        source: 'Slack',
+      );
+      final item = changeWith(moved).single;
+      expect(item.sourceKey, demo.sourceKey);
+      expect(item.mergedKeys, [sourceKeyOf(moved)]);
+      expect(item.time, '7 PM');
+
+      // The merged message isn't added again by a later make.
+      final again = applyMake(
+        existing: [item],
+        candidates: pick([moved]),
+        todos: [(title: 'Demo at 7', source: 1, when: null)],
+        firstId: 2,
+        now: at(26, 15),
+      );
+      expect(again, hasLength(1));
+
+      // And the key list survives a save.
+      expect(TodoItem.fromJson(item.toJson()).mergedKeys, item.mergedKeys);
+    });
+
+    test('a new day with no time clears the time', () {
+      final item = changeWith(
+        note(
+          'Neha',
+          'Demo is still on tomorrow, will confirm the time',
+          at(26, 14, 20),
+          source: 'Slack',
+        ),
+      ).single;
+      expect(item.day, DateTime(2026, 9, 27));
+      expect(item.time, isNull);
+      expect(item.startsAt, isNull);
+      expect(item.sort, TodoItem.noTimeSort);
+      expect(item.movedFrom, '6:30 PM');
+    });
+
+    test('a message naming no day or time leaves when it is alone', () {
+      final item = changeWith(
+        note('Neha', 'Also bring the clicker', at(26, 14, 20), source: 'Slack'),
+      ).single;
+      expect(item.day, demo.day);
+      expect(item.time, demo.time);
+      expect(item.movedFrom, isNull);
+    });
+  });
+
+  test('copyWith can clear a time, and keeps it when not given', () {
+    final timed = applyMake(
+      existing: const [],
+      candidates: pick([neha]),
+      todos: [(title: 'Prep the deck', source: 1, when: null)],
+      firstId: 1,
+      now: now,
+    ).single;
+    expect(timed.copyWith(title: 'x').time, '6:30 PM');
+    expect(timed.copyWith(time: null).time, isNull);
+  });
+
+  test('calendar day maths counts days, not 24-hour steps', () {
+    expect(addDays(DateTime(2026, 3, 28, 9), 1), DateTime(2026, 3, 29, 9));
+    expect(addDays(DateTime(2026, 12, 31), 1), DateTime(2027, 1, 1));
+    expect(
+      calendarDaysBetween(DateTime(2026, 10, 24, 23), DateTime(2026, 10, 26)),
+      2,
+    );
+    expect(
+      calendarDaysBetween(DateTime(2026, 10, 26), DateTime(2026, 10, 25)),
+      -1,
+    );
+  });
 }

@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:project_echo/core/presentation/widgets/nav_dock.dart'
+    show askChipRowHeight;
 import 'package:project_echo/core/presentation/widgets/echo_app_bar.dart';
 import 'package:project_echo/core/services/voice/echo_voice.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
@@ -100,6 +102,10 @@ class _AskAiViewState extends State<_AskAiView> {
   String? _name;
   ForYou? _forYou;
 
+  /// Messages in the chat when it last scrolled, to tell a new message from
+  /// another word of the one streaming in.
+  int _shownCount = 0;
+
   @override
   void initState() {
     super.initState();
@@ -138,7 +144,19 @@ class _AskAiViewState extends State<_AskAiView> {
     super.dispose();
   }
 
-  void _scrollToBottom() {
+  /// Follows the answer down as it streams in, but only while the owner is
+  /// at (or near) the bottom, so scrolling up to reread something mid-answer
+  /// isn't undone by the next word. A new message ([force]) always brings
+  /// the chat down. Measured before the frame that grows the list.
+  void _scrollToBottom({bool force = false}) {
+    if (!force &&
+        _scroll.hasClients &&
+        !isNearBottom(
+          _scroll.position.pixels,
+          _scroll.position.maxScrollExtent,
+        )) {
+      return;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scroll.hasClients) {
         _scroll.animateTo(
@@ -179,7 +197,13 @@ class _AskAiViewState extends State<_AskAiView> {
             (previous is! AskAiMessageReceived ||
                 previous.messages.length != current.messages.length ||
                 current.messages.last.isGenerating),
-        listener: (context, state) => _scrollToBottom(),
+        listener: (context, state) {
+          final count = state is AskAiMessageReceived
+              ? state.messages.length
+              : 0;
+          _scrollToBottom(force: count != _shownCount);
+          _shownCount = count;
+        },
         builder: (context, state) {
           final received = state is AskAiMessageReceived ? state : null;
           final messages = received?.messages ?? const <ChatMessage>[];
@@ -414,7 +438,8 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-/// Messages grow in from their own side, as they always have.
+/// Messages grow in from their own side, as they always have — or, with
+/// animations turned off, are simply there.
 class _Entrance extends StatelessWidget {
   final bool fromRight;
   final Widget child;
@@ -423,7 +448,9 @@ class _Entrance extends StatelessWidget {
   @override
   Widget build(BuildContext context) => TweenAnimationBuilder<double>(
     tween: Tween(begin: 0, end: 1),
-    duration: const Duration(milliseconds: 400),
+    duration: MediaQuery.disableAnimationsOf(context)
+        ? Duration.zero
+        : const Duration(milliseconds: 400),
     curve: Curves.easeOutBack,
     builder: (context, value, child) => Transform.scale(
       scale: value,
@@ -522,7 +549,7 @@ class _Chips extends StatelessWidget {
           : Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: SizedBox(
-                height: 40,
+                height: askChipRowHeight(context),
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   itemCount: chips.length,
@@ -572,3 +599,9 @@ class _Chips extends StatelessWidget {
     );
   }
 }
+
+/// Whether a list scrolled to [pixels] of [maxExtent] is close enough to the
+/// bottom to keep following new text: within [slack] logical pixels.
+@visibleForTesting
+bool isNearBottom(double pixels, double maxExtent, {double slack = 96}) =>
+    maxExtent - pixels <= slack;

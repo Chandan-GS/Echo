@@ -41,11 +41,13 @@ class NotificationService with WidgetsBindingObserver {
             if (data is String) {
               final decoded = jsonDecode(data);
               if (decoded is Map<String, dynamic>) {
+                // Queued: saved in order, one batch at a time, so parallel
+                // saves can't lose each other's counts.
                 NotificationIngest.process(decoded);
               }
             }
           } catch (e) {
-            debugPrint('Error decoding live notification: $e');
+            debugPrint('Error decoding live notification (${e.runtimeType})');
           }
         },
         onError: (e) {

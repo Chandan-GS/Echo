@@ -12,7 +12,7 @@ class TodoItem {
   /// days stay as history.
   final DateTime day;
 
-  /// "6:30 PM", "4 PM to 6 PM", or null when no time was named.
+  /// "6:30 PM", "4–6 PM", or null when no time was named.
   final String? time;
 
   /// Minutes into [day] used for ordering; items without a time sort last.
@@ -24,8 +24,13 @@ class TodoItem {
   final String sourceText;
 
   /// Identifies the source notification so an update never adds the same
-  /// notification twice.
+  /// notification twice. Reminders are keyed by it too, so it never changes.
   final String sourceKey;
+
+  /// Keys of later notifications an update folded into this item ("demo
+  /// pushed to 7 PM"). The item keeps [sourceKey], so a reminder set on it
+  /// stays attached, and these stop the same notifications being added again.
+  final List<String> mergedKeys;
 
   final bool done;
 
@@ -55,6 +60,7 @@ class TodoItem {
     this.doneAt,
     this.isNew = false,
     this.movedFrom,
+    this.mergedKeys = const [],
   });
 
   static const noTimeSort = 24 * 60;
@@ -62,21 +68,28 @@ class TodoItem {
   /// When it starts, if it names a time.
   DateTime? get startsAt => time == null ? null : startOfTime(time!, day);
 
+  /// Every notification this item stands for.
+  Iterable<String> get keys => [sourceKey, ...mergedKeys];
+
+  /// [time] may be set to null (an update naming a day but no time); left
+  /// out, it's kept.
   TodoItem copyWith({
+    int? id,
     String? title,
     DateTime? day,
-    String? time,
+    Object? time = _keep,
     int? sort,
     String? sourceText,
     String? sourceKey,
     bool? done,
     bool? isNew,
     String? movedFrom,
+    List<String>? mergedKeys,
   }) => TodoItem(
-    id: id,
+    id: id ?? this.id,
     title: title ?? this.title,
     day: day ?? this.day,
-    time: time ?? this.time,
+    time: identical(time, _keep) ? this.time : time as String?,
     sort: sort ?? this.sort,
     sender: sender,
     app: app,
@@ -87,7 +100,10 @@ class TodoItem {
     doneAt: doneAt,
     isNew: isNew ?? this.isNew,
     movedFrom: movedFrom ?? this.movedFrom,
+    mergedKeys: mergedKeys ?? this.mergedKeys,
   );
+
+  static const _keep = Object();
 
   /// Ticked on or off at [now].
   TodoItem withDone(bool value, DateTime now) => TodoItem(
@@ -105,6 +121,7 @@ class TodoItem {
     doneAt: value ? now : null,
     isNew: isNew,
     movedFrom: movedFrom,
+    mergedKeys: mergedKeys,
   );
 
   Map<String, dynamic> toJson() => {
@@ -122,6 +139,7 @@ class TodoItem {
     'new': isNew,
     'movedFrom': movedFrom,
     'created': created.millisecondsSinceEpoch,
+    if (mergedKeys.isNotEmpty) 'merged': mergedKeys,
   };
 
   static TodoItem fromJson(Map<String, dynamic> j) => TodoItem(
@@ -141,6 +159,9 @@ class TodoItem {
     isNew: (j['new'] as bool?) ?? false,
     movedFrom: j['movedFrom'] as String?,
     created: DateTime.fromMillisecondsSinceEpoch((j['created'] as int?) ?? 0),
+    mergedKeys: [
+      for (final k in (j['merged'] as List?) ?? const []) k.toString(),
+    ],
   );
 }
 
@@ -176,6 +197,14 @@ class TodoMeta {
       v is int ? DateTime.fromMillisecondsSinceEpoch(v) : null;
 }
 
+/// The first id no item in [items] has, and not below [meta]'s counter. The
+/// widgets, a paired computer and Ask Echo all add to the list, so the
+/// counter alone can lag behind what's there.
+int freeId(Iterable<TodoItem> items, TodoMeta meta) {
+  final top = items.fold(0, (m, i) => i.id > m ? i.id : m);
+  return meta.nextId > top ? meta.nextId : top + 1;
+}
+
 String dayKey(DateTime d) =>
     '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-'
     '${d.day.toString().padLeft(2, '0')}';
@@ -185,15 +214,39 @@ DateTime parseDayKey(String key) {
   return DateTime(parts[0], parts[1], parts[2]);
 }
 
-/// "6:30 PM" or "4 PM to 6 PM" on [day] → the start as a DateTime.
+/// [d] moved [days] calendar days, keeping its time of day. Unlike adding
+/// `Duration(days: n)`, a day a clock change makes 23 or 25 hours long still
+/// counts as one.
+DateTime addDays(DateTime d, int days) => DateTime(
+  d.year,
+  d.month,
+  d.day + days,
+  d.hour,
+  d.minute,
+  d.second,
+  d.millisecond,
+);
+
+/// How many calendar days [to] is after [from] (negative when before),
+/// whatever the clock does in between.
+int calendarDaysBetween(DateTime from, DateTime to) => DateTime.utc(
+  to.year,
+  to.month,
+  to.day,
+).difference(DateTime.utc(from.year, from.month, from.day)).inDays;
+
+/// "6:30 PM", "4–6 PM", "11 AM–1 PM" or "4 PM to 6 PM" on [day] → the start
+/// as a DateTime. A range's start without AM/PM ("4–6 PM") shares the end's.
 DateTime? startOfTime(String time, DateTime day) {
   final m = RegExp(
-    r'^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)',
+    r'^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?'
+    r'(?:\s*(?:–|—|-|to)\s*\d{1,2}(?::\d{2})?\s*(AM|PM))?',
     caseSensitive: false,
   ).firstMatch(time.trim());
-  if (m == null) return null;
+  final meridiem = m?.group(3) ?? m?.group(4);
+  if (m == null || meridiem == null) return null;
   var hour = int.parse(m.group(1)!) % 12;
-  if (m.group(3)!.toUpperCase() == 'PM') hour += 12;
+  if (meridiem.toUpperCase() == 'PM') hour += 12;
   return DateTime(
     day.year,
     day.month,

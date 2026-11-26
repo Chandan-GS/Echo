@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import org.json.JSONArray
 import java.io.File
+import java.util.UUID
 
 /**
  * Notifications captured while no Flutter UI is listening, kept in a
@@ -20,10 +21,15 @@ object NotificationBuffer {
 
     private var store: BufferStore? = null
 
+    /**
+     * Buffers [json] under [key]. The listener hands the same key to a UI
+     * that's listening, so the copy Dart saves live and this one, drained
+     * later, are recognised as one notification.
+     */
     @Synchronized
-    fun append(context: Context, json: String) {
+    fun append(context: Context, json: String, key: String = UUID.randomUUID().toString()) {
         try {
-            store(context).append(json, System.currentTimeMillis())
+            store(context).append(json, System.currentTimeMillis(), key)
         } catch (e: Exception) {
             Log.e("EchoNotification", "Couldn't buffer a notification", e)
         }

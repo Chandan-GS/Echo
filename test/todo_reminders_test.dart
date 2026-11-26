@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:project_echo/core/services/reminders.dart';
+import 'package:project_echo/features/echo/data/models/raw_data.dart';
+import 'package:project_echo/features/echo/data/relevance/briefing_selection.dart';
 import 'package:project_echo/features/todo/data/todo_item.dart';
 import 'package:project_echo/features/todo/data/todo_planner.dart';
 
@@ -58,10 +60,35 @@ void main() {
         suggestedReminder(item('9 AM', dayOffset: 1), now),
         DateTime(2026, 10, 4, 8, 40),
       );
+    });
+
+    test('a range is reminded about before it starts', () {
+      // The forms compactTime writes: one AM/PM for both ends, or one each.
       expect(
-        suggestedReminder(item('4 PM to 6 PM', dayOffset: 1), now),
+        suggestedReminder(item('4–6 PM', dayOffset: 1), now),
         DateTime(2026, 10, 4, 15, 40),
       );
+      expect(
+        suggestedReminder(item('11 AM–1 PM', dayOffset: 1), now),
+        DateTime(2026, 10, 4, 10, 40),
+      );
+      expect(
+        suggestedReminder(item('9:30–10:30 PM'), now),
+        DateTime(2026, 10, 3, 21, 10),
+      );
+    });
+
+    test('a range the planner made from a message gets its start', () {
+      final plumber = RawData()
+        ..source = 'Sms'
+        ..sender = 'Landlord'
+        ..content = 'Plumber coming tomorrow between 4 to 6 PM'
+        ..timestamp = DateTime(2026, 10, 3, 9);
+      final candidate = selectForBriefing([plumber], now).single;
+      final todo = itemFrom(candidate, 'Be home for the plumber', 1, now);
+      expect(todo.time, '4–6 PM');
+      expect(todo.startsAt, DateTime(2026, 10, 4, 16));
+      expect(suggestedReminder(todo, now), DateTime(2026, 10, 4, 15, 40));
     });
 
     test('none without a time, once done, or when it is too close', () {

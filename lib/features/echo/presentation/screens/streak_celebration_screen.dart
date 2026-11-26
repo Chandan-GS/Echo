@@ -4,12 +4,17 @@ import 'package:flutter/services.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/core/presentation/widgets/echo_button.dart';
 import 'package:project_echo/features/echo/presentation/widgets/streak_flame.dart';
+import 'package:project_echo/features/profile/data/week_card.dart';
+import 'package:project_echo/features/profile/presentation/week_card_share.dart';
 
 /// A full-screen, immersive celebration shown the moment the user's streak
 /// advances — a pulsing flame with rising embers, a bouncing count-up number,
 /// and timed haptic pulses. Deliberately goes bold/dark (unlike the rest of
 /// the app's warm paper palette) for dramatic impact, echoing the same
 /// dark-canvas-with-glow language as the onboarding welcome screen.
+///
+/// On a milestone ([WeekCardData.milestones]) a quiet "Share" sits beside
+/// Continue, offering the week card.
 class StreakCelebrationScreen extends StatefulWidget {
   final int days;
 
@@ -31,22 +36,25 @@ class _StreakCelebrationScreenState extends State<StreakCelebrationScreen>
     duration: const Duration(milliseconds: 2600),
   )..repeat();
 
-  late final Animation<double> _numberCount = TweenSequence<double>([
-    TweenSequenceItem(
-      tween: Tween(
-        begin: (widget.days - 1).clamp(0, widget.days).toDouble(),
-        end: widget.days + 0.18,
-      ),
-      weight: 70,
-    ),
-    TweenSequenceItem(
-      tween: Tween(begin: widget.days + 0.18, end: widget.days.toDouble()),
-      weight: 30,
-    ),
-  ]).animate(CurvedAnimation(
-    parent: _entrance,
-    curve: const Interval(0.4, 1.0, curve: Curves.easeOutCubic),
-  ));
+  late final Animation<double> _numberCount =
+      TweenSequence<double>([
+        TweenSequenceItem(
+          tween: Tween(
+            begin: (widget.days - 1).clamp(0, widget.days).toDouble(),
+            end: widget.days + 0.18,
+          ),
+          weight: 70,
+        ),
+        TweenSequenceItem(
+          tween: Tween(begin: widget.days + 0.18, end: widget.days.toDouble()),
+          weight: 30,
+        ),
+      ]).animate(
+        CurvedAnimation(
+          parent: _entrance,
+          curve: const Interval(0.4, 1.0, curve: Curves.easeOutCubic),
+        ),
+      );
 
   late final Animation<double> _flameScaleIn = CurvedAnimation(
     parent: _entrance,
@@ -67,6 +75,32 @@ class _StreakCelebrationScreenState extends State<StreakCelebrationScreen>
     Future.delayed(const Duration(milliseconds: 750), () {
       if (mounted) HapticFeedback.heavyImpact();
     });
+  }
+
+  /// With reduced motion the flame and number simply appear, and the embers
+  /// stay still.
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.of(context).disableAnimations) {
+      _entrance.value = 1;
+      _emberLoop.stop();
+    }
+  }
+
+  bool get _milestone => WeekCardData.milestones.contains(widget.days);
+  bool _sharing = false;
+
+  Future<void> _share(BuildContext from) async {
+    if (_sharing) return;
+    setState(() => _sharing = true);
+    try {
+      final card = await WeekCardShare.load(streak: widget.days);
+      if (!from.mounted) return;
+      await WeekCardShare.share(from, card, source: 'streak');
+    } finally {
+      if (mounted) setState(() => _sharing = false);
+    }
   }
 
   @override
@@ -153,11 +187,55 @@ class _StreakCelebrationScreenState extends State<StreakCelebrationScreen>
 
                   FadeTransition(
                     opacity: _fadeIn,
-                    child: EchoButton(
-                      text: 'Continue',
-                      backgroundColor: const Color(0xFFF4F2EE),
-                      textColor: const Color(0xFF1E1E1E),
-                      onPressed: () => Navigator.of(context).pop(),
+                    child: Row(
+                      children: [
+                        if (_milestone) ...[
+                          Builder(
+                            builder: (context) => SizedBox(
+                              height: 56,
+                              child: OutlinedButton.icon(
+                                onPressed: _sharing
+                                    ? null
+                                    : () => _share(context),
+                                icon: const Icon(
+                                  Icons.ios_share_rounded,
+                                  size: 19,
+                                ),
+                                label: Text(
+                                  'Share',
+                                  semanticsLabel: 'Share my week',
+                                  style: GoogleFonts.nunito(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.white,
+                                  minimumSize: const Size(48, 48),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 18,
+                                  ),
+                                  side: BorderSide(
+                                    color: Colors.white.withValues(alpha: 0.3),
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                        ],
+                        Expanded(
+                          child: EchoButton(
+                            text: 'Continue',
+                            backgroundColor: const Color(0xFFF4F2EE),
+                            textColor: const Color(0xFF1E1E1E),
+                            onPressed: () => Navigator.of(context).pop(),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(height: 32),

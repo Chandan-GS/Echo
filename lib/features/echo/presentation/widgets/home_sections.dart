@@ -38,40 +38,51 @@ class HomeSectionHeader extends StatelessWidget {
     final c = context.colors;
     return Padding(
       padding: const EdgeInsets.only(top: 30, bottom: 12),
+      // The title and the link share the row, so at a large font size each
+      // wraps rather than pushing the other off the edge.
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         crossAxisAlignment: CrossAxisAlignment.baseline,
         textBaseline: TextBaseline.alphabetic,
         children: [
-          Text(
-            title,
-            style: GoogleFonts.oldStandardTt(
-              fontSize: 24,
-              fontWeight: FontWeight.w700,
-              height: 1.1,
-              color: c.textPrimary,
+          Flexible(
+            child: Text(
+              title,
+              style: GoogleFonts.oldStandardTt(
+                fontSize: 24,
+                fontWeight: FontWeight.w700,
+                height: 1.1,
+                color: c.textPrimary,
+              ),
             ),
           ),
-          const Spacer(),
+          const SizedBox(width: 12),
           if (action != null)
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: onAction,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Text(
-                  action!,
-                  style: GoogleFonts.nunito(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
-                    color: c.primaryGreen,
+            Flexible(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: onAction,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Text(
+                    action!,
+                    textAlign: TextAlign.end,
+                    style: GoogleFonts.nunito(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: c.primaryGreen,
+                    ),
                   ),
                 ),
               ),
             )
           else if (note != null)
-            Text(
-              note!,
-              style: GoogleFonts.nunito(fontSize: 13, color: c.textSecondary),
+            Flexible(
+              child: Text(
+                note!,
+                textAlign: TextAlign.end,
+                style: GoogleFonts.nunito(fontSize: 13, color: c.textSecondary),
+              ),
             ),
         ],
       ),
@@ -141,7 +152,14 @@ class UpNextSection extends StatelessWidget {
               onAction: onSeeAll,
             ),
             AskCard(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+              // 16 dp in on the left as on the right: the rows take the last
+              // 10 themselves, so each tick's tap area can reach into it.
+              padding: const EdgeInsets.fromLTRB(
+                16 - _UpNextRow.tapReach,
+                2,
+                16,
+                2,
+              ),
               child: AnimatedSize(
                 duration: AppMotion.medium,
                 curve: AppMotion.emphasized,
@@ -176,7 +194,7 @@ class _AllDone extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.colors;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 16),
+      padding: const EdgeInsets.fromLTRB(_UpNextRow.tapReach, 16, 0, 16),
       child: Row(
         children: [
           Icon(
@@ -203,6 +221,10 @@ class _AllDone extends StatelessWidget {
 /// A to-do as it reads in the list, whose circle ticks it off. The tick
 /// shows for a moment before the row leaves.
 class _UpNextRow extends StatefulWidget {
+  /// How far left of the row's content the tick's tap area reaches, so it's
+  /// 48 dp wide: the 26 dp circle, its 12 dp gap and this.
+  static const tapReach = 10.0;
+
   final TodoItem item;
   final bool first;
   final VoidCallback onOpen;
@@ -230,7 +252,6 @@ class _UpNextRowState extends State<_UpNextRow> {
 
   @override
   Widget build(BuildContext context) {
-    final c = context.colors;
     final item = widget.item;
     final from = [
       item.sender,
@@ -239,103 +260,124 @@ class _UpNextRowState extends State<_UpNextRow> {
     return AnimatedOpacity(
       duration: AppMotion.fast,
       opacity: _ticked ? 0.55 : 1,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          border: widget.first
-              ? null
-              : Border(
-                  top: BorderSide(color: c.dividerColor.withValues(alpha: 0.6)),
-                ),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Semantics(
+      child: Stack(
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: _UpNextRow.tapReach),
+            child: _row(context, from),
+          ),
+          // The tick's tap area: 48 dp wide and the row's full height,
+          // over the circle and the gap beside it.
+          Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: _UpNextRow.tapReach + 38,
+            child: Semantics(
               button: true,
               label: 'Done',
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: _tick,
-                child: AnimatedContainer(
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _row(BuildContext context, String from) {
+    final c = context.colors;
+    final item = widget.item;
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      decoration: BoxDecoration(
+        border: widget.first
+            ? null
+            : Border(
+                top: BorderSide(color: c.dividerColor.withValues(alpha: 0.6)),
+              ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ExcludeSemantics(
+            child: AnimatedContainer(
+              duration: AppMotion.fast,
+              width: 26,
+              height: 26,
+              margin: const EdgeInsets.only(top: 1, right: 12),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: _ticked ? c.primaryGreen : Colors.transparent,
+                border: Border.all(
+                  color: _ticked
+                      ? c.primaryGreen
+                      : c.primaryGreen.withValues(alpha: 0.55),
+                  width: 2,
+                ),
+              ),
+              child: AnimatedScale(
+                duration: AppMotion.medium,
+                curve: AppMotion.spring,
+                scale: _ticked ? 1 : 0.4,
+                child: AnimatedOpacity(
                   duration: AppMotion.fast,
-                  width: 26,
-                  height: 26,
-                  margin: const EdgeInsets.only(top: 1, right: 12),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: _ticked ? c.primaryGreen : Colors.transparent,
-                    border: Border.all(
-                      color: _ticked
-                          ? c.primaryGreen
-                          : c.primaryGreen.withValues(alpha: 0.55),
-                      width: 2,
-                    ),
-                  ),
-                  child: AnimatedScale(
-                    duration: AppMotion.medium,
-                    curve: AppMotion.spring,
-                    scale: _ticked ? 1 : 0.4,
-                    child: AnimatedOpacity(
-                      duration: AppMotion.fast,
-                      opacity: _ticked ? 1 : 0,
-                      child: Icon(
-                        Symbols.check_rounded,
-                        size: 17,
-                        color: context.isDarkMode
-                            ? c.textInverse
-                            : Colors.white,
-                      ),
-                    ),
+                  opacity: _ticked ? 1 : 0,
+                  child: Icon(
+                    Symbols.check_rounded,
+                    size: 17,
+                    color: context.isDarkMode ? c.textInverse : Colors.white,
                   ),
                 ),
               ),
             ),
-            Expanded(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: widget.onOpen,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      item.title,
-                      style: GoogleFonts.nunito(
-                        fontSize: 15.5,
-                        fontWeight: FontWeight.w700,
-                        height: 1.3,
-                        color: c.textPrimary,
-                        decoration: _ticked ? TextDecoration.lineThrough : null,
-                      ),
+          ),
+          Expanded(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: widget.onOpen,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item.title,
+                    style: GoogleFonts.nunito(
+                      fontSize: 15.5,
+                      fontWeight: FontWeight.w700,
+                      height: 1.3,
+                      color: c.textPrimary,
+                      decoration: _ticked ? TextDecoration.lineThrough : null,
                     ),
-                    const SizedBox(height: 4),
-                    Text.rich(
-                      TextSpan(
-                        children: [
-                          TextSpan(
-                            text: item.time ?? 'Anytime',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w800,
-                              color: c.primaryGreen,
-                            ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: item.time ?? 'Anytime',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            color: c.primaryGreen,
                           ),
-                          if (from.isNotEmpty) TextSpan(text: ' · $from'),
-                        ],
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.nunito(
-                        fontSize: 12.5,
-                        color: c.textSecondary,
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                      ),
+                        ),
+                        if (from.isNotEmpty) TextSpan(text: ' · $from'),
+                      ],
                     ),
-                  ],
-                ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.nunito(
+                      fontSize: 12.5,
+                      color: c.textSecondary,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

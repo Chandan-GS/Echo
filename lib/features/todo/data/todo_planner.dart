@@ -334,7 +334,7 @@ RelevanceWindow? partWindow(
   DateTime onDay(DateTime t) => DateTime(
     day.year,
     day.month,
-    day.day + startOfDay(t).difference(first).inDays,
+    day.day + calendarDaysBetween(first, t),
     t.hour,
     t.minute,
   );
@@ -365,7 +365,7 @@ List<TodoItem> applyMake({
   required int firstId,
   required DateTime now,
 }) {
-  final keys = existing.map((i) => i.sourceKey).toSet();
+  final keys = existing.expand((i) => i.keys).toSet();
   return [...existing, ..._newItems(todos, candidates, keys, firstId, now)];
 }
 
@@ -403,6 +403,12 @@ List<TodoItem> _newItems(
 /// An update: additions are marked new, changes are applied in place with the
 /// old time kept as [TodoItem.movedFrom]. Items are never removed, and done
 /// items stay done.
+///
+/// A changed item keeps its own key (its reminder is filed under it) and
+/// notes the new notification's in [TodoItem.mergedKeys]. It takes the new
+/// notification's day and time only when that names a day or time — "moved
+/// to Friday" makes it Friday with no time, while "running a bit late"
+/// leaves it where it was.
 List<TodoItem> applyUpdate({
   required List<TodoItem> existing,
   required List<BriefingItem> candidates,
@@ -412,20 +418,23 @@ List<TodoItem> applyUpdate({
   required DateTime now,
 }) {
   final byId = {for (final i in existing) i.id: i.copyWith(isNew: false)};
-  final keys = existing.map((i) => i.sourceKey).toSet();
+  final keys = existing.expand((i) => i.keys).toSet();
 
   for (final c in change) {
     final item = byId[c.id];
     if (item == null || c.source < 1 || c.source > candidates.length) continue;
     final cand = candidates[c.source - 1];
     final fresh = itemFrom(cand, item.title, item.id, now);
-    final moved = fresh.time != item.time || fresh.day != item.day;
+    final dated = cand.window.explicit;
+    final moved = dated && (fresh.time != item.time || fresh.day != item.day);
     byId[c.id] = item.copyWith(
-      day: fresh.day,
-      time: fresh.time,
-      sort: fresh.sort,
+      day: dated ? fresh.day : item.day,
+      time: dated ? fresh.time : item.time,
+      sort: dated ? fresh.sort : item.sort,
       sourceText: fresh.sourceText,
-      sourceKey: fresh.sourceKey,
+      mergedKeys: fresh.sourceKey == item.sourceKey
+          ? item.mergedKeys
+          : {...item.mergedKeys, fresh.sourceKey}.toList(),
       movedFrom: moved
           ? (item.time ?? _dayWord(item.day, now))
           : item.movedFrom,

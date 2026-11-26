@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:project_echo/core/presentation/widgets/echo_button.dart';
+import 'package:project_echo/core/theme/app_theme.dart';
+import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/features/onboarding/presentation/cubit/on_boarding_cubit.dart';
+import 'package:project_echo/features/onboarding/presentation/widgets/access_preview.dart';
 import 'package:project_echo/features/onboarding/presentation/widgets/permission_tile.dart';
 import 'package:project_echo/features/onboarding/presentation/widgets/onboarding_scaffold.dart';
 import 'package:material_symbols_icons/symbols.dart';
@@ -48,9 +51,7 @@ class _PermissionScreenState extends State<PermissionScreen>
 
         return OnboardingStepBody(
           title: 'Connect your world to Echo.',
-          subtitle:
-              'Read on-device to build your briefing. Nothing leaves your '
-              'phone unless you choose Cloud AI.',
+          subtitle: 'First, a taste of what Echo does with access.',
           footer: EchoButton(
             text: 'Continue',
             showArrow: true,
@@ -59,6 +60,10 @@ class _PermissionScreenState extends State<PermissionScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              const AccessPreview(),
+              const SizedBox(height: 14),
+              const _PrivacyLine(),
+              const SizedBox(height: 6),
               PermissionTile(
                 icon: Symbols.notifications_active_rounded,
                 title: 'Notification access',
@@ -85,6 +90,43 @@ class _PermissionScreenState extends State<PermissionScreen>
           ),
         );
       },
+    );
+  }
+}
+
+/// The one honest line on privacy. True as written: notifications are read
+/// and kept on the phone; they leave it only for the cloud engine (Gemini)
+/// or a computer the owner pairs, both their choice.
+class _PrivacyLine extends StatelessWidget {
+  const _PrivacyLine();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Icon(
+            Symbols.lock_rounded,
+            size: 18,
+            color: colors.primaryGreen,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            'Echo reads your notifications on this phone. Nothing is sent '
+            'anywhere unless you choose the cloud engine or pair a computer.',
+            style: GoogleFonts.nunito(
+              fontSize: 14,
+              height: 1.45,
+              color: colors.textSecondary,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

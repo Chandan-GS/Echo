@@ -133,9 +133,11 @@ void main() {
 
   group('briefing selection', () {
     test('a busy group only gets its latest few messages of chatter in', () {
+      // Undated: a message naming a date or time is exempt from the cap
+      // (see briefing_selection_test).
       final chatter = [
         for (var i = 0; i < 8; i++)
-          chat('Friend $i', 'party plan tonight at 9 PM, idea $i', at(10, i),
+          chat('Friend $i', 'party plan, idea $i', at(10, i),
               addressed: Addressed.group),
       ];
       final picked = selectForBriefing(chatter, at(12), limit: 25);

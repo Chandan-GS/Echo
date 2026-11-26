@@ -1,4 +1,5 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:project_echo/core/services/pending_autoplay.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Marks that the next time the app reaches `EchoHomeScreen`, today's
@@ -7,7 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// by tapping the notification itself.
 Future<void> _markPendingAutoplay() async {
   final prefs = await SharedPreferences.getInstance();
-  await prefs.setBool('pending_autoplay', true);
+  await PendingAutoplay.mark(prefs);
 }
 
 /// Handles the daily-briefing notification's "Play" action being tapped while
@@ -15,6 +16,7 @@ Future<void> _markPendingAutoplay() async {
 /// mirroring the `alarmCallback` entry point in `schedule_service.dart`.
 @pragma('vm:entry-point')
 void notificationTapBackgroundHandler(NotificationResponse response) {
+  if (LocalNotificationService.opensHomeOnly(response.payload)) return;
   _markPendingAutoplay();
 }
 
@@ -60,6 +62,7 @@ class LocalNotificationService {
       // Tapping the notification body or its "Play" action while the app
       // process is alive (foreground or backgrounded) lands here.
       onDidReceiveNotificationResponse: (details) {
+        if (opensHomeOnly(details.payload)) return;
         _markPendingAutoplay();
       },
       // Tapping the "Play" action while the app is fully terminated lands
@@ -73,6 +76,41 @@ class LocalNotificationService {
     // asked for in onboarding, beside notification access, not here: init()
     // runs on every launch and in the background.
     _initialized = true;
+  }
+
+  /// The payload of a gentle reminder: tapping one just opens Home, without
+  /// starting a briefing.
+  static const openHomePayload = 'open_home';
+
+  /// Whether a tapped notification's [payload] is a gentle reminder's.
+  static bool opensHomeOnly(String? payload) => payload == openHomePayload;
+
+  /// Posts one of Echo's gentle reminders (see GentleNudges), on its own
+  /// quieter channel, so it can be silenced in Android's settings apart from
+  /// the briefing. No Play button: tapping it opens Home.
+  Future<void> showGentleReminder({
+    required int id,
+    required String title,
+    required String body,
+  }) async {
+    const android = AndroidNotificationDetails(
+      'gentle_reminders_channel',
+      'Gentle reminders',
+      channelDescription:
+          'An occasional note about your briefing, at most once in a while',
+      importance: Importance.defaultImportance,
+      priority: Priority.defaultPriority,
+    );
+    await flutterLocalNotificationsPlugin.show(
+      id: id,
+      title: title,
+      body: body,
+      notificationDetails: const NotificationDetails(
+        android: android,
+        iOS: DarwinNotificationDetails(),
+      ),
+      payload: openHomePayload,
+    );
   }
 
   Future<void> showNotification({

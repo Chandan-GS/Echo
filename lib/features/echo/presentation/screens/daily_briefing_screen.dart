@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:project_echo/core/services/review_prompt.dart';
 import 'package:project_echo/core/services/analytics_service.dart';
 import 'package:project_echo/core/services/voice/echo_voice.dart';
 import 'package:project_echo/core/presentation/animations/page_transitions.dart';
@@ -63,11 +64,18 @@ class _DailyBriefingScreenState extends State<DailyBriefingScreen> {
     await _voice.stop();
     if (!mounted) return;
     setState(() => _isPlaying = true);
+    _stopped = false;
     _celebrateStreakIfAdvanced();
     _voice.sayAll(widget.ttsText.replaceAll('**', ''));
     await _voice.finished;
-    if (mounted) setState(() => _isPlaying = false);
+    if (!mounted) return;
+    setState(() => _isPlaying = false);
+    // Heard to the end: a good moment to ask for a rating.
+    if (!_stopped) ReviewPrompt.recordWin(ReviewWin.briefingHeard);
   }
+
+  /// Whether the owner stopped the briefing before it ended.
+  var _stopped = false;
 
   /// Records that a briefing was heard and, if the streak actually advanced
   /// (i.e. this is the first play today — recordHeard() is a no-op on
@@ -96,6 +104,7 @@ class _DailyBriefingScreenState extends State<DailyBriefingScreen> {
   void _togglePlayback() async {
     HapticFeedback.lightImpact();
     if (_isPlaying) {
+      _stopped = true;
       await _voice.stop();
     } else {
       await _play();

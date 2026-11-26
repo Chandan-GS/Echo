@@ -1,10 +1,12 @@
 import 'package:flutter/foundation.dart';
 import 'package:project_echo/core/services/gemini_service.dart';
+import 'package:project_echo/core/services/generation_guard.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Gemini's JSON reply to [prompt], or null when the cloud engine isn't in
 /// use or the call fails (the caller then does without). [label] marks it in
-/// the debug log.
+/// the debug log, which only ever notes sizes: the prompt and reply carry
+/// people's messages, so they never reach the device log.
 Future<String?> askGeminiJson(
   String instruction,
   String prompt, {
@@ -14,17 +16,23 @@ Future<String?> askGeminiJson(
   final offline = prefs.getBool('is_offline_engine') ?? true;
   final key = prefs.getString('gemini_api_key') ?? '';
   if (offline || key.isEmpty) return null;
-  debugPrint('=== $label PROMPT ===\n$prompt\n==================');
+  _log('$label prompt: ${prompt.length} chars');
   try {
     final reply = await GeminiService.instance.generateJson(
       key,
       prompt,
       systemInstruction: instruction,
     );
-    debugPrint('=== $label REPLY (json) ===\n$reply\n==================');
+    _log('$label reply (json): ${reply.length} chars');
     if (reply.trim().isNotEmpty) return reply;
   } catch (e) {
-    debugPrint('$label JSON call failed, retrying with the streaming call: $e');
+    // Gemini that didn't answer in time won't do better streamed; give up
+    // rather than keep the caller (the to-do list) waiting minutes more.
+    if (e is GeminiFailure && e.cause is GenerationTimeout) {
+      _log('$label JSON call timed out');
+      return null;
+    }
+    _log('$label JSON call failed (${e.runtimeType}), retrying streamed');
   }
   // The streaming call is the one briefings and Ask Echo already rely on.
   try {
@@ -37,10 +45,14 @@ Future<String?> askGeminiJson(
       buffer.write(chunk.text ?? '');
     }
     final reply = buffer.toString();
-    debugPrint('=== $label REPLY (stream) ===\n$reply\n==================');
+    _log('$label reply (stream): ${reply.length} chars');
     return reply.trim().isEmpty ? null : reply;
   } catch (e) {
-    debugPrint('$label call failed: $e');
+    _log('$label call failed (${e.runtimeType})');
     return null;
   }
+}
+
+void _log(String message) {
+  if (kDebugMode) debugPrint(message);
 }

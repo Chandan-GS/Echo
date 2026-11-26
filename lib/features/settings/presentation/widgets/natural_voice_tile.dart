@@ -134,7 +134,7 @@ class _NaturalVoiceTileState extends State<NaturalVoiceTile> {
                 )
               else if (installed)
                 TextButton(
-                  onPressed: _voice.remove,
+                  onPressed: () => _voice.remove(widget.pref),
                   child: Text(
                     'Remove',
                     style: GoogleFonts.nunito(

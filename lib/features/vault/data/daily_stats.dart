@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:math' as math;
 
-import 'package:isar/isar.dart';
+import 'package:isar_community/isar.dart';
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:project_echo/features/echo/data/relevance/briefing_selection.dart';
@@ -87,10 +87,14 @@ class DailyStats {
     return pruned({...store, k: DayStats(day.day, hours, apps).toJson()}, now);
   }
 
+  /// The calendar day [n] days before [now]'s. Counted in days, not 24-hour
+  /// steps, which land on the wrong date across a daylight-saving change.
+  static DateTime daysBefore(DateTime now, int n) =>
+      DateTime(now.year, now.month, now.day - n);
+
   static Map<String, dynamic> pruned(Map<String, dynamic> store, DateTime now) {
     final keep = {
-      for (var i = 0; i < days; i++)
-        dateKey(_day(now).subtract(Duration(days: i))),
+      for (var i = 0; i < days; i++) dateKey(daysBefore(now, i)),
     };
     return {
       for (final e in store.entries)
@@ -100,12 +104,11 @@ class DailyStats {
 
   /// The last seven days, oldest first, from a stored map.
   static List<DayStats> weekFrom(Map<String, dynamic> store, DateTime now) {
-    final today = _day(now);
     return [
       for (var i = days - 1; i >= 0; i--)
         DayStats.fromJson(
-          today.subtract(Duration(days: i)),
-          store[dateKey(today.subtract(Duration(days: i)))],
+          daysBefore(now, i),
+          store[dateKey(daysBefore(now, i))],
         ),
     ];
   }
@@ -149,7 +152,7 @@ class DailyStats {
       jsonDecode(prefs.getString('vault_category_aliases') ?? '{}'),
     );
     final excluded = await loadExcludedSources();
-    final from = _day(now).subtract(const Duration(days: 1));
+    final from = daysBefore(now, 1);
     final isar = await IsarDataSource.instance;
     final query = isar.rawDatas.filter().timestampGreaterThan(from);
     final sources = await query.sourceProperty().findAll();

@@ -1,3 +1,4 @@
+import 'package:project_echo/core/services/analytics_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Current and best consecutive-day briefing-listening streak.
@@ -62,11 +63,12 @@ class StreakService {
     await prefs.setInt(_kCurrent, nextCurrent);
     await prefs.setInt(_kLongest, nextLongest);
     // Lifetime count of distinct days a briefing was heard (Profile stat).
-    await prefs.setInt(
-      _kBriefingsHeard,
-      (prefs.getInt(_kBriefingsHeard) ?? 0) + 1,
-    );
+    final heardBefore = prefs.getInt(_kBriefingsHeard) ?? 0;
+    await prefs.setInt(_kBriefingsHeard, heardBefore + 1);
     await _markHeardToday(prefs);
+    // The onboarding funnel's last step: the first real briefing played.
+    // (The first look in onboarding isn't a briefing and doesn't count.)
+    if (heardBefore == 0) Analytics.track('first_morning_briefing_heard');
 
     return StreakInfo(current: nextCurrent, longest: nextLongest);
   }

@@ -4,9 +4,11 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:fllama/fllama.dart';
+import 'package:project_echo/core/services/review_prompt.dart';
 import 'package:project_echo/core/services/analytics_service.dart';
 import 'package:project_echo/core/services/desktop_engine_client.dart';
 import 'package:project_echo/core/services/gemini_service.dart';
+import 'package:project_echo/core/services/generation_guard.dart';
 import 'package:project_echo/core/services/offline_model_repository.dart';
 import 'package:project_echo/demo/demo_mode.dart';
 import 'package:project_echo/features/echo/data/ask/ask_intents.dart';
@@ -35,8 +37,16 @@ part 'ask_ai_state.dart';
 
 class AskAiCubit extends Cubit<AskAiState> {
   final List<ChatMessage> _messages = [];
-  int? _activeRequestId;
   final TodoGenerator _todos;
+
+  /// The answer being generated, so a new question, or leaving Ask, stops
+  /// it — and the native request, HTTP call or Gemini stream behind it.
+  StreamSubscription<String>? _answerSub;
+  Completer<void>? _answerDone;
+
+  /// Bumped by each question and by [cancelInference]; an answer whose
+  /// number is no longer current was stopped and says nothing more.
+  int _askRun = 0;
 
   AskAiCubit({TodoGenerator? todos})
     : _todos = todos ?? TodoGenerator(),
@@ -117,6 +127,7 @@ class AskAiCubit extends Cubit<AskAiState> {
     Analytics.track('ask_echo_used');
 
     cancelInference();
+    final run = _askRun;
 
     _messages.add(ChatMessage(sender: 'user', text: text));
     _emit(searching: true);
@@ -226,10 +237,7 @@ class AskAiCubit extends Cubit<AskAiState> {
       String line(RawData e) => formatEntry(
         e,
         myTurns: myTurns,
-        content: _clip(
-          rewriteRelativeDays(e.content, e.timestamp, now),
-          _maxContentChars,
-        ),
+        content: clipContent(rewriteRelativeDays(e.content, e.timestamp, now)),
         when: askTimeLabel(e, now, withArrival: isArrivalQuestion(text)),
       );
       final contextString = ragSources.isEmpty
@@ -255,29 +263,40 @@ class AskAiCubit extends Cubit<AskAiState> {
       final prefs = await SharedPreferences.getInstance();
       final userName = prefs.getString('user_name') ?? 'Sir';
       final answer = StringBuffer();
-      await for (final delta in _generate(
-        prefs: prefs,
-        question: text,
-        context: contextString,
-        userName: userName,
-        history: history,
-        now: now,
-      )) {
-        if (isClosed) return;
-        answer.write(delta);
-        _messages[echoIndex] = _messages[echoIndex].copyWith(
-          text: answer.toString(),
-        );
-        _emit(progress: _progress(reading, ragSources.length));
-      }
-      final finished = _messages[echoIndex].copyWith(
-        text: _withoutChatTokens(answer.toString()),
+      final index = echoIndex;
+      if (run != _askRun) throw const _Stopped();
+      await _consume(
+        _generate(
+          prefs: prefs,
+          question: text,
+          context: contextString,
+          userName: userName,
+          history: history,
+          now: now,
+        ),
+        (delta) {
+          if (isClosed || run != _askRun) return;
+          answer.write(delta);
+          _messages[index] = _messages[index].copyWith(
+            text: answer.toString(),
+          );
+          _emit(progress: _progress(reading, ragSources.length));
+        },
       );
+      if (isClosed) return;
+      if (run != _askRun) throw const _Stopped();
+      final cleaned = _withoutChatTokens(answer.toString());
+      // A run that ends without a word is a failed one, whichever engine.
+      if (cleaned.isEmpty) {
+        throw const OnDeviceFailure('empty answer', noOutput: true);
+      }
+      final finished = _messages[echoIndex].copyWith(text: cleaned);
       _messages[echoIndex] = finished.copyWith(
         isGenerating: false,
         addable: finished.todos > 0 && await _notOnList(finished.about),
       );
       _emit();
+      ReviewPrompt.recordWin(ReviewWin.askAnswered);
 
       // Remember the exchange (small talk carries no topic worth following).
       final spoken = plainAnswer(_messages[echoIndex].text);
@@ -293,24 +312,58 @@ class AskAiCubit extends Cubit<AskAiState> {
         );
       }
     } catch (e) {
+      if (isClosed) return;
+      final stopped = e is _Stopped || run != _askRun;
+      if (!stopped) {
+        if (kDebugMode) debugPrint('Ask Echo failed (${e.runtimeType})');
+      }
       // Remove this request's own placeholder if it never received any text,
       // identified by its captured index rather than "the last message".
-      if (echoIndex != null &&
-          echoIndex < _messages.length &&
-          _messages[echoIndex].text.isEmpty) {
-        _messages.removeAt(echoIndex);
+      // One that did keeps what it said, no longer generating.
+      if (echoIndex != null && echoIndex < _messages.length) {
+        if (_messages[echoIndex].text.isEmpty) {
+          _messages.removeAt(echoIndex);
+        } else {
+          _messages[echoIndex] = _messages[echoIndex].copyWith(
+            isGenerating: false,
+          );
+        }
       }
-      _messages.add(
-        ChatMessage(
-          sender: 'echo',
-          text: e is GeminiFailure
-              ? e.message
-              : 'Sorry, I encountered an error running inference: $e',
-          kind: e is GeminiFailure ? MessageKind.notice : MessageKind.text,
-        ),
-      );
+      // A stopped answer was replaced by a newer question; nothing to say.
+      if (!stopped) {
+        _messages.add(
+          ChatMessage(
+            sender: 'echo',
+            text: e is GeminiFailure ? e.message : friendlyGenerationError(e),
+            kind: e is GeminiFailure ? MessageKind.notice : MessageKind.text,
+          ),
+        );
+      }
       _emit();
     }
+  }
+
+  /// Feeds [answer] to [onDelta] until it ends, fails, or is stopped by
+  /// [cancelInference] (which completes this without an error).
+  Future<void> _consume(Stream<String> answer, void Function(String) onDelta) {
+    final done = Completer<void>();
+    _answerDone = done;
+    _answerSub = answer.listen(
+      onDelta,
+      cancelOnError: true,
+      onError: (Object e, StackTrace st) {
+        if (!done.isCompleted) done.completeError(e, st);
+      },
+      onDone: () {
+        if (!done.isCompleted) done.complete();
+      },
+    );
+    return done.future.whenComplete(() {
+      if (identical(_answerDone, done)) {
+        _answerDone = null;
+        _answerSub = null;
+      }
+    });
   }
 
   /// The answer as it streams in, piece by piece, from whichever engine is
@@ -376,9 +429,7 @@ class AskAiCubit extends Cubit<AskAiState> {
           'or switch to the cloud engine to use Ask Echo without it.';
       return;
     }
-    final deltas = StreamController<String>();
-    var sent = 0;
-    _activeRequestId = await fllamaInference(
+    yield* onDeviceStream(
       FllamaInferenceRequest(
         // fllama splits the context across parallel slots, so the usable
         // window is only contextSize / n_parallel. 16384 keeps the usable
@@ -396,19 +447,11 @@ class AskAiCubit extends Cubit<AskAiState> {
         penaltyRepeat: 1.1,
         topP: 0.9,
       ),
-      (cumulative, openaiJson, isDone) {
-        if (deltas.isClosed) return;
-        if (cumulative.length > sent) {
-          deltas.add(cumulative.substring(sent));
-          sent = cumulative.length;
-        }
-        if (isDone) {
-          _activeRequestId = null;
-          deltas.close();
-        }
-      },
+      // A 500-token answer needs far less than a briefing's ceiling.
+      limits: GenerationLimits.onDevice.copyWith(
+        total: const Duration(minutes: 4),
+      ),
     );
-    yield* deltas.stream;
   }
 
   static AskProgress? _progress(int? reading, [int? found]) =>
@@ -614,22 +657,22 @@ class AskAiCubit extends Cubit<AskAiState> {
         "but I do have $mentioned if that's useful instead.";
   }
 
-  static const _maxContentChars = 280;
-
-  static String _clip(String s, int max) =>
-      s.length <= max ? s : '${s.substring(0, max).trimRight()}…';
-
   /// Chat-template tokens a local model sometimes leaves in its output.
   static String _withoutChatTokens(String text) => text
       .replaceAll(RegExp(r'<\|im_start\|>.*', dotAll: true), '')
       .replaceAll(RegExp(r'<\|[^|]*\|>'), '')
       .trim();
 
+  /// Stops the answer being generated, if any: its stream is cancelled,
+  /// which cancels the native request (or HTTP call) behind it.
   void cancelInference() {
-    if (_activeRequestId != null) {
-      fllamaCancelInference(_activeRequestId!);
-      _activeRequestId = null;
-    }
+    _askRun++;
+    final sub = _answerSub;
+    final done = _answerDone;
+    _answerSub = null;
+    _answerDone = null;
+    if (sub != null) unawaited(sub.cancel());
+    if (done != null && !done.isCompleted) done.complete();
   }
 
   @override
@@ -637,6 +680,11 @@ class AskAiCubit extends Cubit<AskAiState> {
     cancelInference();
     return super.close();
   }
+}
+
+/// An answer stopped by a newer question or by leaving Ask.
+class _Stopped implements Exception {
+  const _Stopped();
 }
 
 /// What Echo says after adding to-dos: which day's list they went on.

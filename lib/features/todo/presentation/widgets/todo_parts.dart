@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:project_echo/core/presentation/widgets/min_tap_area.dart';
 import 'package:project_echo/core/presentation/animations/fade_slide_in.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
@@ -467,34 +468,39 @@ class TodoCheck extends StatelessWidget {
       button: true,
       checked: done,
       label: label,
-      child: GestureDetector(
-        onTap: onTap,
-        behavior: HitTestBehavior.opaque,
-        child: Padding(
-          padding: const EdgeInsets.only(top: 1),
-          child: AnimatedScale(
-            scale: done ? 1.08 : 1,
-            duration: const Duration(milliseconds: 220),
-            curve: const Cubic(0.34, 1.56, 0.64, 1),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: 26,
-              height: 26,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: done ? green : Colors.transparent,
-                border: Border.all(
-                  color: done ? green : green.withValues(alpha: 0.55),
-                  width: 2,
+      // A 48 dp tap area around the 26 dp circle.
+      child: MinTapArea(
+        child: GestureDetector(
+          onTap: onTap,
+          behavior: HitTestBehavior.opaque,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 1),
+            child: AnimatedScale(
+              scale: done ? 1.08 : 1,
+              duration: const Duration(milliseconds: 220),
+              curve: const Cubic(0.34, 1.56, 0.64, 1),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                width: 26,
+                height: 26,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: done ? green : Colors.transparent,
+                  border: Border.all(
+                    color: done ? green : green.withValues(alpha: 0.55),
+                    width: 2,
+                  ),
                 ),
-              ),
-              child: TweenAnimationBuilder<double>(
-                tween: Tween(end: done ? 1 : 0),
-                duration: const Duration(milliseconds: 280),
-                builder: (context, t, _) => CustomPaint(
-                  painter: _CheckPainter(
-                    t,
-                    context.isDarkMode ? const Color(0xFF16301B) : Colors.white,
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(end: done ? 1 : 0),
+                  duration: const Duration(milliseconds: 280),
+                  builder: (context, t, _) => CustomPaint(
+                    painter: _CheckPainter(
+                      t,
+                      context.isDarkMode
+                          ? const Color(0xFF16301B)
+                          : Colors.white,
+                    ),
                   ),
                 ),
               ),

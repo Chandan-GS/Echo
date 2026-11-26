@@ -147,10 +147,17 @@ class _MainScaffoldState extends State<MainScaffold> {
       (_) => EchoSays.instance.setQuiet(quiet),
     );
 
+    // Back closes the question bar, then leaves To-do, Vault or Profile for
+    // Home; only Home's back leaves the app.
     return PopScope(
-      canPop: !_asking,
+      canPop: !_asking && _selectedIndex == 0,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && _asking) _closeAsk();
+        if (didPop) return;
+        if (_asking) {
+          _closeAsk();
+        } else if (_selectedIndex != 0) {
+          _onItemTapped(0);
+        }
       },
       child: Scaffold(
         resizeToAvoidBottomInset: false,

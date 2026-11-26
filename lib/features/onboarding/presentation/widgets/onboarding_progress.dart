@@ -6,8 +6,9 @@ import 'package:project_echo/core/presentation/animations/app_motion.dart';
 
 /// The single source of truth for how many setup steps the onboarding has.
 /// Every step screen passes its own 1-based index to [OnboardingProgress].
-/// Android has one more: choosing which apps Echo hears.
-int get kOnboardingTotalSteps => Platform.isAndroid ? 7 : 6;
+/// Android has three more: the first look, choosing which apps Echo hears,
+/// and the streak goal at the end.
+int get kOnboardingTotalSteps => Platform.isAndroid ? 9 : 6;
 
 /// One solid, continuous progress bar that fills left-to-right as the user moves
 /// through setup. No step counters, no percentages — a single deliberate line.

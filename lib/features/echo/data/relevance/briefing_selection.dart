@@ -12,16 +12,70 @@ class BriefingItem {
 }
 
 /// Senders and phrases that are never briefing material (promos, OTPs,
-/// transactional noise).
+/// transactional noise). Matched as whole words, so "Hubert" isn't Uber and
+/// "Footprint" holds no OTP.
+///
+/// Sender names only rule out apps and businesses: a chat contact (anything
+/// with an [Addressed] value) is a person, whatever they're called.
 const _junkSenders = [
-  'zomato', 'swiggy', 'myntra', 'lenskart', 'amazon', 'uber', 'hdfc',
-  'credit card', 'makemytrip', 'apollo', 'dominos', 'jio', 'urban company',
-  'blinkit', 'flipkart', 'quora', 'linkedin', 'medium',
+  'zomato',
+  'swiggy',
+  'myntra',
+  'lenskart',
+  'amazon',
+  'uber',
+  'hdfc',
+  'credit card',
+  'makemytrip',
+  'apollo',
+  'dominos',
+  'jio',
+  'urban company',
+  'blinkit',
+  'flipkart',
+  'quora',
+  'linkedin',
+  'medium',
 ];
-const _junkKeywords = ['% off', 'otp', 'flash sale', 'discount', 'free'];
+
+/// Phrases that mark junk whoever sent them.
+const _junkKeywords = ['% off', 'otp', 'flash sale'];
+
+/// Promo words that only mark junk from an app or business: "Are you free at
+/// 5?" from a friend is a question, "Free delivery" from a shop is an ad.
+const _promoKeywords = ['discount', 'free'];
+
+final _junkSenderPattern = _wholeWords(_junkSenders);
+final _junkKeywordPattern = _wholeWords(_junkKeywords);
+final _promoKeywordPattern = _wholeWords(_promoKeywords);
+
+/// Any of [phrases] as a whole word, not inside a longer one. A phrase that
+/// starts or ends with a symbol ("% off") needs no boundary on that side, so
+/// "20% off" still matches.
+RegExp _wholeWords(List<String> phrases) {
+  final letter = RegExp(r'[\p{L}\p{N}]', unicode: true);
+  const before = r'(?<![\p{L}\p{N}])', after = r'(?![\p{L}\p{N}])';
+  final alternatives = [
+    for (final p in phrases)
+      '${letter.hasMatch(p[0]) ? before : ''}${RegExp.escape(p)}'
+          '${letter.hasMatch(p[p.length - 1]) ? after : ''}',
+  ];
+  return RegExp(alternatives.join('|'), caseSensitive: false, unicode: true);
+}
+
+/// Whether [e] is promo or transactional noise rather than something for the
+/// owner to know about.
+bool isJunk(RawData e) {
+  if (_junkKeywordPattern.hasMatch(e.content)) return true;
+  // A chat contact is a person: their name and casual words don't count.
+  if (e.addressed != null) return false;
+  return _junkSenderPattern.hasMatch(e.sender) ||
+      _promoKeywordPattern.hasMatch(e.content);
+}
 
 /// A busy group can't crowd out everything else: of its messages that aren't
-/// aimed at the owner, only the latest few are considered.
+/// aimed at the owner and name no date or time, only the latest few are
+/// considered.
 const groupChatterPerThread = 3;
 
 /// The display name a source is grouped under in the Vault, after the user's
@@ -57,19 +111,20 @@ List<BriefingItem> selectForBriefing(
 }) {
   final horizonEnd = briefingHorizonEnd(now);
 
-  // Latest copy of each distinct content wins.
+  // Latest copy of each message wins: the same words from the same sender in
+  // the same conversation. Rahul's "Call me" and Mom's are two messages.
   final unique = <String, RawData>{};
   final sorted = entries.toList()
     ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
   for (final e in sorted) {
     if (blockedCategories.contains(displaySource(e.source, aliases))) continue;
-    final sender = e.sender.toLowerCase();
-    final content = e.content.toLowerCase();
-    if (_junkSenders.any(sender.contains)) continue;
-    if (_junkKeywords.any(content.contains)) continue;
-    unique[e.content] = e;
+    if (isJunk(e)) continue;
+    unique['${e.sender}|${e.thread ?? ''}|${e.content}'] = e;
   }
 
+  // Group chatter is capped, newest first, but a message naming a date or
+  // time is never cut for it ("Bus leaves 6 AM Saturday" before a string of
+  // "ok 👍") and doesn't use up the group's share.
   final chatter = <String, int>{};
   final pool = unique.values.toList()
     ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
@@ -77,6 +132,11 @@ List<BriefingItem> selectForBriefing(
     if (e.thread == null || Addressed.parse(e.addressed) != Addressed.group) {
       return true;
     }
+    final named = extractExplicitWindows(
+      '${e.sender} ${e.content}',
+      e.timestamp,
+    );
+    if (named.isNotEmpty) return true;
     final n = chatter.update(e.thread!, (v) => v + 1, ifAbsent: () => 1);
     return n <= groupChatterPerThread;
   });
@@ -94,17 +154,19 @@ List<BriefingItem> selectForBriefing(
   // Importance for the cap: a named date/time is a strong signal on its own.
   final importance = <BriefingItem, double>{
     for (final i in [...dated, ...undated])
-      i: (i.window.explicit ? 1.0 : 0.0) +
+      i:
+          (i.window.explicit ? 1.0 : 0.0) +
           (priorityVector != null
               ? cosineSimilarity(priorityVector, i.entry.embedding)
               : i.entry.timestamp.millisecondsSinceEpoch / 1e15) +
           (Addressed.parse(i.entry.addressed)?.weight ?? 0) +
           0.3 * (affinity?.call(i.entry.thread) ?? 0),
   };
-  final kept = ([...dated, ...undated]
-        ..sort((a, b) => importance[b]!.compareTo(importance[a]!)))
-      .take(limit)
-      .toSet();
+  final kept =
+      ([...dated, ...undated]
+            ..sort((a, b) => importance[b]!.compareTo(importance[a]!)))
+          .take(limit)
+          .toSet();
 
   dated
     ..retainWhere(kept.contains)
@@ -129,9 +191,10 @@ double cosineSimilarity(List<double>? a, List<double>? b) {
 
 /// Whether [entry] still refers to anything at or after [now] — used to keep
 /// a notification past the usual 24h retention while its time is still ahead.
-bool isStillRelevant(RawData entry, DateTime now) =>
-    relevanceWindows('${entry.sender} ${entry.content}', entry.timestamp)
-        .any((w) => !w.end.isBefore(now));
+bool isStillRelevant(RawData entry, DateTime now) => relevanceWindows(
+  '${entry.sender} ${entry.content}',
+  entry.timestamp,
+).any((w) => !w.end.isBefore(now));
 
 /// The full label for [e] shown to a model: when it applies ([window]), plus
 /// — for undated items whose text named a time already over when it arrived
@@ -159,9 +222,7 @@ String describeEntry(
 String describeWhen(RelevanceWindow window, DateTime receivedAt, DateTime now) {
   if (!window.explicit) return _arrived(receivedAt, now);
   final firstDay = startOfDay(window.start);
-  final lastDay = startOfDay(
-    window.hasTime ? window.start : window.end,
-  );
+  final lastDay = startOfDay(window.hasTime ? window.start : window.end);
   final days = firstDay == lastDay
       ? _dayLabel(firstDay, now)
       : '${_dayLabel(firstDay, now)} to ${_dayLabel(lastDay, now)}';
@@ -170,7 +231,7 @@ String describeWhen(RelevanceWindow window, DateTime receivedAt, DateTime now) {
   final times = !window.hasEndTime
       ? _clock(window.start)
       : '${_clock(window.start)} to ${_clock(window.end)}'
-          '${sameDay ? '' : ' (${shortDate(window.end)})'}';
+            '${sameDay ? '' : ' (${shortDate(window.end)})'}';
   return '$days, $times';
 }
 

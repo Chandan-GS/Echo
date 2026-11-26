@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+
 import 'package:project_echo/core/services/gemini_json.dart';
 import 'package:project_echo/features/echo/data/context/chat_context_store.dart';
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';
@@ -65,7 +67,6 @@ class TodoGenerator {
       await Future<void>.delayed(const Duration(milliseconds: 2600));
       return DemoSeed.writeTodoList();
     }
-    final (items, meta) = await store.load();
     final picked = await candidates(now);
 
     List<NewTodo> todos;
@@ -82,19 +83,18 @@ class TodoGenerator {
       ];
     }
 
-    final next = applyMake(
-      existing: items,
-      candidates: picked,
-      todos: todos,
-      firstId: meta.nextId,
-      now: now,
-    );
-    await store.save(
-      next,
-      meta.copyWith(
-        madeAt: now,
-        updatedAt: now,
-        nextId: meta.nextId + (next.length - items.length),
+    // Applied to the list as it is now, not as it was before the model was
+    // asked: anything ticked or added while it thought is kept.
+    await store.edit(
+      (items, meta) => (
+        applyMake(
+          existing: items,
+          candidates: picked,
+          todos: todos,
+          firstId: freeId(items, meta),
+          now: now,
+        ),
+        meta.copyWith(madeAt: now, updatedAt: now),
       ),
     );
   }
@@ -105,7 +105,7 @@ class TodoGenerator {
     final (items, meta) = await store.load();
     final fresh = await candidates(now, since: meta.updatedAt ?? meta.madeAt);
     if (fresh.isEmpty) {
-      await store.save(items, meta.copyWith(updatedAt: now));
+      await store.edit((items, meta) => (items, meta.copyWith(updatedAt: now)));
       return 0;
     }
 
@@ -131,20 +131,26 @@ class TodoGenerator {
       change = const [];
     }
 
-    final next = applyUpdate(
-      existing: items,
-      candidates: fresh,
-      add: add,
-      change: change,
-      firstId: meta.nextId,
-      now: now,
-    );
-    final added = next.length - items.length;
-    await store.save(
-      next,
-      meta.copyWith(updatedAt: now, nextId: meta.nextId + added),
-    );
-    return added + change.length;
+    // Changes name items by id, so they still land on the right item if the
+    // list moved on meanwhile (one deleted since is simply skipped).
+    var touched = 0;
+    await store.edit((items, meta) {
+      final next = applyUpdate(
+        existing: items,
+        candidates: fresh,
+        add: add,
+        change: change,
+        firstId: freeId(items, meta),
+        now: now,
+      );
+      final ids = {for (final i in items) i.id};
+      touched =
+          next.length -
+          items.length +
+          change.where((c) => ids.contains(c.id)).length;
+      return (next, meta.copyWith(updatedAt: now));
+    });
+    return touched;
   }
 
   /// Puts [entries] (chosen in Ask Echo) on the list and returns what was
@@ -157,7 +163,6 @@ class TodoGenerator {
           relevanceWindows('${e.sender} ${e.content}', e.timestamp).first,
         ),
     ];
-    final (items, meta) = await store.load();
     final reply = await _ask(
       makeInstruction,
       numberedLines(
@@ -176,21 +181,34 @@ class TodoGenerator {
                 when: null,
               ),
           ];
-    final next = applyMake(
-      existing: items,
-      candidates: candidates,
-      todos: todos,
-      firstId: meta.nextId,
-      now: now,
-    );
-    final added = next.sublist(items.length);
-    await store.save(next, meta.copyWith(nextId: meta.nextId + added.length));
+    var added = const <TodoItem>[];
+    await store.edit((items, meta) {
+      final next = applyMake(
+        existing: items,
+        candidates: candidates,
+        todos: todos,
+        firstId: freeId(items, meta),
+        now: now,
+      );
+      added = next.sublist(items.length);
+      return added.isEmpty ? null : (next, meta);
+    });
     TodoStore.changed.value++;
     return added;
   }
 
-  /// Gemini's reply, or null when the cloud engine isn't in use or the call
-  /// fails — the caller then builds titles locally.
+  /// How long the model gets before titles are built locally instead.
+  static const askTimeout = Duration(seconds: 45);
+
+  /// Gemini's reply, or null when the cloud engine isn't in use, the call
+  /// fails or it takes longer than [askTimeout] — the caller then builds
+  /// titles locally.
   Future<String?> _ask(String instruction, String prompt) =>
-      askGeminiJson(instruction, prompt, label: 'TODO');
+      askGeminiJson(instruction, prompt, label: 'TODO').timeout(
+        askTimeout,
+        onTimeout: () {
+          debugPrint('TODO: no reply in ${askTimeout.inSeconds}s, going local');
+          return null;
+        },
+      );
 }

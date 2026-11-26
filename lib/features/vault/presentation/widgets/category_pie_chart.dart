@@ -305,6 +305,9 @@ class _CategoryPieChartState extends State<CategoryPieChart>
                     ),
                   ),
                   IgnorePointer(child: _sliceIcons(size)),
+                  // Scrubbing can't be done with TalkBack, so each slice is
+                  // also a button it can find, on its arc.
+                  ..._sliceSemantics(size, box),
                   // Center text for hovered item
                   if (_hoveredIndex != null &&
                       _hoveredIndex! >= 0 &&
@@ -375,6 +378,35 @@ class _CategoryPieChartState extends State<CategoryPieChart>
 }
 
 extension on _CategoryPieChartState {
+  /// One invisible button per slice for TalkBack, centred on its arc. They
+  /// take no touches, so scrubbing works as before.
+  List<Widget> _sliceSemantics(double ringSize, Size box) {
+    final center = box.center(Offset.zero);
+    return [
+      for (final s in _slices)
+        Positioned(
+          left:
+              center.dx +
+              math.cos(s.startAngle + s.sweepAngle / 2) * ringSize / 2 -
+              24,
+          top:
+              center.dy +
+              math.sin(s.startAngle + s.sweepAngle / 2) * ringSize / 2 -
+              24,
+          width: 48,
+          height: 48,
+          child: Semantics(
+            button: true,
+            label:
+                '${s.category}, ${s.count} '
+                '${s.count == 1 ? 'signal' : 'signals'}',
+            onTap: () => widget.onCategorySelected(s.category),
+            child: const SizedBox.expand(),
+          ),
+        ),
+    ];
+  }
+
   /// Each slice's icon, centred on its arc and riding out with the dock
   /// effect. Built only while the ring is being scrubbed.
   Widget _sliceIcons(double ringSize) {

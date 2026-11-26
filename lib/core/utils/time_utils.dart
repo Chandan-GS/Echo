@@ -38,3 +38,50 @@ BriefingTime? parseBriefingTime(String raw) {
 
   return BriefingTime(hour, minute);
 }
+
+/// A briefing slot that has come due: the slot's time, and the key it's
+/// recorded under once it has run (`yyyy-MM-dd_<stored time>`, dated the day
+/// the slot fell on, so a 23:59 slot caught at 00:01 still belongs to the
+/// day before).
+typedef DueBriefingSlot = ({String key, BriefingTime time});
+
+/// The briefing slot an alarm firing at [now] should run, or null when
+/// there's nothing to do.
+///
+/// Briefing alarms are inexact, so Android may deliver one minutes or hours
+/// after its time. Rather than matching the firing time to a slot, this takes
+/// the most recent slot in [times] that has already started (looking back
+/// across midnight), and runs it unless [lastRunKey] says it already ran. A
+/// slot older than [maxLateness] is left for its next turn, so a phone
+/// switched on in the small hours doesn't deliver yesterday's morning
+/// briefing. Malformed entries are skipped.
+DueBriefingSlot? dueBriefingSlot({
+  required DateTime now,
+  required List<String> times,
+  String? lastRunKey,
+  Duration maxLateness = const Duration(hours: 12),
+}) {
+  DueBriefingSlot? latest;
+  DateTime? latestAt;
+  for (final raw in times) {
+    final time = parseBriefingTime(raw);
+    if (time == null) continue;
+    var at = DateTime(now.year, now.month, now.day, time.hour, time.minute);
+    if (at.isAfter(now)) {
+      at = DateTime(now.year, now.month, now.day - 1, time.hour, time.minute);
+    }
+    if (latestAt == null || at.isAfter(latestAt)) {
+      latestAt = at;
+      latest = (key: '${_isoDate(at)}_$raw', time: time);
+    }
+  }
+  if (latest == null || latestAt == null) return null;
+  if (now.difference(latestAt) > maxLateness) return null;
+  if (latest.key == lastRunKey) return null;
+  return latest;
+}
+
+String _isoDate(DateTime d) =>
+    '${d.year.toString().padLeft(4, '0')}-'
+    '${d.month.toString().padLeft(2, '0')}-'
+    '${d.day.toString().padLeft(2, '0')}';

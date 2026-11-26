@@ -2,6 +2,7 @@ import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:project_echo/core/services/gemini_usage.dart';
+import 'package:project_echo/core/services/generation_guard.dart';
 import 'package:project_echo/core/services/remote_config_service.dart';
 
 class GeminiService {
@@ -45,7 +46,8 @@ class GeminiService {
   /// offline model's chat template, which Gemini just reads as extra text.
   ///
   /// Every call is counted in [GeminiUsage]. When Gemini is overloaded before
-  /// replying, it retries once; other failures surface as [GeminiFailure].
+  /// replying, it retries once; other failures surface as [GeminiFailure],
+  /// including a reply that stalls or runs long ([GenerationLimits.gemini]).
   Stream<GenerateContentResponse> generateStream(
     String apiKey,
     String prompt, {
@@ -66,9 +68,10 @@ class GeminiService {
       var replied = false;
       var tokens = 0;
       try {
-        await for (final r in model.generateContentStream([
-          Content.text(prompt),
-        ])) {
+        await for (final r in guardGeneration(
+          model.generateContentStream([Content.text(prompt)]),
+          GenerationLimits.gemini,
+        )) {
           replied = true;
           tokens = r.usageMetadata?.totalTokenCount ?? tokens;
           yield r;
@@ -86,8 +89,12 @@ class GeminiService {
     }
   }
 
+  /// How long [generateJson] waits for its reply.
+  static const jsonTimeout = Duration(seconds: 60);
+
   /// A single, non-streamed reply constrained to JSON — for small structured
   /// jobs like the to-do list, where only the finished object is useful.
+  /// Gives up after [jsonTimeout] (a [GeminiFailure] like any other).
   Future<String> generateJson(
     String apiKey,
     String prompt, {
@@ -105,7 +112,12 @@ class GeminiService {
     );
     for (var attempt = 0; ; attempt++) {
       try {
-        final response = await model.generateContent([Content.text(prompt)]);
+        final response = await model
+            .generateContent([Content.text(prompt)])
+            .timeout(
+              jsonTimeout,
+              onTimeout: () => throw const GenerationTimeout(overall: true),
+            );
         await GeminiUsage.instance.recordCall(
           model: name,
           tokens: response.usageMetadata?.totalTokenCount ?? 0,
@@ -132,7 +144,9 @@ class GeminiFailure implements Exception {
 
   const GeminiFailure(this.cause, this.hit);
 
-  String get message => friendlyGeminiError(cause, hit: hit);
+  String get message => cause is GenerationTimeout
+      ? 'Gemini took too long to answer. Try again in a moment.'
+      : friendlyGeminiError(cause, hit: hit);
 
   @override
   String toString() => message;

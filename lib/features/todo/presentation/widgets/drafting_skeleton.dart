@@ -39,6 +39,16 @@ class _DraftingSkeletonState extends State<DraftingSkeleton>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // With animations turned off, the rows hold still, already drawn.
+    if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) {
+      _loop.stop();
+      _entrance.value = 1;
+    }
+  }
+
+  @override
   void dispose() {
     _loop.dispose();
     _entrance.dispose();

@@ -6,13 +6,16 @@ import 'package:project_echo/features/echo/data/relevance/briefing_selection.dar
 DateTime at(int day, int hour, [int minute = 0]) =>
     DateTime(2026, 9, day, hour, minute);
 
-RawData note(String sender, String content, DateTime receivedAt,
-        {String source = 'Whatsapp'}) =>
-    RawData()
-      ..source = source
-      ..sender = sender
-      ..content = content
-      ..timestamp = receivedAt;
+RawData note(
+  String sender,
+  String content,
+  DateTime receivedAt, {
+  String source = 'Whatsapp',
+}) => RawData()
+  ..source = source
+  ..sender = sender
+  ..content = content
+  ..timestamp = receivedAt;
 
 /// Ten notifications that arrive on Saturday but are about Sunday.
 final forTomorrow = [
@@ -37,39 +40,50 @@ final forToday = [
 ];
 
 void main() {
-  test('generated the next morning: all ten for-tomorrow items, no stale ones',
-      () {
-    final lateNight = note('Sister', 'Call me when you wake up', at(26, 23));
-    final items = selectForBriefing(
-      [...forTomorrow, ...forToday, lateNight],
-      at(27, 7),
-    );
-    final senders = items.map((i) => i.entry.sender).toSet();
+  test(
+    'generated the next morning: all ten for-tomorrow items, no stale ones',
+    () {
+      final lateNight = note('Sister', 'Call me when you wake up', at(26, 23));
+      final items = selectForBriefing([
+        ...forTomorrow,
+        ...forToday,
+        lateNight,
+      ], at(27, 7));
+      final senders = items.map((i) => i.entry.sender).toSet();
 
-    expect(senders, containsAll(forTomorrow.map((e) => e.sender)));
-    expect(senders, isNot(contains('Boss'))); // 5 PM yesterday
-    expect(senders, isNot(contains('Friend'))); // undated, yesterday noon
-    expect(senders, isNot(contains('Cafe')));
-    expect(senders, isNot(contains('Late'))); // 10 PM yesterday
-    expect(senders, contains('Sister')); // undated, arrived 11 PM
-  });
+      expect(senders, containsAll(forTomorrow.map((e) => e.sender)));
+      expect(senders, isNot(contains('Boss'))); // 5 PM yesterday
+      expect(senders, isNot(contains('Friend'))); // undated, yesterday noon
+      expect(senders, isNot(contains('Cafe')));
+      expect(senders, isNot(contains('Late'))); // 10 PM yesterday
+      expect(senders, contains('Sister')); // undated, arrived 11 PM
+    },
+  );
 
-  test('generated the same evening: tomorrow plus what is still ahead today',
-      () {
-    final items = selectForBriefing([...forTomorrow, ...forToday], at(26, 21));
-    final senders = items.map((i) => i.entry.sender).toSet();
+  test(
+    'generated the same evening: tomorrow plus what is still ahead today',
+    () {
+      final items = selectForBriefing([
+        ...forTomorrow,
+        ...forToday,
+      ], at(26, 21));
+      final senders = items.map((i) => i.entry.sender).toSet();
 
-    expect(senders, containsAll(forTomorrow.map((e) => e.sender)));
-    expect(senders, contains('Late')); // 10 PM tonight, still ahead
-    expect(senders, isNot(contains('Boss'))); // 5 PM, already over
-    // Undated items from today are still in their window this evening.
-    expect(senders, containsAll(['Friend', 'Cafe']));
-  });
+      expect(senders, containsAll(forTomorrow.map((e) => e.sender)));
+      expect(senders, contains('Late')); // 10 PM tonight, still ahead
+      expect(senders, isNot(contains('Boss'))); // 5 PM, already over
+      // Undated items from today are still in their window this evening.
+      expect(senders, containsAll(['Friend', 'Cafe']));
+    },
+  );
 
   test('things after tomorrow are left out until they are near', () {
     final trip = note('Rahul', 'Goa trip on Oct 3', at(26, 10));
     expect(selectForBriefing([trip], at(26, 12)), isEmpty);
-    expect(selectForBriefing([trip], at(30, 7)), isEmpty); // Oct 3 is 3 days out
+    expect(
+      selectForBriefing([trip], at(30, 7)),
+      isEmpty,
+    ); // Oct 3 is 3 days out
     // On Fri 2 Oct, Oct 3 is tomorrow.
     expect(
       selectForBriefing([trip], DateTime(2026, 10, 2, 7)).single.entry,
@@ -99,6 +113,107 @@ void main() {
     expect(items.map((i) => i.entry.sender), ['Mom']);
   });
 
+  group('junk filter', () {
+    RawData chat(
+      String sender,
+      String content,
+      DateTime receivedAt, {
+      String? thread,
+      String addressed = 'direct',
+    }) => note(sender, content, receivedAt)
+      ..thread = thread ?? 'whatsapp|$sender'
+      ..isGroup = addressed != 'direct'
+      ..addressed = addressed;
+
+    test('matches whole words only', () {
+      final items = selectForBriefing([
+        chat('Ishaan', 'Are you free at 5 for a quick call?', at(26, 10)),
+        note(
+          'Work',
+          'Footprint report due tomorrow',
+          at(26, 10),
+          source: 'Slack',
+        ),
+        chat('Hubert', 'Dinner tomorrow at 8?', at(26, 11)),
+        note('Hubert', 'Dinner tomorrow at 8?', at(26, 11), source: 'Gmail'),
+        note('Bank', 'Your OTP is 4821, valid for 10 minutes', at(26, 12)),
+        note('Myntra', 'Flat 20% off, tomorrow only', at(26, 12)),
+      ], at(26, 13));
+      final senders = items.map((i) => i.entry.sender).toList();
+      expect(senders, containsAll(['Ishaan', 'Work']));
+      expect(senders.where((s) => s == 'Hubert'), hasLength(2));
+      expect(senders, isNot(contains('Bank')));
+      expect(senders, isNot(contains('Myntra')));
+    });
+
+    test(
+      'sender names only rule out apps and businesses, not chat contacts',
+      () {
+        final items = selectForBriefing([
+          // A friend saved as "Medium" (or called Jio) is still a friend.
+          chat('Medium', 'Lunch tomorrow at 1?', at(26, 10)),
+          note(
+            'Medium',
+            'Top stories for you tomorrow',
+            at(26, 10),
+            source: 'Gmail',
+          ),
+          // Promo words only count against apps.
+          chat(
+            'Priya',
+            'Got a discount on the tickets, movie tomorrow 7 PM',
+            at(26, 11),
+          ),
+          note(
+            'Shop',
+            'Free delivery on orders tomorrow',
+            at(26, 11),
+            source: 'Gmail',
+          ),
+        ], at(26, 13));
+        expect(
+          items.map((i) => '${i.entry.sender}/${i.entry.source}').toSet(),
+          {'Medium/Whatsapp', 'Priya/Whatsapp'},
+        );
+      },
+    );
+  });
+
+  test('the same words from two people are two messages', () {
+    final items = selectForBriefing([
+      note('Rahul', 'Call me', at(26, 10))..thread = 'whatsapp|rahul',
+      note('Mom', 'Call me', at(26, 11))..thread = 'whatsapp|mom',
+      // A copy of Mom's (delivered again) is still one.
+      note('Mom', 'Call me', at(26, 11, 5))..thread = 'whatsapp|mom',
+    ], at(26, 12));
+    expect(items.map((i) => i.entry.sender).toList()..sort(), ['Mom', 'Rahul']);
+    expect(
+      items.firstWhere((i) => i.entry.sender == 'Mom').entry.timestamp,
+      at(26, 11, 5),
+    );
+  });
+
+  test('a dated group message survives the chatter cap', () {
+    RawData group(String sender, String content, DateTime receivedAt) =>
+        note(sender, content, receivedAt)
+          ..thread = 'whatsapp|trip'
+          ..threadTitle = 'Trip'
+          ..isGroup = true
+          ..addressed = 'group';
+    // Fri 25 Sep: the bus is tomorrow.
+    final items = selectForBriefing([
+      group('Kabir', 'Bus leaves 6 AM Saturday', at(25, 18)),
+      group('Neha', 'ok 👍', at(25, 18, 1)),
+      group('Arjun', 'ok 👍', at(25, 18, 2)),
+      group('Meera', 'nice', at(25, 18, 3)),
+      group('Dev', 'see you all', at(25, 18, 4)),
+    ], at(25, 20));
+    final senders = items.map((i) => i.entry.sender).toList();
+    expect(senders, contains('Kabir'));
+    // The cap still applies to the undated chatter: the newest three.
+    expect(senders.toSet().difference({'Kabir'}), {'Arjun', 'Meera', 'Dev'});
+  });
+
   test('labels are resolved against generation time', () {
     final dentist = forTomorrow.first;
     final item = selectForBriefing([dentist], at(27, 7)).single;
@@ -113,8 +228,10 @@ void main() {
 
     final undated = note('Sister', 'Call me', at(26, 23, 5));
     final u = selectForBriefing([undated], at(27, 7)).single;
-    expect(describeWhen(u.window, undated.timestamp, at(27, 7)),
-        'arrived yesterday at 11:05 PM');
+    expect(
+      describeWhen(u.window, undated.timestamp, at(27, 7)),
+      'arrived yesterday at 11:05 PM',
+    );
   });
 
   test('the cap drops the least important items, not the latest ones', () {
@@ -138,7 +255,11 @@ void main() {
 
   group('describeEntry', () {
     test('an undated item whose named time was already over says so', () {
-      final ishaan = note('Ishaan', 'Quick call at 9 AM today?', at(26, 13, 19));
+      final ishaan = note(
+        'Ishaan',
+        'Quick call at 9 AM today?',
+        at(26, 13, 19),
+      );
       final item = selectForBriefing([ishaan], at(26, 14)).single;
       expect(
         describeEntry(ishaan, item.window, at(26, 14)),
@@ -147,12 +268,20 @@ void main() {
     });
 
     test('a named range shows both ends; arrival can be appended', () {
-      final plumber = note('Landlord', 'Plumber tomorrow 7:00-8:00 PM', at(25, 22, 30));
+      final plumber = note(
+        'Landlord',
+        'Plumber tomorrow 7:00-8:00 PM',
+        at(25, 22, 30),
+      );
       final item = selectForBriefing([plumber], at(26, 14)).single;
-      expect(describeEntry(plumber, item.window, at(26, 14)),
-          'Today (Sat 26 Sep), 7:00 PM to 8:00 PM');
-      expect(describeEntry(plumber, item.window, at(26, 14), withArrival: true),
-          'Today (Sat 26 Sep), 7:00 PM to 8:00 PM; arrived yesterday at 10:30 PM');
+      expect(
+        describeEntry(plumber, item.window, at(26, 14)),
+        'Today (Sat 26 Sep), 7:00 PM to 8:00 PM',
+      );
+      expect(
+        describeEntry(plumber, item.window, at(26, 14), withArrival: true),
+        'Today (Sat 26 Sep), 7:00 PM to 8:00 PM; arrived yesterday at 10:30 PM',
+      );
     });
   });
 

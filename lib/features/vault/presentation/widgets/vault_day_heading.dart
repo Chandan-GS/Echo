@@ -2,6 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 
+/// How many calendar days [day] is before [now]'s date: 0 today, 1
+/// yesterday. Counted on the dates alone (as UTC, where every day is 24
+/// hours), so a daylight-saving change in between can't make yesterday
+/// "Today" or shift the count by one.
+@visibleForTesting
+int calendarDaysAgo(DateTime day, DateTime now) => DateTime.utc(
+  now.year,
+  now.month,
+  now.day,
+).difference(DateTime.utc(day.year, day.month, day.day)).inDays;
+
 /// "Today · 117 signals", above that day's notifications.
 class VaultDayHeading extends StatelessWidget {
   final DateTime day;
@@ -39,9 +50,7 @@ class VaultDayHeading extends StatelessWidget {
   ];
 
   String get _label {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final ago = today.difference(day).inDays;
+    final ago = calendarDaysAgo(day, DateTime.now());
     if (ago == 0) return 'Today';
     if (ago == 1) return 'Yesterday';
     if (ago < 7) return _weekdays[day.weekday - 1];

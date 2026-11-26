@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:project_echo/core/presentation/widgets/min_tap_area.dart';
 import 'package:flutter/services.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
@@ -76,14 +77,18 @@ class AddedHeading extends StatelessWidget {
             ),
           ),
           const Spacer(),
-          GestureDetector(
-            onTap: onUndo,
-            child: Text(
-              'Undo',
-              style: GoogleFonts.nunito(
-                fontSize: 14,
-                fontWeight: FontWeight.w800,
-                color: colors.primaryGreen,
+          // A 48 dp tap area around the word, as far as the row allows.
+          MinTapArea(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: onUndo,
+              child: Text(
+                'Undo',
+                style: GoogleFonts.nunito(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: colors.primaryGreen,
+                ),
               ),
             ),
           ),

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:project_echo/core/services/review_prompt.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:project_echo/core/services/reminder_settings.dart';
@@ -51,7 +52,8 @@ class Reminders {
   }
 
   /// [todoId] lets the notification's Done tick the to-do off; [thread] lets
-  /// its Open chat open the chat the message came from.
+  /// its Open chat open the chat the message came from. [byOwner] is false
+  /// when Echo puts one back itself (undoing a delete).
   static Future<void> set({
     required String message,
     required DateTime at,
@@ -59,6 +61,7 @@ class Reminders {
     required String body,
     int? todoId,
     String? thread,
+    bool byOwner = true,
   }) async {
     unawaited(NotifyPermission.askIfNeeded());
     final all = await _load()
@@ -95,6 +98,7 @@ class Reminders {
       'thread': thread,
     });
     changed.value++;
+    if (byOwner) ReviewPrompt.recordWin(ReviewWin.reminderSet);
   }
 
   static Future<void> cancel(String message) async {
