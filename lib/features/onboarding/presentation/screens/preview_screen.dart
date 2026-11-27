@@ -119,14 +119,17 @@ class _PreviewScreenState extends State<PreviewScreen> {
           ? 'This is your morning briefing, read by your phone’s voice while '
                 '${widget.voice.voice.label} downloads. Tap the wave to replay.'
           : 'This is your morning briefing, read by your phone’s voice until you '
-                'download ${widget.voice.voice.label} in Settings → Voice. Tap '
-                'the wave to replay.',
+                'download ${widget.voice.voice.label} in Profile → Settings → '
+                'Voice. Tap the wave to replay.',
       scrollableBody: false,
       footer: EchoButton(
-        text: 'Sounds great — finish setup',
+        text: cubit.endsWithStreakGoal
+            ? 'Sounds great'
+            : 'Sounds great — finish setup',
+        showArrow: cubit.endsWithStreakGoal,
         onPressed: () {
           HapticFeedback.mediumImpact(); // milestone: setup complete
-          cubit.finishOnboarding();
+          cubit.completePreview();
         },
       ),
       child: Column(

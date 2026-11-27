@@ -22,6 +22,16 @@ final class PermissionsStep extends OnBoardingState {
   bool get canContinue => notificationGranted && calendarGranted;
 }
 
+/// Android only, right after access is granted: Echo reads a short first
+/// look at what's already on the phone ([buildFirstLook]), out loud. It
+/// plays by itself unless [autoPlay] is off (it was already heard, and the
+/// owner came back to it).
+final class FirstLookStep extends OnBoardingState {
+  final bool autoPlay;
+
+  FirstLookStep({this.autoPlay = true});
+}
+
 /// Android only: which apps Echo hears (see Vault → Apps Echo hears).
 final class AppsStep extends OnBoardingState {}
 
@@ -62,5 +72,10 @@ final class PreviewStep extends OnBoardingState {
     required this.voice,
   });
 }
+
+/// Android only, the last step: the week ahead as a streak tracker with a
+/// small goal ([streakGoalMornings] mornings), and the Briefing widget
+/// offered for the home screen where the launcher can add it.
+final class StreakGoalStep extends OnBoardingState {}
 
 final class OnBoardingFinished extends OnBoardingState {}

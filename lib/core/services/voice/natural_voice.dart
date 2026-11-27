@@ -161,10 +161,11 @@ class NaturalVoice {
 
   void cancelInstall() => _cancel?.cancel();
 
-  /// Removes every downloaded voice.
-  Future<void> remove() async {
+  /// Removes [pref]'s downloaded voice. The others downloaded stay.
+  Future<void> remove(VoicePreference pref) async {
     final voices = await _voicesDir();
-    if (await voices.exists()) await voices.delete(recursive: true);
+    final dir = Directory('${voices.path}/${_folder(piperVoice(pref))}');
+    if (await dir.exists()) await dir.delete(recursive: true);
     changed.value++;
   }
 

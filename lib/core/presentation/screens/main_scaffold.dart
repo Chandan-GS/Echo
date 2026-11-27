@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/presentation/animations/fade_indexed_stack.dart';
 import 'package:project_echo/core/presentation/widgets/nav_dock.dart';
+import 'package:project_echo/core/presentation/widgets/router_back.dart';
 import 'package:project_echo/features/echo/presentation/cubit/briefing_cubit.dart';
 import 'package:project_echo/features/todo/presentation/cubit/todo_cubit.dart';
 import 'package:project_echo/features/desktop/presentation/desktop_workspace.dart';
@@ -112,8 +113,15 @@ class _MainScaffoldState extends State<MainScaffold> {
         children: [
           // go_router's shell Navigator. The tabs below are drawn here, not
           // by its (empty) pages, but it has to be mounted: back presses and
-          // pops look it up, and without it system back quits the app.
-          Offstage(child: widget.child),
+          // pops look it up, and without it system back quits the app. It
+          // never has a page to pop, so it mustn't tell Android otherwise
+          // (that would close the app on back from To-do, Vault or Profile).
+          Offstage(
+            child: NotificationListener<NavigationNotification>(
+              onNotification: (_) => true,
+              child: widget.child,
+            ),
+          ),
           _shell(context),
         ],
       ),
@@ -147,11 +155,14 @@ class _MainScaffoldState extends State<MainScaffold> {
       (_) => EchoSays.instance.setQuiet(quiet),
     );
 
-    return PopScope(
-      canPop: !_asking,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && _asking) _closeAsk();
-      },
+    // Back closes the question bar, then leaves To-do, Vault or Profile for
+    // Home; only Home's back leaves the app.
+    return RouterBack(
+      onBack: _asking
+          ? _closeAsk
+          : _selectedIndex != 0
+          ? () => _onItemTapped(0)
+          : null,
       child: Scaffold(
         resizeToAvoidBottomInset: false,
         body: Stack(

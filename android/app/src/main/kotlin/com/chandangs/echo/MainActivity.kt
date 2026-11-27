@@ -8,10 +8,10 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.provider.Settings
 import androidx.annotation.NonNull
-import com.chandangs.echo_native.NotificationBuffer
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
+import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.util.concurrent.Executors
 
@@ -55,7 +55,12 @@ class MainActivity : FlutterActivity() {
     private fun handleWidgetLaunchIntent(intent: Intent?) {
         if (intent?.getBooleanExtra(EchoBriefingWidgetProvider.EXTRA_AUTOPLAY, false) == true) {
             val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-            prefs.edit().putBoolean("flutter.pending_autoplay", true).apply()
+            // Dated, so a launch that never reaches Home can't autoplay later
+            // (see pending_autoplay.dart).
+            prefs.edit()
+                .putLong("flutter.pending_autoplay_at", System.currentTimeMillis())
+                .remove("flutter.pending_autoplay")
+                .apply()
             intent.removeExtra(EchoBriefingWidgetProvider.EXTRA_AUTOPLAY)
         }
     }
@@ -145,7 +150,7 @@ class MainActivity : FlutterActivity() {
 
         // Answering chats: through the notification's Reply button, or by
         // opening the chat app (see ReplySender.dart).
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, REPLY_CHANNEL).setMethodCallHandler { call, result ->
+        fun reply(call: MethodCall, result: MethodChannel.Result) {
             when (call.method) {
                 "route" -> result.success(ReplyActions.route(applicationContext, call.argument<String>("thread") ?: ""))
                 "send" -> result.success(
@@ -165,6 +170,22 @@ class MainActivity : FlutterActivity() {
                     }
                 }
                 else -> result.notImplemented()
+            }
+        }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, REPLY_CHANNEL).setMethodCallHandler { call, result ->
+            // A WhatsApp chat's id may have to be looked up in the contacts,
+            // which is slow with many: that's done off the main thread first,
+            // and the call itself (which may open a screen) runs back on it.
+            val thread = call.argument<String>("thread")
+            if (call.method in setOf("route", "write", "openChat") && thread != null) {
+                iconExecutor.execute {
+                    try {
+                        ReplyActions.prepare(applicationContext, thread)
+                    } catch (e: Exception) {}
+                    runOnUiThread { reply(call, result) }
+                }
+            } else {
+                reply(call, result)
             }
         }
 
@@ -224,15 +245,14 @@ class MainActivity : FlutterActivity() {
 
     override fun onResume() {
         super.onResume()
-        EchoNotificationListenerService.isFlutterListening = true
         notificationReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
                 val data = intent?.getStringExtra(EchoNotificationListenerService.EXTRA_NOTIFICATION_DATA)
                     ?: return
-                // Until Dart has subscribed (just after the app opens), keep
-                // it for the buffer Dart drains once it has.
+                // The listener has buffered it already; this only saves it
+                // sooner. Until Dart has subscribed (just after the app
+                // opens), the drain picks it up instead.
                 eventSink?.success(data)
-                    ?: context?.let { NotificationBuffer.append(it, data) }
             }
         }
         val filter = IntentFilter(EchoNotificationListenerService.ACTION_NEW_NOTIFICATION)
@@ -241,7 +261,6 @@ class MainActivity : FlutterActivity() {
 
     override fun onPause() {
         super.onPause()
-        EchoNotificationListenerService.isFlutterListening = false
         notificationReceiver?.let {
             try {
                 unregisterReceiver(it)

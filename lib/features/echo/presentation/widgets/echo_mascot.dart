@@ -108,6 +108,10 @@ class _EchoMascotState extends State<EchoMascot>
   Offset? _pointer;
   double _pointerMs = -1e9;
 
+  /// With animations turned off (Settings → Accessibility → Remove
+  /// animations), Echo holds still: no breathing loop, ripples or glances.
+  bool _still = false;
+
   @override
   void initState() {
     super.initState();
@@ -116,6 +120,17 @@ class _EchoMascotState extends State<EchoMascot>
       duration: const Duration(milliseconds: 2800),
     )..repeat();
     GestureBinding.instance.pointerRouter.addGlobalRoute(_onPointer);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _still = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    if (_still && _c.isAnimating) {
+      _c.stop();
+    } else if (!_still && !_c.isAnimating) {
+      _c.repeat();
+    }
   }
 
   @override
@@ -224,7 +239,8 @@ class _EchoMascotState extends State<EchoMascot>
           return CustomPaint(
             painter: _EchoPainter(
               _c.value,
-              _clock.elapsedMilliseconds.toDouble(),
+              // Held at the start, eyes open, when he's to keep still.
+              _still ? 0 : _clock.elapsedMilliseconds.toDouble(),
               widget.state,
               isDark,
               widget.voiceGlow,

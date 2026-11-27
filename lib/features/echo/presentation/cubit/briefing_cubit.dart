@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:project_echo/core/services/analytics_service.dart';
+import 'package:project_echo/core/services/pending_autoplay.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -16,6 +18,7 @@ import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:project_echo/core/services/gemini_service.dart';
 import 'package:project_echo/core/services/gemini_usage.dart';
+import 'package:project_echo/core/services/generation_guard.dart';
 import 'package:project_echo/core/services/widget_refresh_service.dart';
 import 'package:project_echo/core/services/phone_sync_service.dart';
 import 'package:project_echo/core/services/desktop_engine_client.dart';
@@ -28,11 +31,22 @@ part 'briefing_state.dart';
 class BriefingCubit extends Cubit<BriefingState> {
   StreamSubscription<String>? _streamSub;
 
+  /// Bumped by every new generation and by [goBack], so a run that was
+  /// superseded or abandoned mid-way never emits over what came after it.
+  int _run = 0;
+
   BriefingCubit() : super(BriefingInitial()) {
     loadCachedBriefing();
   }
 
+  /// Emits [s] unless the cubit is closed or [run] is no longer current.
+  void _emitFor(int run, BriefingState s) {
+    if (isClosed || run != _run) return;
+    emit(s);
+  }
+
   Future<void> loadCachedBriefing() async {
+    final run = _run;
     try {
       final prefs = await SharedPreferences.getInstance();
       final dateStr = prefs.getString('cached_briefing_date');
@@ -46,18 +60,20 @@ class BriefingCubit extends Cubit<BriefingState> {
         // EchoHomeScreen's listener, which reads-and-clears this same flag),
         // skip straight to BriefingReady so the existing auto-navigate +
         // autoplay path actually fires instead of silently doing nothing.
-        final autoPlay = prefs.getBool('pending_autoplay') ?? false;
+        // A generation started meanwhile wins ([_emitFor] drops this).
+        final autoPlay = PendingAutoplay.isPending(prefs);
         final ttsText = stripForTts(rawText);
         if (autoPlay) {
-          emit(BriefingReady(rawText: rawText, ttsText: ttsText));
+          _emitFor(run, BriefingReady(rawText: rawText, ttsText: ttsText));
         } else {
-          emit(BriefingCached(rawText: rawText, ttsText: ttsText));
+          _emitFor(run, BriefingCached(rawText: rawText, ttsText: ttsText));
         }
       }
     } catch (_) {}
   }
 
   void playCachedBriefing(String rawText) {
+    if (isClosed) return;
     emit(BriefingReady(rawText: rawText, ttsText: stripForTts(rawText)));
   }
 
@@ -65,6 +81,10 @@ class BriefingCubit extends Cubit<BriefingState> {
   /// returns an empty response — the first inference right after the model is
   /// (re)loaded can occasionally come back blank, and a single retry against
   /// the now-warm model reliably produces a briefing.
+  ///
+  /// Every engine's reply is bounded (see [GenerationLimits]); a failure of
+  /// any kind, including fllama's errors that arrive dressed as output, ends
+  /// in [BriefingError] and is never cached, notified or spoken.
   Future<void> generateBriefing({int attempt = 0}) async {
     // Count feature usage only on the initial trigger, not internal retries.
     if (attempt == 0) Analytics.track('briefing_generated');
@@ -74,7 +94,10 @@ class BriefingCubit extends Cubit<BriefingState> {
     await _streamSub?.cancel();
     _streamSub = null;
 
-    emit(BriefingGenerating());
+    final run = ++_run;
+    bool current() => !isClosed && run == _run;
+
+    _emitFor(run, BriefingGenerating());
 
     try {
       // The on-device model is only needed for the offline (Fllama) path below.
@@ -94,20 +117,23 @@ class BriefingCubit extends Cubit<BriefingState> {
       final now = DateTime.now();
       final entries = await IsarDataSource.getAllEntries();
       if (entries.isEmpty) {
-        emit(BriefingError('No important notifications available.'));
+        _emitFor(run, BriefingError('No important notifications available.'));
         return;
       }
 
-      final notificationContext = await _buildContext(entries, now);
-      if (notificationContext == null) {
+      final lines = await _buildContext(entries, now);
+      if (lines == null) {
         const clearSchedule =
             'Echo: Nothing needs your attention today or tomorrow. Enjoy the clear schedule!';
-        emit(BriefingReady(rawText: clearSchedule, ttsText: clearSchedule));
+        _emitFor(
+          run,
+          BriefingReady(rawText: clearSchedule, ttsText: clearSchedule),
+        );
         return;
       }
 
       // ── 3. REDUCE PHASE: Final briefing generation ────────────────────────
-      emit(BriefingGenerating(partial: 'Writing your briefing…'));
+      _emitFor(run, BriefingGenerating(partial: 'Writing your briefing…'));
 
       final prefs = await SharedPreferences.getInstance();
       final isOfflineEngine = prefs.getBool('is_offline_engine') ?? true;
@@ -137,56 +163,134 @@ class BriefingCubit extends Cubit<BriefingState> {
         }
       }
       final useDesktopEngine = desktopHost != null;
+      final useGemini =
+          !useDesktopEngine && !isOfflineEngine && geminiApiKey.isNotEmpty;
+      final onDevice = !useDesktopEngine && !useGemini;
 
-      final StringBuffer buffer = StringBuffer();
-      final Completer<void> done = Completer<void>();
-      final controller = StreamController<String>();
+      String promptFor(String context) => buildQwenPrompt(
+        context,
+        userName,
+        toneInstruction: tone.promptInstruction,
+        // Only the small on-device phone model copies the few-shot example
+        // verbatim; the stronger cloud and desktop-engine models handle it
+        // fine (and generate a better-shaped briefing with it).
+        includeExample: useDesktopEngine || !isOfflineEngine,
+        now: now,
+      );
 
-      _streamSub = controller.stream.listen(
-        (token) {
-          buffer.write(token);
-        },
-        onError: (Object err) {
-          emit(
+      // The on-device model (and a desktop engine, which runs the same one)
+      // has a 4096-token slot for the prompt and the briefing together, so
+      // the notifications are cut to what fits, least important last.
+      final kept = useGemini
+          ? lines
+          : capLines(lines, onDevicePromptCharBudget - promptFor('').length);
+      final prompt = promptFor(kept.join('\n'));
+      _log(
+        'Briefing prompt: ${prompt.length} chars, '
+        '${kept.length} of ${lines.length} notifications',
+      );
+
+      // Gone back (or a newer run started) while the context was built:
+      // don't start a generation nobody is waiting for.
+      if (!current()) return;
+
+      final Stream<String> reply;
+      if (useDesktopEngine) {
+        reply = DesktopEngineClient.generateStream(
+          host: desktopHost,
+          endpoint: 'briefing',
+          prompt: prompt,
+        );
+      } else if (useGemini) {
+        reply = GeminiService.instance
+            .generateStream(geminiApiKey, prompt)
+            .map((response) => response.text ?? '');
+      } else {
+        // Offline path — this is the only branch that actually needs the model.
+        if (modelPath == null) {
+          _emitFor(
+            run,
             BriefingError(
-              err is GeminiFailure ? err.message : 'Generation failed: $err',
+              "The on-device model isn't installed. Download it in Settings, "
+              'or switch to the cloud engine to generate without it.',
+            ),
+          );
+          return;
+        }
+        reply = onDeviceStream(
+          FllamaInferenceRequest(
+            // fllama runs a llama.cpp server that splits the context across
+            // parallel slots, so the usable per-request window is only
+            // contextSize / n_parallel (4), i.e. 4096 tokens — which is why
+            // the prompt is capped above.
+            // NOTE: the native model is cached for the app's lifetime and only
+            // reloads when this value changes AND the process restarts; a hot
+            // reload alone will keep using the previously-loaded context size.
+            contextSize: 16384,
+            input: prompt,
+            maxTokens: 4000,
+            modelPath: modelPath,
+            numGpuLayers: 99,
+            numThreads: 4,
+            temperature: 0.6,
+            penaltyFrequency: 0.0,
+            penaltyRepeat: 1.1,
+            topP: 0.9,
+          ),
+        );
+      }
+
+      final buffer = StringBuffer();
+      final done = Completer<void>();
+      void finish() {
+        if (!done.isCompleted) done.complete();
+      }
+
+      _streamSub = reply.listen(
+        buffer.write,
+        cancelOnError: true,
+        onError: (Object err) {
+          _log('Briefing generation failed (${err.runtimeType})');
+          // The on-device model's first inference after a (re)load can come
+          // back blank; retry once against the now-warm model before failing.
+          if (onDevice &&
+              attempt == 0 &&
+              err is OnDeviceFailure &&
+              err.noOutput &&
+              current()) {
+            finish();
+            generateBriefing(attempt: 1);
+            return;
+          }
+          _emitFor(
+            run,
+            BriefingError(
+              err is GeminiFailure ? err.message : friendlyGenerationError(err),
               limitReached:
                   err is GeminiFailure &&
                   err.hit?.kind == GeminiLimitKind.perDay,
             ),
           );
-          if (!done.isCompleted) done.complete();
+          finish();
         },
         onDone: () async {
-          var rawText = buffer.toString().trim();
-          // Clean up model response formatting
-          rawText = rawText
-              .replaceAll(RegExp(r'<\|im_start\|>.*', dotAll: true), '')
-              .replaceAll(RegExp(r'<\|im_end\|>', dotAll: true), '')
-              .replaceAll(RegExp(r'<\|[^|]*\|>', dotAll: true), '')
-              .trim();
+          try {
+            if (!current()) return;
+            final rawText = cleanBriefingOutput(buffer.toString());
+            _log('Briefing reply: ${rawText.length} chars');
 
-          rawText = stripSignOff(rawText);
-          rawText = deduplicateSentences(rawText);
-          rawText = stripFillerCommentary(rawText);
-          rawText = separateListItems(rawText);
-          rawText = autoBold(rawText);
-          rawText = sanitizeBoldMarkup(rawText);
-
-          print(
-            '=== ECHO GENERATED OUTPUT ===\n$rawText\n=============================',
-          );
-
-          if (rawText.isEmpty) {
-            // The on-device model's first inference after a (re)load can come
-            // back blank; retry once against the now-warm model before failing.
-            if (isOfflineEngine && attempt == 0) {
-              if (!done.isCompleted) done.complete();
-              generateBriefing(attempt: 1);
+            if (rawText.isEmpty) {
+              if (onDevice && attempt == 0) {
+                finish();
+                generateBriefing(attempt: 1);
+                return;
+              }
+              _emitFor(
+                run,
+                BriefingError('The model produced an empty response.'),
+              );
               return;
             }
-            emit(BriefingError('The model produced an empty response.'));
-          } else {
             final ttsText = stripForTts(rawText);
             try {
               final prefs = await SharedPreferences.getInstance();
@@ -204,124 +308,30 @@ class BriefingCubit extends Cubit<BriefingState> {
               // Push the fresh briefing to a connected computer, if any.
               PhoneSyncService.instance.syncNow();
             } catch (_) {}
-            emit(BriefingReady(rawText: rawText, ttsText: ttsText));
+            _emitFor(run, BriefingReady(rawText: rawText, ttsText: ttsText));
+          } finally {
+            finish();
           }
-          if (!done.isCompleted) done.complete();
         },
       );
 
-      final prompt = buildQwenPrompt(
-        notificationContext,
-        userName,
-        toneInstruction: tone.promptInstruction,
-        // Only the small on-device phone model copies the few-shot example
-        // verbatim; the stronger cloud and desktop-engine models handle it
-        // fine (and generate a better-shaped briefing with it).
-        includeExample: useDesktopEngine || !isOfflineEngine,
-        now: now,
-      );
-
-      _debugPrintLongString(
-        '=== LLM INPUT PROMPT ===\n$prompt\n========================',
-      );
-
-      if (useDesktopEngine) {
-        final stream = DesktopEngineClient.generateStream(
-          host: desktopHost,
-          endpoint: 'briefing',
-          prompt: prompt,
-        );
-        stream.listen(
-          (chunk) {
-            if (chunk.isNotEmpty) controller.add(chunk);
-          },
-          onDone: () => controller.close(),
-          onError: (e) => controller.addError(e),
-        );
-      } else if (!isOfflineEngine && geminiApiKey.isNotEmpty) {
-        final stream = GeminiService.instance.generateStream(
-          geminiApiKey,
-          prompt,
-        );
-        stream.listen(
-          (response) {
-            final chunk = response.text ?? '';
-            if (chunk.isNotEmpty) {
-              controller.add(chunk);
-            }
-          },
-          onDone: () {
-            controller.close();
-          },
-          onError: (e) {
-            controller.addError(e);
-          },
-        );
-      } else {
-        // Offline path — this is the only branch that actually needs the model.
-        if (modelPath == null) {
-          await _streamSub?.cancel();
-          _streamSub = null;
-          if (!done.isCompleted) done.complete();
-          await controller.close();
-          emit(
-            BriefingError(
-              "The on-device model isn't installed. Download it in Settings, "
-              'or switch to the cloud engine to generate without it.',
-            ),
-          );
-          return;
-        }
-        final request = FllamaInferenceRequest(
-          // fllama runs a llama.cpp server that splits the context across
-          // parallel slots, so the usable per-request window is only
-          // contextSize / n_parallel. 16384 keeps each briefing's slot at
-          // ~2048+ tokens even in the worst case — comfortably fitting the
-          // system prompt + trimmed notification context + the output.
-          // NOTE: the native model is cached for the app's lifetime and only
-          // reloads when this value changes AND the process restarts; a hot
-          // reload alone will keep using the previously-loaded context size.
-          contextSize: 16384,
-          input: prompt,
-          maxTokens: 4000,
-          modelPath: modelPath,
-          numGpuLayers: 99,
-          numThreads: 4,
-          temperature: 0.6,
-          penaltyFrequency: 0.0,
-          penaltyRepeat: 1.1,
-          topP: 0.9,
-        );
-
-        try {
-          String lastOutput = '';
-          fllamaInference(request, (cumulative, openaiJson, isDone) {
-            if (cumulative.length > lastOutput.length) {
-              final token = cumulative.substring(lastOutput.length);
-              lastOutput = cumulative;
-              if (token.isNotEmpty) {
-                controller.add(token);
-              }
-            }
-            if (isDone == true) {
-              controller.close();
-            }
-          });
-        } catch (err) {
-          controller.addError(err);
-        }
-      }
-
       await done.future;
     } catch (e) {
-      emit(BriefingError(e is GeminiFailure ? e.message : 'Error: $e'));
+      _log('Briefing failed (${e.runtimeType})');
+      _emitFor(
+        run,
+        BriefingError(
+          e is GeminiFailure ? e.message : friendlyGenerationError(e),
+        ),
+      );
     }
   }
 
-  /// The briefing's notification context at [now]: everything relevant from
-  /// now until the end of tomorrow, one line each, labelled with when it
-  /// applies. Null when nothing qualifies.
-  Future<String?> _buildContext(List<RawData> entries, DateTime now) async {
+  /// The briefing's notification lines at [now]: everything relevant from
+  /// now until the end of tomorrow, one line each (its text clipped to
+  /// [maxPromptContentChars]), labelled with when it applies, most important
+  /// kept first. Null when nothing qualifies.
+  Future<List<String>?> _buildContext(List<RawData> entries, DateTime now) async {
     final prefs = await SharedPreferences.getInstance();
     // The on-device model's context window is small; cloud and desktop
     // engines can take a fuller day.
@@ -349,24 +359,24 @@ class BriefingCubit extends Cubit<BriefingState> {
     if (items.isEmpty) return null;
 
     final myTurns = await ChatContextStore.loadMyTurns();
-    return items
-        .map(
-          (i) => formatEntry(
-            i.entry,
-            content: rewriteRelativeDays(
-              i.entry.content,
-              i.entry.timestamp,
-              now,
-            ),
-            when: describeEntry(i.entry, i.window, now),
-            myTurns: myTurns,
+    return [
+      for (final i in items)
+        formatEntry(
+          i.entry,
+          content: clipContent(
+            rewriteRelativeDays(i.entry.content, i.entry.timestamp, now),
           ),
-        )
-        .join('\n');
+          when: describeEntry(i.entry, i.window, now),
+          myTurns: myTurns,
+        ),
+    ];
   }
 
+  /// Goes back from the briefing, stopping a generation in progress (and the
+  /// native request behind it).
   Future<void> goBack() async {
-    _streamSub?.cancel();
+    final run = ++_run;
+    _stopStream();
 
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -375,37 +385,58 @@ class BriefingCubit extends Cubit<BriefingState> {
 
       final today = DateTime.now().toIso8601String().split('T').first;
       if (dateStr == today && rawText != null && rawText.isNotEmpty) {
-        emit(BriefingCached(rawText: rawText, ttsText: stripForTts(rawText)));
+        _emitFor(
+          run,
+          BriefingCached(rawText: rawText, ttsText: stripForTts(rawText)),
+        );
         return;
       }
     } catch (_) {}
 
-    emit(BriefingInitial());
+    _emitFor(run, BriefingInitial());
+  }
+
+  /// Stops the generation in progress without waiting for it to wind down.
+  void _stopStream() {
+    final sub = _streamSub;
+    _streamSub = null;
+    if (sub != null) unawaited(sub.cancel());
   }
 
   void resetBriefing() {
     goBack();
   }
 
-  void _debugPrintLongString(String text) {
-    for (final line in text.split('\n')) {
-      if (line.length <= 800) {
-        print(line);
-      } else {
-        int start = 0;
-        while (start < line.length) {
-          int end = start + 800;
-          if (end > line.length) end = line.length;
-          print(line.substring(start, end));
-          start = end;
-        }
-      }
-    }
+  /// Debug builds only, and never the prompt or the briefing itself: they
+  /// carry people's messages.
+  static void _log(String message) {
+    if (kDebugMode) debugPrint(message);
   }
 
   @override
   Future<void> close() async {
-    _streamSub?.cancel();
+    _run++;
+    _stopStream();
     return super.close();
   }
+}
+
+/// The model's raw briefing tidied for showing and speaking: chat-template
+/// tokens dropped, sign-offs, repeats and filler cut, lists split and key
+/// details bolded.
+String cleanBriefingOutput(String output) {
+  var rawText = output
+      .trim()
+      .replaceAll(RegExp(r'<\|im_start\|>.*', dotAll: true), '')
+      .replaceAll(RegExp(r'<\|im_end\|>', dotAll: true), '')
+      .replaceAll(RegExp(r'<\|[^|]*\|>', dotAll: true), '')
+      .trim();
+
+  rawText = stripSignOff(rawText);
+  rawText = deduplicateSentences(rawText);
+  rawText = stripFillerCommentary(rawText);
+  rawText = separateListItems(rawText);
+  rawText = autoBold(rawText);
+  rawText = sanitizeBoldMarkup(rawText);
+  return rawText;
 }

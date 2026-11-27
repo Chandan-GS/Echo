@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:project_echo/core/presentation/widgets/echo_button.dart';
@@ -164,11 +166,16 @@ class _AppsScreenState extends State<AppsScreen> {
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           padding: EdgeInsets.zero,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 4,
             crossAxisSpacing: 8,
             mainAxisSpacing: 18,
-            mainAxisExtent: 86,
+            // The 56 dp icon, its gap and the name: 86 dp at the default
+            // font size, taller once larger text needs it.
+            mainAxisExtent: math.max(
+              86,
+              64 + MediaQuery.textScalerOf(context).scale(12) * 1.45 + 4,
+            ),
           ),
           itemCount: shown.length,
           itemBuilder: (context, i) => AppTile(

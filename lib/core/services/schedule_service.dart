@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:project_echo/core/services/gentle_nudges.dart';
 import 'package:project_echo/core/services/local_notification_service.dart';
+import 'package:project_echo/core/services/remote_config_service.dart';
 import 'package:project_echo/core/services/streak_service.dart';
 import 'package:project_echo/core/services/widget_refresh_service.dart';
 import 'package:project_echo/features/echo/presentation/cubit/briefing_cubit.dart';
@@ -11,83 +14,117 @@ import 'package:workmanager/workmanager.dart';
 import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import 'package:project_echo/core/utils/time_utils.dart';
 
+/// The longest a briefing alarm may spend catching up and generating. Past
+/// it the run is abandoned so a stalled model stream can't keep the
+/// background isolate, and its Isar handle, alive indefinitely.
+const _alarmBudget = Duration(minutes: 4);
+
 @pragma('vm:entry-point')
 Future<void> alarmCallback() async {
+  BriefingCubit? cubit;
+  // Set once the budget runs out, so a generation that finishes afterwards
+  // can't still record the slot or post a notification.
+  var abandoned = false;
   try {
     WidgetsFlutterBinding.ensureInitialized();
     final prefs = await SharedPreferences.getInstance();
-    final today = DateTime.now().toIso8601String().split('T').first;
-    final now = DateTime.now();
-
-    // We check which schedule this alarm belongs to
     final briefingTimes = prefs.getStringList('briefing_times') ?? ['07:00'];
-    String? matchedTimeSlot;
 
-    for (final timeStr in briefingTimes) {
-      final parsed = parseBriefingTime(timeStr);
-      if (parsed == null) continue; // Skip malformed persisted entries
+    // Inexact alarms can arrive late, so run whichever slot has most
+    // recently come due and hasn't run yet, rather than requiring the alarm
+    // to land on its exact minute.
+    final slot = dueBriefingSlot(
+      now: DateTime.now(),
+      times: briefingTimes,
+      lastRunKey: prefs.getString('cached_briefing_slot'),
+    );
+    if (slot == null) return; // Nothing due, or already run for this slot
 
-      // Check if current time is roughly the scheduled time (within 2 minutes)
-      final diff = (now.hour * 60 + now.minute) - parsed.minutesOfDay;
-      if (diff.abs() <= 2) {
-        final compositeKey = '${today}_$timeStr';
-        final cachedSlot = prefs.getString('cached_briefing_slot');
+    Future<void> run() async {
+      // The cloud model name comes from remote config, which only main()
+      // loads; without this the alarm would use the compiled-in default.
+      // Bounded, since load() falls back to the cached value on failure.
+      await RemoteConfigService.instance.load().timeout(
+        const Duration(seconds: 15),
+        onTimeout: () {},
+      );
 
-        if (cachedSlot != compositeKey) {
-          matchedTimeSlot = compositeKey;
-          break;
-        }
+      await IsarDataSource.instance;
+
+      // If the app hasn't been opened since last night, everything captured
+      // meanwhile is still in the native buffer. Pull it (plus today's and
+      // tomorrow's calendar) into Isar before deciding what the briefing
+      // covers.
+      await NotificationIngest.drainBuffer();
+      await NotificationIngest.syncCalendar();
+      await IsarDataSource.deleteOldNotifications();
+
+      final briefing = cubit = BriefingCubit();
+
+      // Only this run's result counts: the cubit can first emit a briefing
+      // already cached today (when an autoplay tap is pending).
+      var started = false;
+      final futureState = briefing.stream.firstWhere((state) {
+        if (state is BriefingGenerating) started = true;
+        return started && (state is BriefingReady || state is BriefingError);
+      });
+
+      await briefing.generateBriefing();
+      final state = await futureState;
+
+      if (state is BriefingReady && !abandoned) {
+        await prefs.setString('cached_briefing_slot', slot.key);
+        await LocalNotificationService().init();
+
+        // Read-only: the streak itself is only recorded once playback
+        // actually starts (see StreakService.recordHeard in
+        // daily_briefing_screen.dart). A live streak here just personalizes
+        // today's notification body.
+        final streak = await StreakService().current();
+        // After two mornings unheard, one gentle nudge instead (at most one
+        // per lapse; see GentleNudges).
+        final nudge = await GentleNudges.missedMorningsDue(prefs);
+        final body = nudge
+            ? GentleNudges.missedMorningsBody
+            : streak.current > 0
+            ? 'Day ${streak.current} — tap to keep your streak going.'
+            : 'Your personalized AI briefing is ready for today!';
+
+        await LocalNotificationService().showNotification(
+          id: slot.time.hour * 100 + slot.time.minute, // One per slot
+          title: 'Daily Briefing Ready',
+          body: body,
+        );
+        if (nudge) await GentleNudges.markMissedMorningsNudged(prefs);
       }
     }
 
-    if (matchedTimeSlot == null) {
-      return; // Already executed for this slot
-    }
-
-    await IsarDataSource.instance;
-
-    // If the app hasn't been opened since last night, everything captured
-    // meanwhile is still in the native buffer. Pull it (plus today's and
-    // tomorrow's calendar) into Isar before deciding what the briefing covers.
-    await NotificationIngest.drainBuffer();
-    await NotificationIngest.syncCalendar();
-    await IsarDataSource.deleteOldNotifications();
-
-    final cubit = BriefingCubit();
-
-    final futureState = cubit.stream.firstWhere(
-      (state) => state is BriefingReady || state is BriefingError,
+    await run().timeout(
+      _alarmBudget,
+      onTimeout: () {
+        abandoned = true;
+        debugPrint('Background alarm task gave up after $_alarmBudget');
+      },
     );
-
-    await cubit.generateBriefing();
-    final state = await futureState;
-
-    if (state is BriefingReady) {
-      await prefs.setString('cached_briefing_slot', matchedTimeSlot);
-      await LocalNotificationService().init();
-
-      // Read-only: the streak itself is only recorded once playback actually
-      // starts (see StreakService.recordHeard in daily_briefing_screen.dart).
-      // A live streak here just personalizes today's notification body.
-      final streak = await StreakService().current();
-      final body = streak.current > 0
-          ? 'Day ${streak.current} — tap to keep your streak going.'
-          : 'Your personalized AI briefing is ready for today!';
-
-      await LocalNotificationService().showNotification(
-        id: now.hour * 100 + now.minute, // Unique per hour+minute slot
-        title: 'Daily Briefing Ready',
-        body: body,
-      );
-    }
-
-    await cubit.close();
-
-    // Re-schedule for next days
-    await ScheduleService.updateSchedules(briefingTimes);
   } catch (e) {
     debugPrint('Background alarm task failed: $e');
   } finally {
+    await cubit?.close();
+    // Always set up the next alarm, whatever became of this one: the alarms
+    // are one-shot, so a run that skipped or failed without rescheduling
+    // would end briefings until the app was next opened. (iOS's periodic
+    // task repeats by itself, and re-registering it from inside would cancel
+    // the run in progress.)
+    try {
+      if (Platform.isAndroid) {
+        final prefs = await SharedPreferences.getInstance();
+        await ScheduleService.updateSchedules(
+          prefs.getStringList('briefing_times') ?? ['07:00'],
+        );
+      }
+    } catch (e) {
+      debugPrint('Background alarm reschedule failed: $e');
+    }
     // This runs in a short-lived background isolate. Release Isar before the
     // isolate is torn down — an abandoned open handle leaves the MDBX lock in a
     // state the main app's next open can't acquire (MdbxError 11: Try again).

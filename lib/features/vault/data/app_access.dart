@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+
 import 'package:project_echo/core/services/source_packages.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:project_echo/features/echo/data/relevance/briefing_selection.dart';
@@ -10,6 +12,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// (AppAccessRules.kt) and drops notifications from apps that are off.
 class AppAccess {
   static const key = 'app_access';
+
+  /// Ticks once a change in Apps Echo hears (and any Vault block it lifted)
+  /// is saved, so the Vault re-reads its blocks.
+  static final changed = ValueNotifier<int>(0);
 
   /// Whether an app nobody has decided on yet (e.g. installed later) is heard.
   final bool hearNewApps;

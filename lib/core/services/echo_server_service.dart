@@ -11,6 +11,7 @@ import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:shelf_router/shelf_router.dart';
 
 import 'desktop_engine_client.dart';
+import 'generation_guard.dart';
 import 'streak_service.dart';
 import 'offline_model_repository.dart';
 import 'system_info_service.dart';
@@ -234,7 +235,7 @@ class EchoServerService {
         headers: _jsonHeaders,
       );
     } catch (e) {
-      debugPrint('Echo Engine pairing failed: $e');
+      debugPrint('Echo Engine pairing failed (${e.runtimeType})');
       return Response.internalServerError(
         body: jsonEncode({'status': 'error'}),
         headers: _jsonHeaders,
@@ -407,7 +408,7 @@ class EchoServerService {
       syncTick.value++;
       return Response.ok(jsonEncode({'status': 'ok'}), headers: _jsonHeaders);
     } catch (e) {
-      debugPrint('Echo Engine sync failed: $e');
+      debugPrint('Echo Engine sync failed (${e.runtimeType})');
       return Response.internalServerError(
         body: jsonEncode({'status': 'error'}),
         headers: _jsonHeaders,
@@ -434,64 +435,65 @@ class EchoServerService {
     contextSize: 16384,
   );
 
-  Response _handleGenerate(
+  /// Streams the model's reply as plain text. A bad request or a missing
+  /// model is refused up front, so the phone falls back at once. fllama's
+  /// errors never go out as text (see [onDeviceStream]): the reply just
+  /// ends, short or empty, which the phone treats as a failed generation, and
+  /// a stall or overrun is cut off the same way. A phone that hangs up
+  /// cancels the native request.
+  Future<Response> _handleGenerate(
     Request request,
     ({double temperature, int maxTokens, int contextSize}) sampling,
-  ) {
-    final controller = StreamController<List<int>>();
+  ) async {
+    String prompt;
+    try {
+      final body = jsonDecode(await request.readAsString()) as Map;
+      prompt = body['prompt'] as String? ?? '';
+    } catch (_) {
+      prompt = '';
+    }
+    if (prompt.isEmpty) {
+      return Response(
+        400,
+        body: jsonEncode({'status': 'no prompt'}),
+        headers: _jsonHeaders,
+      );
+    }
 
-    () async {
-      try {
-        final body = jsonDecode(await request.readAsString()) as Map;
-        final prompt = body['prompt'] as String? ?? '';
-        if (prompt.isEmpty) {
-          await controller.close();
-          return;
-        }
+    final modelPath = await createOfflineModelRepository()
+        .downloadedPathOrNull();
+    if (modelPath == null) {
+      return Response(
+        503,
+        body: jsonEncode({'status': 'no model'}),
+        headers: _jsonHeaders,
+      );
+    }
 
-        final modelPath = await createOfflineModelRepository()
-            .downloadedPathOrNull();
-        if (modelPath == null) {
-          await controller.close();
-          return;
-        }
-
-        final done = Completer<void>();
-        String lastOutput = '';
-        await fllamaInference(
-          FllamaInferenceRequest(
-            contextSize: sampling.contextSize,
-            input: prompt,
-            maxTokens: sampling.maxTokens,
-            modelPath: modelPath,
-            numGpuLayers: 99,
-            numThreads: Platform.numberOfProcessors,
-            temperature: sampling.temperature,
-            penaltyFrequency: 0.0,
-            penaltyRepeat: 1.1,
-            topP: 0.9,
-          ),
-          (cumulative, openaiJson, isDone) {
-            if (cumulative.length > lastOutput.length) {
-              final token = cumulative.substring(lastOutput.length);
-              lastOutput = cumulative;
-              if (token.isNotEmpty && !controller.isClosed) {
-                controller.add(utf8.encode(token));
-              }
-            }
-            if (isDone == true && !done.isCompleted) done.complete();
-          },
-        );
-        await done.future;
-      } catch (e) {
-        debugPrint('Echo Engine generation failed: $e');
-      } finally {
-        if (!controller.isClosed) await controller.close();
-      }
-    }();
+    final reply = onDeviceStream(
+      FllamaInferenceRequest(
+        contextSize: sampling.contextSize,
+        input: prompt,
+        maxTokens: sampling.maxTokens,
+        modelPath: modelPath,
+        numGpuLayers: 99,
+        numThreads: Platform.numberOfProcessors,
+        temperature: sampling.temperature,
+        penaltyFrequency: 0.0,
+        penaltyRepeat: 1.1,
+        topP: 0.9,
+      ),
+    );
+    final body = reply
+        .handleError((Object e) {
+          if (kDebugMode) {
+            debugPrint('Echo Engine generation failed (${e.runtimeType})');
+          }
+        })
+        .map(utf8.encode);
 
     return Response.ok(
-      controller.stream,
+      body,
       headers: {'content-type': 'text/plain; charset=utf-8'},
     );
   }

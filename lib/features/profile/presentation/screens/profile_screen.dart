@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:material_symbols_icons/symbols.dart';
@@ -6,9 +8,13 @@ import 'package:project_echo/core/presentation/animations/fade_slide_in.dart';
 import 'package:project_echo/core/presentation/animations/page_transitions.dart';
 import 'package:project_echo/core/presentation/widgets/header_icon_button.dart';
 import 'package:project_echo/core/presentation/widgets/press_feedback.dart';
+import 'package:project_echo/core/services/user_name.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
+import 'package:project_echo/features/profile/data/week_card.dart';
 import 'package:project_echo/features/profile/data/week_stats.dart';
+import 'package:project_echo/features/profile/presentation/week_card_share.dart';
+import 'package:project_echo/features/profile/presentation/widgets/week_card.dart';
 import 'package:project_echo/features/profile/presentation/widgets/streak_calendar.dart';
 import 'package:project_echo/features/settings/presentation/screens/phone_settings_screen.dart';
 import 'package:project_echo/features/todo/data/todo_store.dart';
@@ -30,6 +36,10 @@ class _ProfileScreenState extends State<ProfileScreen>
   String _name = '';
   DateTime? _since;
   WeekStats? _week;
+
+  /// The week as the share card would tell it; null until loaded.
+  WeekCardData? _card;
+  bool _sharing = false;
 
   @override
   void initState() {
@@ -66,15 +76,31 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   Future<void> _loadWeek() async {
     final week = await WeekStats.load(DateTime.now());
-    if (mounted) setState(() => _week = week);
+    final card = await WeekCardShare.load(week: week);
+    if (mounted) {
+      setState(() {
+        _week = week;
+        _card = card;
+      });
+    }
+  }
+
+  Future<void> _shareWeek(BuildContext from) async {
+    final card = _card;
+    if (card == null || _sharing) return;
+    setState(() => _sharing = true);
+    try {
+      await WeekCardShare.share(from, card, source: 'profile');
+    } finally {
+      if (mounted) setState(() => _sharing = false);
+    }
   }
 
   Future<void> _rename(String name) async {
     final trimmed = name.trim();
     if (trimmed.isEmpty || trimmed == _name) return;
     setState(() => _name = trimmed);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('user_name', trimmed);
+    await UserName.save(trimmed);
   }
 
   Future<void> _openSettings() async {
@@ -130,10 +156,20 @@ class _ProfileScreenState extends State<ProfileScreen>
                 ),
               ),
               const SizedBox(height: 18),
-              enter(ProfileIdentity(name: _name, since: _since, onRename: _rename)),
+              enter(
+                ProfileIdentity(name: _name, since: _since, onRename: _rename),
+              ),
               const SizedBox(height: 22),
               enter(StreakCalendar(key: _calendarKey)),
               enter(WeekInNumbers(week: _week)),
+              if (_card?.worthSharing ?? false)
+                enter(
+                  Builder(
+                    builder: (context) => ShareWeekButton(
+                      onPressed: _sharing ? null : () => _shareWeek(context),
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
@@ -269,19 +305,19 @@ class _ProfileIdentityState extends State<ProfileIdentity> {
                       ),
                     ),
                     if (widget.onRename != null)
-                    PressFeedback(
-                      scale: 0.85,
-                      child: IconButton(
-                        tooltip: 'Edit your name',
-                        onPressed: _edit,
-                        visualDensity: VisualDensity.compact,
-                        icon: Icon(
-                          Symbols.edit_rounded,
-                          size: 18,
-                          color: c.textSecondary,
+                      PressFeedback(
+                        scale: 0.85,
+                        child: IconButton(
+                          tooltip: 'Edit your name',
+                          onPressed: _edit,
+                          visualDensity: VisualDensity.compact,
+                          icon: Icon(
+                            Symbols.edit_rounded,
+                            size: 18,
+                            color: c.textSecondary,
+                          ),
                         ),
                       ),
-                    ),
                   ],
                 ),
               if (since != null) ...[
@@ -333,45 +369,61 @@ class WeekInNumbers extends StatelessWidget {
       children: [
         Padding(
           padding: const EdgeInsets.only(top: 30, bottom: 12),
+          // The title and the dates share the row, so at a large font size
+          // each wraps rather than pushing the other off the edge.
           child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
             children: [
-              Text(
-                'This week',
-                style: GoogleFonts.oldStandardTt(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w700,
-                  color: c.textPrimary,
+              Flexible(
+                child: Text(
+                  'This week',
+                  style: GoogleFonts.oldStandardTt(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w700,
+                    color: c.textPrimary,
+                  ),
                 ),
               ),
-              const Spacer(),
-              Text(
-                '${from.day} ${_months[from.month - 1]} – '
-                '${now.day} ${_months[now.month - 1]}',
-                style: GoogleFonts.nunito(fontSize: 13, color: c.textSecondary),
+              const SizedBox(width: 12),
+              Flexible(
+                child: Text(
+                  '${from.day} ${_months[from.month - 1]} – '
+                  '${now.day} ${_months[now.month - 1]}',
+                  textAlign: TextAlign.end,
+                  style: GoogleFonts.nunito(
+                    fontSize: 13,
+                    color: c.textSecondary,
+                  ),
+                ),
               ),
             ],
           ),
         ),
-        Row(
-          children: [
-            Expanded(
-              child: _Tile(
-                value: w?.todosDone,
-                label: 'to-dos done',
-                accent: true,
+        // As tall as the tallest tile, so a large font grows all three
+        // alike instead of clipping.
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: _Tile(
+                  value: w?.todosDone,
+                  label: 'to-dos done',
+                  accent: true,
+                ),
               ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _Tile(value: w?.replies, label: 'replies through Echo'),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _Tile(value: w?.read, label: 'messages read for you'),
-            ),
-          ],
+              const SizedBox(width: 10),
+              Expanded(
+                child: _Tile(value: w?.replies, label: 'replies through Echo'),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _Tile(value: w?.read, label: 'messages read for you'),
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: 10),
         _ReadChart(byDay: w?.readByDay ?? List.filled(7, 0), from: from),
@@ -394,7 +446,8 @@ class _Tile extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.colors;
     return Container(
-      height: 96,
+      // 96 dp at the default font size; taller when larger text needs it.
+      constraints: const BoxConstraints(minHeight: 96),
       padding: const EdgeInsets.fromLTRB(14, 14, 12, 12),
       decoration: BoxDecoration(
         color: c.surface,
@@ -409,27 +462,36 @@ class _Tile extends StatelessWidget {
             tween: Tween(end: (value ?? 0).toDouble()),
             duration: const Duration(milliseconds: 700),
             curve: AppMotion.emphasized,
-            builder: (context, v, _) => Text(
-              value == null ? '–' : _number(v.round()),
-              style: GoogleFonts.nunito(
-                fontSize: 26,
-                fontWeight: FontWeight.w800,
-                height: 1.05,
-                letterSpacing: -0.5,
-                color: accent ? c.primaryGreen : c.textPrimary,
-                fontFeatures: const [FontFeature.tabularFigures()],
+            // Shrinks rather than wrapping if a large font makes it wider
+            // than the tile.
+            builder: (context, v, _) => FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                value == null ? '–' : _number(v.round()),
+                style: GoogleFonts.nunito(
+                  fontSize: 26,
+                  fontWeight: FontWeight.w800,
+                  height: 1.05,
+                  letterSpacing: -0.5,
+                  color: accent ? c.primaryGreen : c.textPrimary,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
               ),
             ),
           ),
-          const Spacer(),
-          Text(
-            label,
-            maxLines: 2,
-            style: GoogleFonts.nunito(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w600,
-              height: 1.25,
-              color: c.textSecondary,
+          // The label sits at the bottom, however tall the row has grown.
+          Expanded(
+            child: Align(
+              alignment: Alignment.bottomLeft,
+              child: Text(
+                label,
+                style: GoogleFonts.nunito(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  height: 1.25,
+                  color: c.textSecondary,
+                ),
+              ),
             ),
           ),
         ],
@@ -461,29 +523,43 @@ class _ReadChart extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // Each side wraps at a large font size rather than overflowing.
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Messages Echo read',
-                style: GoogleFonts.nunito(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  color: c.textPrimary,
+              Flexible(
+                child: Text(
+                  'Messages Echo read',
+                  style: GoogleFonts.nunito(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: c.textPrimary,
+                  ),
                 ),
               ),
-              const Spacer(),
-              Text(
-                'a day',
-                style: GoogleFonts.nunito(
-                  fontSize: 12.5,
-                  color: c.textSecondary,
+              const SizedBox(width: 12),
+              Flexible(
+                child: Text(
+                  'a day',
+                  textAlign: TextAlign.end,
+                  style: GoogleFonts.nunito(
+                    fontSize: 12.5,
+                    color: c.textSecondary,
+                  ),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 12),
           SizedBox(
-            height: _barMax + 40,
+            // The bars and, over and under each, its count and day letter:
+            // taller than 40 dp of text once larger text needs it.
+            height: math.max(
+              _barMax + 40,
+              _barMax +
+                  9 +
+                  2 * MediaQuery.textScalerOf(context).scale(10.5) * 1.45,
+            ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
@@ -533,7 +609,12 @@ class _Bar extends StatelessWidget {
     return Column(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
-        Text(count == 0 ? '' : '$count', style: small),
+        // Shrinks rather than wrapping when a large font makes it wider
+        // than its bar's column.
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(count == 0 ? '' : '$count', style: small),
+        ),
         const SizedBox(height: 4),
         TweenAnimationBuilder<double>(
           tween: Tween(end: height),

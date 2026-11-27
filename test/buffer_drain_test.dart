@@ -3,7 +3,7 @@ import 'dart:ffi';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:isar/isar.dart';
+import 'package:isar_community/isar.dart';
 import 'package:project_echo/features/echo/data/models/raw_data.dart';
 import 'package:project_echo/features/echo/data/services/notification_ingest.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -216,13 +216,13 @@ void main() {
   );
 }
 
-/// Isar's native library for this computer, from isar_flutter_libs.
+/// Isar's native library for this computer, from isar_community_flutter_libs.
 File? _isarLibrary() {
   final config = File('.dart_tool/package_config.json');
   if (!Platform.isMacOS || !config.existsSync()) return null;
   final packages = (jsonDecode(config.readAsStringSync()) as Map)['packages'];
   for (final p in packages as List) {
-    if (p['name'] != 'isar_flutter_libs') continue;
+    if (p['name'] != 'isar_community_flutter_libs') continue;
     final root = config.uri.resolve('${p['rootUri']}/');
     final file = File.fromUri(root.resolve('macos/libisar.dylib'));
     return file.existsSync() ? file : null;

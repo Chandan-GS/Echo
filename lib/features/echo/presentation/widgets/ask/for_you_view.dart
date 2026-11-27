@@ -409,10 +409,29 @@ class _RemindPillState extends State<RemindPill> {
     if (mounted) setState(() => _reminding = at);
   }
 
+  /// True while a tap is being carried out, so a quick second tap can't set
+  /// the reminder (and its to-do) twice, or cancel it halfway through.
+  bool _busy = false;
+
   Future<void> _toggle() async {
+    if (_busy) return;
+    _busy = true;
+    try {
+      await _apply();
+    } finally {
+      _busy = false;
+    }
+  }
+
+  Future<void> _apply() async {
     final e = widget.entry;
     if (_reminding != null) {
       await Reminders.cancel(_key);
+      return;
+    }
+    // The pill may have sat on screen past its time.
+    if (remindPillTime(widget.at, DateTime.now()) == null) {
+      if (mounted) setState(() {});
       return;
     }
     final title =
@@ -440,6 +459,10 @@ class _RemindPillState extends State<RemindPill> {
   @override
   Widget build(BuildContext context) {
     final reminding = _reminding;
+    final gone = remindPillTime(widget.at, DateTime.now()) == null;
+    if (reminding == null && gone) {
+      return const SizedBox.shrink();
+    }
     return reminding != null
         ? AskPill(
             label: 'Reminding ${whenLabel(reminding, DateTime.now())}',
@@ -455,6 +478,13 @@ class _RemindPillState extends State<RemindPill> {
           );
   }
 }
+
+/// The time a [RemindPill] would remind at, or null once [at] is less than
+/// a minute away (or past): a pill left on screen mustn't set a reminder
+/// that has already gone by.
+@visibleForTesting
+DateTime? remindPillTime(DateTime at, DateTime now) =>
+    at.isAfter(now.add(const Duration(minutes: 1))) ? at : null;
 
 /// "41 group messages · not for you ›", like Home's Regenerate row.
 class _ChatterRow extends StatelessWidget {

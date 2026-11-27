@@ -37,7 +37,10 @@ class _SpinInIconState extends State<SpinInIcon>
   @override
   void didUpdateWidget(covariant SpinInIcon oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.isSelected && !oldWidget.isSelected) {
+    // With animations turned off, the icon just changes.
+    if (widget.isSelected &&
+        !oldWidget.isSelected &&
+        !MediaQuery.of(context).disableAnimations) {
       _controller.forward(from: 0);
     }
   }
@@ -112,7 +115,10 @@ class _SquashInIconState extends State<SquashInIcon>
   @override
   void didUpdateWidget(covariant SquashInIcon oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.isSelected && !oldWidget.isSelected) {
+    // With animations turned off, the icon just changes.
+    if (widget.isSelected &&
+        !oldWidget.isSelected &&
+        !MediaQuery.of(context).disableAnimations) {
       _controller.forward(from: 0);
     }
   }

@@ -327,7 +327,6 @@ class _Days extends StatelessWidget {
   });
 
   static const _area = 64.0; // bar area above the labels
-  static const _labels = 18.0;
 
   @override
   Widget build(BuildContext context) {
@@ -343,9 +342,15 @@ class _Days extends StatelessWidget {
       fontWeight: FontWeight.w800,
       color: c.textSecondary,
     );
+    // The day letters under the bars: 18 dp at the default font size, more
+    // once larger text needs it.
+    final labels = math.max(
+      18.0,
+      6.5 + MediaQuery.textScalerOf(context).scale(11.5),
+    );
 
     return SizedBox(
-      height: _area + _labels,
+      height: _area + labels,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
@@ -401,7 +406,7 @@ class _Days extends StatelessWidget {
             Positioned(
               left: 0,
               right: 0,
-              bottom: _labels + 6 + avg / peak * (_area - 6) - 0.75,
+              bottom: labels + 6 + avg / peak * (_area - 6) - 0.75,
               child: IgnorePointer(
                 child: CustomPaint(
                   size: const Size.fromHeight(1.5),
@@ -413,7 +418,7 @@ class _Days extends StatelessWidget {
             // the ones most likely to stand tall through it.
             Positioned(
               left: 0,
-              bottom: _labels + 6 + avg / peak * (_area - 6) + 4,
+              bottom: labels + 6 + avg / peak * (_area - 6) + 4,
               child: IgnorePointer(
                 child: ColoredBox(
                   color: c.surface,

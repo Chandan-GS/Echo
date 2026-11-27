@@ -97,58 +97,15 @@ class _TodoCelebrationScreenState extends State<TodoCelebrationScreen>
                   CustomPaint(painter: _BurstPainter(_burst.value)),
             ),
           ),
+          // Fills the screen with the button at the foot, but scrolls when
+          // large text (or a small screen) makes it taller than that.
           SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32),
-              child: Column(
-                children: [
-                  const Spacer(),
-                  AnimatedBuilder(
-                    animation: _entrance,
-                    builder: (context, _) => Transform.scale(
-                      scale: _orbIn.value,
-                      child: _Orb(check: _check.value),
-                    ),
-                  ),
-                  const SizedBox(height: 30),
-                  FadeTransition(
-                    opacity: _text,
-                    child: Column(
-                      children: [
-                        Text(
-                          'All clear for today',
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.oldStandardTt(
-                            fontSize: 32,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          sub,
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.nunito(
-                            fontSize: 16,
-                            color: Colors.white.withValues(alpha: 0.7),
-                            height: 1.4,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Spacer(),
-                  FadeTransition(
-                    opacity: _text,
-                    child: EchoButton(
-                      text: 'Nice',
-                      backgroundColor: const Color(0xFFF4F2EE),
-                      textColor: const Color(0xFF1E1E1E),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-                ],
+            child: LayoutBuilder(
+              builder: (context, box) => SingleChildScrollView(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: box.maxHeight),
+                  child: IntrinsicHeight(child: _content(context, sub)),
+                ),
               ),
             ),
           ),
@@ -156,6 +113,61 @@ class _TodoCelebrationScreenState extends State<TodoCelebrationScreen>
       ),
     );
   }
+
+  Widget _content(BuildContext context, String sub) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 32),
+    child: Column(
+      children: [
+        const SizedBox(height: 24),
+        const Spacer(),
+        AnimatedBuilder(
+          animation: _entrance,
+          builder: (context, _) => Transform.scale(
+            scale: _orbIn.value,
+            child: _Orb(check: _check.value),
+          ),
+        ),
+        const SizedBox(height: 30),
+        FadeTransition(
+          opacity: _text,
+          child: Column(
+            children: [
+              Text(
+                'All clear for today',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.oldStandardTt(
+                  fontSize: 32,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                sub,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.nunito(
+                  fontSize: 16,
+                  color: Colors.white.withValues(alpha: 0.7),
+                  height: 1.4,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const Spacer(),
+        FadeTransition(
+          opacity: _text,
+          child: EchoButton(
+            text: 'Nice',
+            backgroundColor: const Color(0xFFF4F2EE),
+            textColor: const Color(0xFF1E1E1E),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ),
+        const SizedBox(height: 32),
+      ],
+    ),
+  );
 }
 
 class _Orb extends StatelessWidget {

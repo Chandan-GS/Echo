@@ -24,6 +24,7 @@ import 'package:project_echo/features/todo/presentation/widgets/reminder_sheet.d
 import 'package:project_echo/features/todo/presentation/widgets/todo_card.dart';
 import 'package:project_echo/features/todo/presentation/widgets/todo_parts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:project_echo/core/presentation/widgets/min_tap_area.dart';
 import 'package:project_echo/core/presentation/widgets/press_feedback.dart';
 
 /// The phone's To-do tab: everything Echo has put on the owner's list, and
@@ -157,8 +158,7 @@ class _TodoScreenState extends State<TodoScreen> {
     if (item == null || !mounted) return;
     final now = DateTime.now();
     final at = suggestedReminder(item, now);
-    final days = item.day.difference(startOfDay(now)).inDays;
-    final where = switch (days) {
+    final where = switch (calendarDaysBetween(now, item.day)) {
       0 => 'today',
       1 => 'tomorrow',
       _ => _dayLabel(item.day),
@@ -179,12 +179,22 @@ class _TodoScreenState extends State<TodoScreen> {
       _open.remove(item.id);
     });
     toggleTodo(context, item);
+    // Today's done items stay in its Done row; Tomorrow and Later don't
+    // show done ones, so a tick there can be taken back from here.
+    final cubit = context.read<TodoCubit>();
+    if (!item.done && item.day.isAfter(startOfDay(cubit.state.now))) {
+      _toast(
+        'Ticked off “${item.title}”',
+        action: 'Undo',
+        onAction: () => cubit.setDone(item.id, false),
+      );
+    }
   }
 
   Future<void> _move(TodoItem item) async {
     final now = DateTime.now();
     final toTomorrow = !item.day.isAfter(startOfDay(now));
-    final day = startOfDay(now).add(Duration(days: toTomorrow ? 1 : 0));
+    final day = addDays(startOfDay(now), toTomorrow ? 1 : 0);
     setState(() => _open.remove(item.id));
     await context.read<TodoCubit>().moveTo(item.id, day);
     _toast('Moved to ${toTomorrow ? 'tomorrow' : 'today'}');
@@ -242,10 +252,13 @@ class _TodoScreenState extends State<TodoScreen> {
         child: BlocBuilder<TodoCubit, TodoState>(
           builder: (context, s) {
             final now = s.now;
-            final tomorrow = startOfDay(now).add(const Duration(days: 1));
+            final tomorrow = addDays(startOfDay(now), 1);
+            // Done items leave Tomorrow and Later once their tick has played.
+            bool showing(TodoItem i) => !i.done || _leaving.contains(i.id);
+            final tomorrowItems = s.tomorrow.where(showing).toList();
             final later =
                 s.items
-                    .where((i) => i.day.isAfter(tomorrow) && !i.done)
+                    .where((i) => i.day.isAfter(tomorrow) && showing(i))
                     .toList()
                   ..sort((a, b) {
                     final byDay = a.day.compareTo(b.day);
@@ -306,13 +319,14 @@ class _TodoScreenState extends State<TodoScreen> {
                   ),
                   ..._working(context, s, hasBriefing),
                   enter(_today(context, s)),
-                  if (s.tomorrow.any((i) => !i.done))
+                  if (tomorrowItems.isNotEmpty)
                     enter(
                       _section(
                         context,
                         title: 'Tomorrow',
                         note: _dateLine(tomorrow),
-                        items: s.tomorrow.where((i) => !i.done).toList(),
+                        items: tomorrowItems,
+                        all: s.items,
                         now: now,
                       ),
                     ),
@@ -323,6 +337,7 @@ class _TodoScreenState extends State<TodoScreen> {
                         title: 'Later',
                         note: 'This week and after',
                         items: later,
+                        all: s.items,
                         now: now,
                         showDay: true,
                       ),
@@ -414,7 +429,7 @@ class _TodoScreenState extends State<TodoScreen> {
         : undone.isEmpty
         ? 'All ${today.length} done'
         : '${undone.length} left'
-              '${next.isEmpty ? '' : ' · next at ${next.first.time!.split(' to ').first}'}';
+              '${next.isEmpty ? '' : ' · next at ${clockLabel(next.first.startsAt!).replaceFirst(':00', '')}'}';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -438,7 +453,13 @@ class _TodoScreenState extends State<TodoScreen> {
               duration: AppMotion.medium,
               curve: AppMotion.emphasized,
               alignment: Alignment.topCenter,
-              child: _rows(context, left, now, justAdded: s.justAdded),
+              child: _rows(
+                context,
+                left,
+                now,
+                all: s.items,
+                justAdded: s.justAdded,
+              ),
             ),
           )
         else
@@ -462,7 +483,7 @@ class _TodoScreenState extends State<TodoScreen> {
                   horizontal: 16,
                   vertical: 2,
                 ),
-                child: _rows(context, done, now),
+                child: _rows(context, done, now, all: s.items),
               ),
             ),
           ),
@@ -476,6 +497,7 @@ class _TodoScreenState extends State<TodoScreen> {
     required String title,
     required String note,
     required List<TodoItem> items,
+    required List<TodoItem> all,
     required DateTime now,
     bool showDay = false,
   }) {
@@ -493,7 +515,7 @@ class _TodoScreenState extends State<TodoScreen> {
             duration: AppMotion.medium,
             curve: AppMotion.emphasized,
             alignment: Alignment.topCenter,
-            child: _rows(context, items, now, showDay: showDay),
+            child: _rows(context, items, now, all: all, showDay: showDay),
           ),
         ),
       ],
@@ -501,11 +523,13 @@ class _TodoScreenState extends State<TodoScreen> {
   }
 
   /// [items] as rows; the parts of one long message (more than three asks,
-  /// split by Echo) stay together under it.
+  /// split by Echo) stay together under it. A group's ring counts every part
+  /// in [all], since its ticked parts have moved on to the Done row.
   Widget _rows(
     BuildContext context,
     List<TodoItem> items,
     DateTime now, {
+    required List<TodoItem> all,
     bool showDay = false,
     Set<int> justAdded = const {},
   }) {
@@ -521,10 +545,13 @@ class _TodoScreenState extends State<TodoScreen> {
       if ((counts[key] ?? 0) > 1) {
         if (!grouped.add(key)) continue;
         final parts = items.where((p) => base(p) == key).toList();
+        final everyPart = all.where((p) => base(p) == key);
         children.add(
           _Group(
             first: children.isEmpty,
             parts: parts,
+            done: everyPart.where((p) => p.done).length,
+            total: everyPart.length,
             header: parts.first,
             showDay: showDay,
             children: [
@@ -762,21 +789,30 @@ class _AddFieldState extends State<_AddField> {
             duration: AppMotion.medium,
             curve: AppMotion.spring,
             scale: typed ? 1 : 0,
-            child: PressFeedback(
-              scale: 0.88,
-              child: GestureDetector(
-                onTap: _submit,
-                child: Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: c.primaryGreen,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Symbols.arrow_upward_rounded,
-                    size: 20,
-                    color: context.isDarkMode ? c.textInverse : Colors.white,
+            child: Semantics(
+              button: true,
+              label: 'Add to-do',
+              child: PressFeedback(
+                scale: 0.88,
+                // A 48 dp tap area around the 44 dp disc.
+                child: MinTapArea(
+                  child: GestureDetector(
+                    onTap: _submit,
+                    child: Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: c.primaryGreen,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Symbols.arrow_upward_rounded,
+                        size: 20,
+                        color: context.isDarkMode
+                            ? c.textInverse
+                            : Colors.white,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -958,6 +994,11 @@ class _DoneRow extends StatelessWidget {
 class _Group extends StatelessWidget {
   final bool first;
   final List<TodoItem> parts;
+
+  /// Of all the message's parts, wherever they're shown: how many are
+  /// ticked, and how many there are.
+  final int done;
+  final int total;
   final TodoItem header;
   final bool showDay;
   final List<Widget> children;
@@ -965,6 +1006,8 @@ class _Group extends StatelessWidget {
   const _Group({
     required this.first,
     required this.parts,
+    required this.done,
+    required this.total,
     required this.header,
     required this.showDay,
     required this.children,
@@ -973,7 +1016,6 @@ class _Group extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final done = parts.where((p) => p.done).length;
     final who = header.sender.isEmpty ? header.app : header.sender;
     return Container(
       decoration: BoxDecoration(
@@ -993,7 +1035,7 @@ class _Group extends StatelessWidget {
                 width: 26,
                 height: 26,
                 child: CircularProgressIndicator(
-                  value: parts.isEmpty ? 0 : done / parts.length,
+                  value: total == 0 ? 0 : done / total,
                   strokeWidth: 3,
                   strokeCap: StrokeCap.round,
                   color: c.primaryGreen,
@@ -1006,7 +1048,7 @@ class _Group extends StatelessWidget {
                   TextSpan(
                     children: [
                       TextSpan(
-                        text: '${parts.length} things from $who',
+                        text: '$total things from $who',
                         style: TextStyle(
                           fontWeight: FontWeight.w800,
                           color: c.textPrimary,
@@ -1366,16 +1408,19 @@ class _ReminderChip extends StatelessWidget {
         key: const ValueKey('none'),
         button: true,
         label: 'Add a reminder',
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: onSet,
-          child: SizedBox(
-            width: 34,
-            height: 28,
-            child: Icon(
-              Symbols.notification_add_rounded,
-              size: 20,
-              color: c.textSecondary.withValues(alpha: 0.7),
+        // A 48 dp tap area around the 34 × 28 bell.
+        child: MinTapArea(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onSet,
+            child: SizedBox(
+              width: 34,
+              height: 28,
+              child: Icon(
+                Symbols.notification_add_rounded,
+                size: 20,
+                color: c.textSecondary.withValues(alpha: 0.7),
+              ),
             ),
           ),
         ),
@@ -1429,23 +1474,28 @@ class _ReminderChip extends StatelessWidget {
         key: ValueKey(key),
         button: true,
         label: semantics,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: onTap,
-          child: SizedBox(
-            height: 28,
-            child: dashed
-                ? CustomPaint(
-                    painter: _DashedStadium(foreground.withValues(alpha: 0.6)),
-                    child: Center(widthFactor: 1, child: content),
-                  )
-                : DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: background,
-                      borderRadius: BorderRadius.circular(999),
+        // Taps a little above and below the 28 dp chip count too.
+        child: MinTapArea(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onTap,
+            child: SizedBox(
+              height: 28,
+              child: dashed
+                  ? CustomPaint(
+                      painter: _DashedStadium(
+                        foreground.withValues(alpha: 0.6),
+                      ),
+                      child: Center(widthFactor: 1, child: content),
+                    )
+                  : DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: background,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Center(widthFactor: 1, child: content),
                     ),
-                    child: Center(widthFactor: 1, child: content),
-                  ),
+            ),
           ),
         ),
       ),

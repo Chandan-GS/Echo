@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'dart:convert';
 
-import 'package:isar/isar.dart';
+import 'package:isar_community/isar.dart';
 import 'package:project_echo/core/services/echo_server_service.dart';
 import 'package:project_echo/core/services/source_packages.dart';
 import 'package:project_echo/features/echo/data/datasources/isar_datasource.dart';

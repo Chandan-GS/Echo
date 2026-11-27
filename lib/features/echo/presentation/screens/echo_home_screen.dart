@@ -18,10 +18,14 @@ import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/services/widget_refresh_service.dart';
 import 'package:project_echo/core/services/phone_sync_service.dart';
 import 'package:project_echo/core/services/gemini_usage.dart';
+import 'package:project_echo/core/services/pending_autoplay.dart';
+import 'package:project_echo/core/services/gentle_nudges.dart';
+import 'package:project_echo/core/services/user_name.dart';
 import 'package:project_echo/core/services/offline_model_repository.dart';
 import 'package:project_echo/features/settings/presentation/cubit/settings_cubit.dart';
 import 'package:project_echo/features/echo/presentation/screens/daily_briefing_screen.dart';
 import 'package:project_echo/features/todo/presentation/cubit/todo_cubit.dart';
+import 'package:project_echo/features/echo/presentation/widgets/home_first_briefing.dart';
 import 'package:project_echo/features/echo/presentation/widgets/home_glance.dart';
 import 'package:project_echo/features/echo/presentation/widgets/home_masthead.dart';
 import 'package:project_echo/core/presentation/animations/page_transitions.dart';
@@ -53,6 +57,9 @@ class _EchoViewState extends State<_EchoView> with WidgetsBindingObserver {
   /// What Home showed before a briefing started being written. While Echo
   /// writes, Home keeps showing it; his bubble says what he's doing.
   BriefingState? _settled;
+
+  /// Whether the briefing screen this Home pushed is still open.
+  bool _briefingOpen = false;
 
   /// What's under the briefing: who's waiting, promises, busy groups. Kept
   /// here, above the briefing's states, so it doesn't reload as they change.
@@ -105,6 +112,8 @@ class _EchoViewState extends State<_EchoView> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadFeed();
+    // On the owner's first day, the evening note (see GentleNudges).
+    unawaited(GentleNudges.scheduleDayOneIfDue());
     TodoStore.changed.addListener(_reloadSoon);
     IsarDataSource.instance
         .then((isar) {
@@ -149,15 +158,25 @@ class _EchoViewState extends State<_EchoView> with WidgetsBindingObserver {
         child: BlocConsumer<BriefingCubit, BriefingState>(
           listener: (context, state) async {
             if (state is BriefingReady) {
-              // Read-and-clear the one-shot flag set when the user reached the
-              // app via the notification's "Play" action (or by tapping it) —
-              // see local_notification_service.dart / main.dart.
+              // One briefing on screen at a time: a second BriefingReady (the
+              // app resumed while the autoplay mark was still being read)
+              // mustn't push it again.
+              if (_briefingOpen) return;
+              _briefingOpen = true;
+              // Read-and-clear the one-shot mark set when the user reached the
+              // app via the notification's "Play" action, by tapping it, or
+              // the widget (see PendingAutoplay). Reloaded first: the
+              // notification's background handler writes it from another
+              // isolate.
               final prefs = await SharedPreferences.getInstance();
-              final autoPlay = prefs.getBool('pending_autoplay') ?? false;
-              if (autoPlay) await prefs.remove('pending_autoplay');
-              if (!context.mounted) return;
+              await prefs.reload();
+              final autoPlay = await PendingAutoplay.take(prefs);
+              if (!context.mounted) {
+                _briefingOpen = false;
+                return;
+              }
 
-              Navigator.of(context, rootNavigator: true).push(
+              final opened = Navigator.of(context, rootNavigator: true).push(
                 bouncyRoute(
                   DailyBriefingScreen(
                     rawText: state.rawText,
@@ -170,6 +189,7 @@ class _EchoViewState extends State<_EchoView> with WidgetsBindingObserver {
                   ),
                 ),
               );
+              unawaited(opened.whenComplete(() => _briefingOpen = false));
             }
           },
           builder: (context, bloc) {
@@ -251,6 +271,8 @@ class _InitialView extends StatelessWidget {
         onTap: onGenerate,
         isPrimary: true,
       ),
+      // Day one, before any briefing: when the first one comes.
+      extra: const FirstBriefingPanel(),
     );
   }
 }
@@ -436,10 +458,15 @@ class _HomeShell extends StatefulWidget {
   /// Optional secondary actions (already laid out — a row or a single card).
   final Widget? secondary;
 
+  /// Shown under those when it has something to say; sizes itself to
+  /// nothing otherwise, and brings its own spacing.
+  final Widget? extra;
+
   const _HomeShell({
     required this.subtitle,
     required this.primary,
     this.secondary,
+    this.extra,
   });
 
   @override
@@ -447,22 +474,27 @@ class _HomeShell extends StatefulWidget {
 }
 
 class _HomeShellState extends State<_HomeShell> {
-  String? _userName;
+  String _userName = '';
 
   @override
   void initState() {
     super.initState();
     _loadUserName();
+    // Home stays alive behind the other tabs: a rename in Profile shows here
+    // without a restart.
+    UserName.changed.addListener(_loadUserName);
+  }
+
+  @override
+  void dispose() {
+    UserName.changed.removeListener(_loadUserName);
+    super.dispose();
   }
 
   Future<void> _loadUserName() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      if (mounted) {
-        setState(() {
-          _userName = prefs.getString('user_name');
-        });
-      }
+      final name = await UserName.load();
+      if (mounted) setState(() => _userName = name);
     } catch (_) {}
   }
 
@@ -519,7 +551,8 @@ class _HomeShellState extends State<_HomeShell> {
   @override
   Widget build(BuildContext context) {
     final greeting = _getGreeting();
-    final name = _userName ?? 'Sir';
+    // No name given: the greeting stands alone ("Good morning").
+    final name = _userName;
     final feed = _FeedScope.of(context).feed;
 
     return SafeArea(
@@ -572,6 +605,12 @@ class _HomeShellState extends State<_HomeShell> {
                       child: widget.secondary!,
                     ),
                   ],
+
+                  if (widget.extra != null)
+                    FadeSlideIn(
+                      delay: AppMotion.staggerDelay(3),
+                      child: widget.extra!,
+                    ),
 
                   FadeSlideIn(
                     delay: AppMotion.staggerDelay(4),

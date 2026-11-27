@@ -52,24 +52,31 @@ class EchoSegmented extends StatelessWidget {
                 children: [
                   for (final (i, label) in labels.indexed)
                     Expanded(
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () {
-                          if (i == selected) return;
-                          HapticFeedback.selectionClick();
-                          onSelect(i);
-                        },
-                        child: Center(
-                          child: AnimatedDefaultTextStyle(
-                            duration: const Duration(milliseconds: 200),
-                            style: GoogleFonts.nunito(
-                              fontSize: labels.length > 3 ? 14.5 : 16,
-                              fontWeight: FontWeight.bold,
-                              color: i == selected
-                                  ? c.textInverse
-                                  : c.textSecondary,
+                      // TalkBack reads each choice as a button, and which
+                      // one is chosen.
+                      child: Semantics(
+                        button: true,
+                        selected: i == selected,
+                        inMutuallyExclusiveGroup: true,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () {
+                            if (i == selected) return;
+                            HapticFeedback.selectionClick();
+                            onSelect(i);
+                          },
+                          child: Center(
+                            child: AnimatedDefaultTextStyle(
+                              duration: const Duration(milliseconds: 200),
+                              style: GoogleFonts.nunito(
+                                fontSize: labels.length > 3 ? 14.5 : 16,
+                                fontWeight: FontWeight.bold,
+                                color: i == selected
+                                    ? c.textInverse
+                                    : c.textSecondary,
+                              ),
+                              child: Text(label),
                             ),
-                            child: Text(label),
                           ),
                         ),
                       ),
