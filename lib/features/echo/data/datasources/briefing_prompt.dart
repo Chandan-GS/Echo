@@ -108,11 +108,44 @@ String formatEntry(
   if (addressed == Addressed.reply) {
     final said = myTurns?.lastBefore(e.thread, e.timestamp);
     if (said != null && said.text.isNotEmpty) {
-      notes.add('after you wrote "${said.text}"');
+      notes.add('after you wrote "${clipContent(said.text)}"');
     }
   }
   final line = '$who (${notes.join(', ')}): $content';
   return when == null ? line : '[$when] $line';
+}
+
+/// How much of one notification's text goes into a prompt. Enough for any
+/// chat message or the gist of an email; a long newsletter is cut short
+/// rather than crowding out the rest of the day.
+const maxPromptContentChars = 280;
+
+/// [text] cut to [max] characters, ending in "…" when it was cut.
+String clipContent(String text, [int max = maxPromptContentChars]) =>
+    text.length <= max ? text : '${text.substring(0, max).trimRight()}…';
+
+/// The most characters a whole prompt may have for the on-device model
+/// (and a desktop engine, which runs the same one). Its 4096-token slot has
+/// to hold the prompt and the briefing it writes; at roughly three to four
+/// characters a token, this leaves well over a thousand tokens for the
+/// reply, with room to spare for text that tokenizes poorly (emoji, Hindi).
+const onDevicePromptCharBudget = 9000;
+
+/// The leading [lines] that fit in [budget] characters joined by newlines,
+/// so the most important (first) are kept. Always keeps the first line,
+/// clipped to the budget if it alone is too long.
+List<String> capLines(List<String> lines, int budget) {
+  if (lines.isEmpty) return const [];
+  final kept = <String>[];
+  var used = 0;
+  for (final line in lines) {
+    final cost = line.length + (kept.isEmpty ? 0 : 1);
+    if (used + cost > budget) break;
+    kept.add(line);
+    used += cost;
+  }
+  if (kept.isEmpty) kept.add(clipContent(lines.first, budget < 1 ? 1 : budget));
+  return kept;
 }
 
 /// How [formatEntry]'s notes read, for the instructions that use them.

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:project_echo/core/presentation/widgets/min_tap_area.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/features/echo/data/context/addressed.dart';
@@ -196,31 +197,46 @@ class ForYouTag extends StatelessWidget {
   );
 }
 
-/// A source number in an answer, as a small green dot: "1".
+/// A source number in an answer, as a small green dot: "1". When it can be
+/// tapped, a thumb landing near it counts too (see [MinTapArea]).
 class CiteDot extends StatelessWidget {
   final int number;
   final VoidCallback? onTap;
   const CiteDot(this.number, {super.key, this.onTap});
 
   @override
-  Widget build(BuildContext context) => GestureDetector(
-    onTap: onTap,
-    child: Container(
-      width: 17,
-      height: 17,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: context.selectionFill,
-        shape: BoxShape.circle,
-      ),
-      child: Text(
-        '$number',
-        style: GoogleFonts.nunito(
-          fontSize: 10,
-          fontWeight: FontWeight.w800,
-          color: context.onSelection,
-          height: 1,
+  Widget build(BuildContext context) {
+    final dot = _dot(context);
+    if (onTap == null) return dot;
+    return Semantics(
+      button: true,
+      label: 'Source $number',
+      excludeSemantics: true,
+      child: MinTapArea(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: dot,
         ),
+      ),
+    );
+  }
+
+  Widget _dot(BuildContext context) => Container(
+    width: 17,
+    height: 17,
+    alignment: Alignment.center,
+    decoration: BoxDecoration(
+      color: context.selectionFill,
+      shape: BoxShape.circle,
+    ),
+    child: Text(
+      '$number',
+      style: GoogleFonts.nunito(
+        fontSize: 10,
+        fontWeight: FontWeight.w800,
+        color: context.onSelection,
+        height: 1,
       ),
     ),
   );

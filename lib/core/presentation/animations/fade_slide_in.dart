@@ -42,10 +42,18 @@ class _FadeSlideInState extends State<FadeSlideIn>
   );
 
   Timer? _startTimer;
+  bool _started = false;
 
   @override
-  void initState() {
-    super.initState();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_started) return;
+    _started = true;
+    // With animations turned off, the child is simply there.
+    if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) {
+      _controller.value = 1;
+      return;
+    }
     if (widget.delay == Duration.zero) {
       _controller.forward();
     } else {

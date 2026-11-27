@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:isar/isar.dart';
+import 'package:isar_community/isar.dart';
 import 'package:project_echo/core/presentation/animations/fade_slide_in.dart';
 import 'package:project_echo/core/presentation/widgets/echo_app_bar.dart';
 import 'package:project_echo/core/services/source_packages.dart';
@@ -106,6 +106,7 @@ class _AppAccessScreenState extends State<AppAccessScreen> {
     // Turning an app back on also lifts a Vault block on its category, so
     // there's one switch per app, not two.
     if (hear) await _unblockCategoriesOf(app.package);
+    AppAccess.changed.value++;
   }
 
   static Future<void> _unblockCategoriesOf(String package) async {
@@ -142,6 +143,7 @@ class _AppAccessScreenState extends State<AppAccessScreen> {
       );
     });
     await _access.save();
+    AppAccess.changed.value++;
   }
 
   @override

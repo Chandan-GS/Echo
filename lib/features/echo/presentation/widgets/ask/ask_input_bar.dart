@@ -50,6 +50,17 @@ class _AskInputBarState extends State<AskInputBar> {
 
   void _changed() => setState(() {});
 
+  /// Sends what's written, ending any dictation first: cancelled rather
+  /// than stopped, so its last words can't land in the field after it was
+  /// cleared.
+  void _send() {
+    if (_dictating) {
+      _dictating = false;
+      _speech.cancel();
+    }
+    widget.onSend();
+  }
+
   Future<void> _dictate() async {
     if (_dictating) {
       await _speech.stop();
@@ -79,6 +90,8 @@ class _AskInputBarState extends State<AskInputBar> {
     setState(() => _dictating = true);
     await _speech.listen(
       onResult: (r) {
+        // A result still on its way when the message was sent.
+        if (!_dictating) return;
         widget.controller.value = TextEditingValue(
           text: r.recognizedWords,
           selection: TextSelection.collapsed(offset: r.recognizedWords.length),
@@ -102,7 +115,8 @@ class _AskInputBarState extends State<AskInputBar> {
         Expanded(
           child: Container(
             constraints: const BoxConstraints(minHeight: 58),
-            padding: const EdgeInsets.only(left: 20, right: 7),
+            // The buttons' tap area is 2 dp wider than their disc each side.
+            padding: const EdgeInsets.only(left: 20, right: 5),
             decoration: BoxDecoration(
               color: colors.surface,
               borderRadius: BorderRadius.circular(29),
@@ -149,11 +163,11 @@ class _AskInputBarState extends State<AskInputBar> {
                       border: InputBorder.none,
                     ),
                     onSubmitted: (_) {
-                      if (widget.enabled && hasText) widget.onSend();
+                      if (widget.enabled && hasText) _send();
                     },
                   ),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 4),
                 // Send swaps in for the mic once there's something to send.
                 AnimatedSwitcher(
                   duration: const Duration(milliseconds: 220),
@@ -163,13 +177,12 @@ class _AskInputBarState extends State<AskInputBar> {
                   child: hasText || !widget.dictation
                       ? _RoundButton(
                           key: const ValueKey('send'),
+                          label: 'Send',
                           size: 44,
                           color: hasText && widget.enabled
                               ? colors.primaryGreen
                               : colors.dividerColor,
-                          onTap: hasText && widget.enabled
-                              ? widget.onSend
-                              : null,
+                          onTap: hasText && widget.enabled ? _send : null,
                           child: Icon(
                             Symbols.arrow_upward_rounded,
                             size: 24,
@@ -180,6 +193,7 @@ class _AskInputBarState extends State<AskInputBar> {
                         )
                       : _RoundButton(
                           key: const ValueKey('mic'),
+                          label: _dictating ? 'Stop dictating' : 'Dictate',
                           size: 44,
                           // A soft disc at rest, so it reads as a button in
                           // both themes; green while listening.
@@ -212,7 +226,10 @@ class _AskInputBarState extends State<AskInputBar> {
   }
 }
 
+/// A round icon button: a [size] disc, centred in a tap area of at least
+/// 48 dp, announced to TalkBack as [label].
 class _RoundButton extends StatelessWidget {
+  final String label;
   final double size;
   final Color color;
   final VoidCallback? onTap;
@@ -220,6 +237,7 @@ class _RoundButton extends StatelessWidget {
 
   const _RoundButton({
     super.key,
+    required this.label,
     required this.size,
     required this.color,
     required this.onTap,
@@ -227,18 +245,33 @@ class _RoundButton extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) => PressFeedback(
-    scale: 0.9,
-    child: Material(
-      color: color,
-      shape: const CircleBorder(),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
+  Widget build(BuildContext context) => Semantics(
+    button: true,
+    enabled: onTap != null,
+    label: label,
+    child: PressFeedback(
+      scale: 0.9,
+      // The ring around the disc catches near misses.
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onTap: onTap,
-        child: SizedBox(
-          width: size,
-          height: size,
-          child: Center(child: child),
+        child: SizedBox.square(
+          dimension: size < 48 ? 48 : size,
+          child: Center(
+            child: Material(
+              color: color,
+              shape: const CircleBorder(),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: onTap,
+                child: SizedBox(
+                  width: size,
+                  height: size,
+                  child: Center(child: child),
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     ),

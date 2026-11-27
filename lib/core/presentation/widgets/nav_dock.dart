@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/material.dart';
@@ -52,6 +53,13 @@ class _NavDockState extends State<NavDock> {
   static const _minTabWidth = 52.0;
   static const _gap = 16.0;
   static const _pillPadding = 6.0;
+
+  /// When even [_minTabWidth] doesn't fit (a narrow phone, or Display size
+  /// set to Large), the gap and the pill's inset tighten and the tabs narrow
+  /// as far as [_tightTabWidth].
+  static const _tightGap = 8.0;
+  static const _tightPillPadding = 4.0;
+  static const _tightTabWidth = 36.0;
   static const _motion = Duration(milliseconds: 380);
   static const _curve = Cubic(0.3, 1.15, 0.4, 1);
 
@@ -117,25 +125,41 @@ class _NavDockState extends State<NavDock> {
         // bar growing always add up to the space — the overshoot is clamped.
         return TweenAnimationBuilder<double>(
           tween: Tween(end: widget.asking ? 1 : 0),
-          duration: _motion,
+          // With animations turned off, the bar just opens.
+          duration: MediaQuery.of(context).disableAnimations
+              ? Duration.zero
+              : _motion,
           curve: _curve,
           builder: (context, t, _) {
             final full = constraints.maxWidth;
-            final tabWidth =
-                ((full - kNavDockHeight - _gap - _pillPadding * 2) /
-                        _tabItems.length)
-                    .clamp(_minTabWidth, _maxTabWidth);
-            final tabsWidth = tabWidth * _tabItems.length + _pillPadding * 2;
+            final n = _tabItems.length;
+            final roomy = (full - kNavDockHeight - _gap - _pillPadding * 2) / n;
+            final tight = roomy < _minTabWidth;
+            final gap = tight ? _tightGap : _gap;
+            final pad = tight ? _tightPillPadding : _pillPadding;
+            final tabWidth = tight
+                ? ((full - kNavDockHeight - gap - pad * 2) / n).clamp(
+                    _tightTabWidth,
+                    _minTabWidth,
+                  )
+                : roomy.clamp(_minTabWidth, _maxTabWidth);
+            final tabsWidth = tabWidth * n + pad * 2;
             final tabsW = lerpDouble(
               tabsWidth,
               kNavDockHeight,
               t,
             )!.clamp(kNavDockHeight, tabsWidth);
-            final echoW = lerpDouble(
-              kNavDockHeight,
-              full - kNavDockHeight - _gap,
-              t,
-            )!.clamp(kNavDockHeight, full - tabsW - _gap);
+            // The upper bound can't fall below Echo's own size, or clamp
+            // throws (narrow screens, large Display size).
+            final echoW =
+                lerpDouble(
+                  kNavDockHeight,
+                  full - kNavDockHeight - gap,
+                  t,
+                )!.clamp(
+                  kNavDockHeight,
+                  math.max<double>(kNavDockHeight, full - tabsW - gap),
+                );
             return SizedBox(
               height: kNavDockHeight,
               child: Row(
@@ -143,9 +167,9 @@ class _NavDockState extends State<NavDock> {
                 children: [
                   SizedBox(
                     width: tabsW,
-                    child: _tabs(context, tabWidth, tabsWidth),
+                    child: _tabs(context, tabWidth, tabsWidth, pad),
                   ),
-                  const SizedBox(width: _gap),
+                  SizedBox(width: gap),
                   SizedBox(width: echoW, child: _echo(context, t)),
                 ],
               ),
@@ -156,7 +180,14 @@ class _NavDockState extends State<NavDock> {
     );
   }
 
-  Widget _tabs(BuildContext context, double tabWidth, double tabsWidth) {
+  /// The four tabs, [pad] in from the pill's edge. Each tab's tap area is
+  /// the dock's full height; the green pill under the chosen one is inset.
+  Widget _tabs(
+    BuildContext context,
+    double tabWidth,
+    double tabsWidth,
+    double pad,
+  ) {
     final c = context.colors;
     return Container(
       height: kNavDockHeight,
@@ -175,12 +206,13 @@ class _NavDockState extends State<NavDock> {
                 minWidth: tabsWidth,
                 maxWidth: tabsWidth,
                 child: Padding(
-                  padding: const EdgeInsets.all(_pillPadding),
+                  padding: EdgeInsets.symmetric(horizontal: pad),
                   child: Stack(
                     children: [
                       _StretchPill(
                         index: widget.selectedIndex,
                         tabWidth: tabWidth,
+                        inset: pad,
                         color: c.primaryGreen,
                       ),
                       Row(
@@ -198,7 +230,7 @@ class _NavDockState extends State<NavDock> {
                                   onTap: () => widget.onTabSelected(i),
                                   child: SizedBox(
                                     width: tabWidth,
-                                    height: kNavDockHeight - _pillPadding * 2,
+                                    height: kNavDockHeight,
                                     child: Center(
                                       child: SquashInIcon(
                                         isSelected: widget.selectedIndex == i,
@@ -350,27 +382,34 @@ class _NavDockState extends State<NavDock> {
                             label: 'Send',
                             child: PressFeedback(
                               scale: 0.88,
+                              // A 44 dp disc in a 48 dp tap area.
                               child: GestureDetector(
+                                behavior: HitTestBehavior.opaque,
                                 onTap: _submit,
-                                child: Container(
-                                  width: 44,
-                                  height: 44,
-                                  decoration: BoxDecoration(
-                                    color: c.primaryGreen,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Icon(
-                                    Symbols.arrow_upward_rounded,
-                                    size: 24,
-                                    color: context.isDarkMode
-                                        ? c.textInverse
-                                        : Colors.white,
+                                child: SizedBox.square(
+                                  dimension: 48,
+                                  child: Center(
+                                    child: Container(
+                                      width: 44,
+                                      height: 44,
+                                      decoration: BoxDecoration(
+                                        color: c.primaryGreen,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Icon(
+                                        Symbols.arrow_upward_rounded,
+                                        size: 24,
+                                        color: context.isDarkMode
+                                            ? c.textInverse
+                                            : Colors.white,
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
                           ),
-                          const SizedBox(width: 6),
+                          const SizedBox(width: 4),
                         ],
                       ],
                     ),
@@ -384,6 +423,11 @@ class _NavDockState extends State<NavDock> {
     );
   }
 }
+
+/// The height of a row of Ask chips (13.5 pt labels): 40 dp at the default
+/// font size, taller once larger text needs it, so the labels never clip.
+double askChipRowHeight(BuildContext context) =>
+    math.max(40, MediaQuery.textScalerOf(context).scale(13.5) * 1.45 + 20);
 
 /// Ready-made questions shown above the question bar. Deliberately general:
 /// they work on any day, whatever came in.
@@ -409,7 +453,7 @@ class AskSuggestionChips extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.colors;
     return SizedBox(
-      height: 40,
+      height: askChipRowHeight(context),
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -451,11 +495,15 @@ class AskSuggestionChips extends StatelessWidget {
 class _StretchPill extends StatefulWidget {
   final int index;
   final double tabWidth;
+
+  /// How far it sits in from the dock's top and bottom edges.
+  final double inset;
   final Color color;
 
   const _StretchPill({
     required this.index,
     required this.tabWidth,
+    required this.inset,
     required this.color,
   });
 
@@ -481,24 +529,28 @@ class _StretchPillState extends State<_StretchPill> {
   Widget build(BuildContext context) {
     final left = widget.index * widget.tabWidth;
     final right = left + widget.tabWidth;
+    // With animations turned off, it simply moves.
+    final still = MediaQuery.of(context).disableAnimations;
     return TweenAnimationBuilder<double>(
       tween: Tween(end: left),
-      duration: _right ? _trail : _lead,
+      duration: still ? Duration.zero : (_right ? _trail : _lead),
       curve: _curve,
       builder: (context, l, _) => TweenAnimationBuilder<double>(
         tween: Tween(end: right),
-        duration: _right ? _lead : _trail,
+        duration: still ? Duration.zero : (_right ? _lead : _trail),
         curve: _curve,
         builder: (context, r, _) => Positioned(
           left: l,
-          top: 0,
-          bottom: 0,
+          top: widget.inset,
+          bottom: widget.inset,
           // The overshoot can briefly cross the edges; never inside out.
           width: (r - l).clamp(widget.tabWidth * 0.6, double.infinity),
           child: DecoratedBox(
             decoration: BoxDecoration(
               color: widget.color,
-              borderRadius: BorderRadius.circular(22),
+              borderRadius: BorderRadius.circular(
+                kNavDockHeight / 2 - widget.inset,
+              ),
             ),
           ),
         ),

@@ -20,12 +20,24 @@ class SourcePackages {
   /// Called at ingest for every notification.
   static Future<void> remember(String source, String? packageName) async {
     if (packageName == null || packageName.isEmpty) return;
+    await rememberAll({
+      source: {packageName: 1},
+    });
+  }
+
+  /// [remember] for many at once: source → package → how many times.
+  static Future<void> rememberAll(Map<String, Map<String, int>> seen) async {
+    if (seen.isEmpty) return;
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.reload(); // the background alarm isolate writes here too
       final all = decode(prefs.getString(key));
-      final counts = all.putIfAbsent(source, () => {});
-      counts[packageName] = (counts[packageName] ?? 0) + 1;
+      seen.forEach((source, packages) {
+        final counts = all.putIfAbsent(source, () => {});
+        packages.forEach((package, n) {
+          counts[package] = (counts[package] ?? 0) + n;
+        });
+      });
       await prefs.setString(key, jsonEncode(all));
     } catch (_) {}
   }

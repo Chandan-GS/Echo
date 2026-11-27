@@ -6,6 +6,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'generation_guard.dart';
+
 /// The result of a successful QR pairing — everything the phone needs to
 /// remember to reach this desktop engine again, plus its name for display.
 class PairResult {
@@ -83,7 +85,7 @@ class DesktopEngineClient {
       await prefs.setString('desktop_engine_name', desktopName);
       return PairResult(host: host, desktopName: desktopName);
     } catch (e) {
-      debugPrint('QR pairing failed: $e');
+      debugPrint('QR pairing failed (${e.runtimeType})');
       return null;
     }
   }
@@ -173,41 +175,55 @@ class DesktopEngineClient {
   /// endpoint. Emits plain text tokens as they arrive (same shape the
   /// callers already feed into their `StreamController<String>` for the
   /// on-device/Gemini paths) and closes normally on completion, or emits an
-  /// error the caller can fall back from.
+  /// error the caller can fall back from — including a [GenerationTimeout]
+  /// when the engine stalls or runs past [GenerationLimits.desktop].
+  /// Cancelling the stream, or a timeout, aborts the HTTP request.
   static Stream<String> generateStream({
     required String host,
     required String endpoint, // 'briefing' | 'ask'
     required String prompt,
   }) {
-    final controller = StreamController<String>();
+    final cancel = CancelToken();
+    final controller = StreamController<String>(
+      onCancel: () {
+        if (!cancel.isCancelled) cancel.cancel();
+      },
+    );
 
     () async {
       try {
         final response = await _dio.post<ResponseBody>(
           'http://$host/$endpoint',
           data: jsonEncode({'prompt': prompt}),
+          cancelToken: cancel,
           options: Options(
             headers: {'Content-Type': 'application/json', ...await authHeaders()},
             responseType: ResponseType.stream,
             sendTimeout: const Duration(seconds: 10),
             // Generation itself can legitimately take a while on a big model;
-            // don't cap receive time the way the fast health-check does.
-            receiveTimeout: const Duration(minutes: 5),
+            // the stall and overall limits below bound it instead.
+            receiveTimeout: GenerationLimits.desktop.firstChunk,
           ),
         );
 
-        final stream = response.data!.stream;
-        await for (final chunk in stream) {
+        // Decoded as one stream so a character split across two chunks
+        // still comes out whole.
+        final text = response.data!.stream
+            .cast<List<int>>()
+            .transform(const Utf8Decoder(allowMalformed: true));
+        await for (final piece in text) {
           if (controller.isClosed) break;
-          controller.add(utf8.decode(chunk, allowMalformed: true));
+          if (piece.isNotEmpty) controller.add(piece);
         }
-        await controller.close();
       } catch (e) {
-        controller.addError(e);
-        await controller.close();
+        if (!controller.isClosed && !cancel.isCancelled) {
+          controller.addError(e);
+        }
+      } finally {
+        if (!controller.isClosed) await controller.close();
       }
     }();
 
-    return controller.stream;
+    return guardGeneration(controller.stream, GenerationLimits.desktop);
   }
 }

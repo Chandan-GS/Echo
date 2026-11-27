@@ -1,8 +1,10 @@
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:project_echo/core/services/review_prompt.dart';
 import 'package:project_echo/core/presentation/animations/app_motion.dart';
 import 'package:project_echo/core/presentation/animations/fade_slide_in.dart';
 import 'package:project_echo/core/presentation/animations/page_transitions.dart';
@@ -238,6 +240,13 @@ class _PhoneSettingsScreenState extends State<PhoneSettingsScreen> {
                           child: const WidgetsScreen(),
                         ),
                       ),
+                    ),
+                  if (Platform.isAndroid)
+                    _Row(
+                      icon: Symbols.star_rounded,
+                      title: 'Rate Echo',
+                      value: 'On Google Play',
+                      onTap: ReviewPrompt.openListing,
                     ),
                   _Row(
                     icon: Symbols.policy_rounded,

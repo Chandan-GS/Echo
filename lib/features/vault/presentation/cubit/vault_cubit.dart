@@ -12,7 +12,13 @@ part 'vault_state.dart';
 class VaultCubit extends Cubit<VaultState> {
   StreamSubscription<void>? _isarSubscription;
 
-  VaultCubit() : super(VaultInitial());
+  VaultCubit() : super(VaultInitial()) {
+    // Apps Echo hears can be changed from Settings too, with the Vault alive
+    // in its tab: its blocks are re-read rather than left stale.
+    AppAccess.changed.addListener(_accessChanged);
+  }
+
+  void _accessChanged() => unawaited(reloadSettings());
 
   Future<void> loadEntries() async {
     // Set up real-time stream if not already active
@@ -196,12 +202,18 @@ class VaultCubit extends Cubit<VaultState> {
     final prefs = await SharedPreferences.getInstance();
     final currentState = state;
     if (currentState is VaultLoaded) {
-      final updatedBlocks = List<String>.from(currentState.blockedCategories);
-      if (updatedBlocks.contains(category)) {
-        updatedBlocks.remove(category);
-      } else {
-        updatedBlocks.add(category);
-      }
+      // Which way is decided by what the owner saw; the rest of the list
+      // comes from prefs, not the state: Apps Echo hears may have lifted a
+      // block since the Vault last read them, and writing the old list back
+      // would block that category (and switch its apps off) again.
+      final block = !currentState.blockedCategories.contains(category);
+      await prefs.reload();
+      final updatedBlocks = withBlock(
+        prefs.getStringList('vault_blocked_categories') ??
+            currentState.blockedCategories,
+        category,
+        block: block,
+      );
 
       await prefs.setStringList('vault_blocked_categories', updatedBlocks);
 
@@ -275,7 +287,20 @@ class VaultCubit extends Cubit<VaultState> {
 
   @override
   Future<void> close() {
+    AppAccess.changed.removeListener(_accessChanged);
     _isarSubscription?.cancel();
     return super.close();
   }
 }
+
+/// [blocked] with [category] blocked or not, as [block] says, and every
+/// other block kept as it is.
+List<String> withBlock(
+  List<String> blocked,
+  String category, {
+  required bool block,
+}) => [
+  for (final c in blocked)
+    if (c != category) c,
+  if (block) category,
+];

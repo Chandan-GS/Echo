@@ -18,6 +18,10 @@ class OnboardingShell extends StatelessWidget {
   final int step;
   final VoidCallback? onBack;
 
+  /// Skips the step with sensible defaults, for the steps that can be
+  /// skipped; shown as Skip at the right of the header.
+  final VoidCallback? onSkip;
+
   /// The per-step content, typically an [AnimatedSwitcher] of [OnboardingStepBody].
   final Widget body;
 
@@ -26,6 +30,7 @@ class OnboardingShell extends StatelessWidget {
     required this.step,
     required this.body,
     this.onBack,
+    this.onSkip,
   });
 
   @override
@@ -50,9 +55,9 @@ class OnboardingShell extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                  padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
                   child: SizedBox(
-                    height: 44,
+                    height: 48,
                     child: Row(
                       children: [
                         // AnimatedSwitcher so the back button fades in/out when a
@@ -73,7 +78,18 @@ class OnboardingShell extends StatelessWidget {
                         Expanded(
                           child: Center(child: OnboardingProgress(step: step)),
                         ),
-                        const SizedBox(width: 4),
+                        AnimatedSize(
+                          duration: MediaQuery.disableAnimationsOf(context)
+                              ? Duration.zero
+                              : AppMotion.fast,
+                          curve: AppMotion.standard,
+                          child: onSkip != null
+                              ? Padding(
+                                  padding: const EdgeInsets.only(left: 8),
+                                  child: _SkipButton(onTap: onSkip!),
+                                )
+                              : const SizedBox(width: 4),
+                        ),
                       ],
                     ),
                   ),
@@ -208,6 +224,38 @@ class _IosBackButton extends StatelessWidget {
               color: colors.textPrimary,
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Skip, at the right of the header: a plain word in a 48 dp target.
+class _SkipButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _SkipButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return Semantics(
+      button: true,
+      label: 'Skip this step',
+      excludeSemantics: true,
+      child: TextButton(
+        onPressed: onTap,
+        style: TextButton.styleFrom(
+          minimumSize: const Size(48, 48),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          foregroundColor: colors.textSecondary,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+        child: Text(
+          'Skip',
+          style: GoogleFonts.nunito(fontSize: 16, fontWeight: FontWeight.w800),
         ),
       ),
     );

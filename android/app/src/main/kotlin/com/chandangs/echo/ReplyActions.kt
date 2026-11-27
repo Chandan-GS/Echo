@@ -141,7 +141,17 @@ object ReplyActions {
             val chat = Intent().setClassName(appOf(thread), "com.whatsapp.Conversation")
                 .putExtra("jid", chatId)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            return PendingIntent.getActivity(context, requestCode, chat, PendingIntent.FLAG_IMMUTABLE)
+            // Android matches PendingIntents ignoring extras, so a reminder id
+            // used again would otherwise get the earlier chat's button. The
+            // identifier keeps each chat's apart; on older versions, updating
+            // at least points it at the latest one.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) chat.setIdentifier(chatId)
+            return PendingIntent.getActivity(
+                context,
+                requestCode,
+                chat,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
         }
         return fresh(thread)?.open
     }
@@ -211,12 +221,40 @@ object ReplyActions {
      */
     private fun chatId(context: Context, thread: String): String? {
         chatIds(context).optString(thread).takeIf { it.isNotEmpty() }?.let { return it }
-        val found = whatsappContactIds(context).firstOrNull {
-            "${appOf(thread)}:${ConversationReader.shortHash(it)}" == thread
-        } ?: return null
+        val found = contactIndex(context)[thread.substringAfterLast(':')] ?: return null
         rememberChatId(context, thread, found)
         return found
     }
+
+    /**
+     * Looks [thread]'s chat id up ahead of time, so the call that needs it
+     * (on the main thread) finds it kept. Not synchronized: reading the
+     * contacts mustn't hold up the listener remembering a notification.
+     */
+    fun prepare(context: Context, thread: String) {
+        if (!isWhatsApp(thread) || chatIds(context).optString(thread).isNotEmpty()) return
+        contactIndex(context)[thread.substringAfterLast(':')]?.let { rememberChatId(context, thread, it) }
+    }
+
+    /** The WhatsApp ids in the owner's contacts, by their fingerprint, and when they were read. */
+    private class ContactIndex(val byHash: Map<String, String>, val at: Long)
+
+    @Volatile private var contacts: ContactIndex? = null
+
+    /**
+     * Fingerprint → WhatsApp id for the owner's contacts, read (and every id
+     * hashed) at most once every [CONTACTS_KEEP_MS], so a chat that isn't
+     * there doesn't cost a fresh read each time it's asked about.
+     */
+    private fun contactIndex(context: Context): Map<String, String> {
+        val now = System.currentTimeMillis()
+        contacts?.takeIf { now - it.at < CONTACTS_KEEP_MS }?.let { return it.byHash }
+        val byHash = whatsappContactIds(context).associateBy { ConversationReader.shortHash(it) }
+        contacts = ContactIndex(byHash, now)
+        return byHash
+    }
+
+    private const val CONTACTS_KEEP_MS = 30 * 60 * 1000L
 
     private fun whatsappContactIds(context: Context): List<String> = try {
         context.contentResolver.query(
@@ -228,6 +266,8 @@ object ReplyActions {
         )?.use { c -> buildList { while (c.moveToNext()) c.getString(0)?.let(::add) } } ?: emptyList()
     } catch (e: SecurityException) {
         emptyList() // contacts not allowed
+    } catch (e: Exception) {
+        emptyList()
     }
 
     private fun prefs(context: Context) =
@@ -239,6 +279,7 @@ object ReplyActions {
         JSONObject()
     }
 
+    @Synchronized
     private fun rememberChatId(context: Context, thread: String, chatId: String) {
         val ids = chatIds(context)
         if (ids.optString(thread) == chatId) return

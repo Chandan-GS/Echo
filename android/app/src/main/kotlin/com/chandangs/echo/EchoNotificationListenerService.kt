@@ -5,18 +5,17 @@ import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
 import com.chandangs.echo_native.NotificationBuffer
+import com.chandangs.echo_native.RepostFilter
 import org.json.JSONObject
+import java.util.UUID
 
 class EchoNotificationListenerService : NotificationListenerService() {
     companion object {
         const val ACTION_NEW_NOTIFICATION = "com.chandangs.echo.NEW_NOTIFICATION"
         const val EXTRA_NOTIFICATION_DATA = "notification_data"
 
-        private var lastProcessedText: String = ""
-        private var lastProcessedPackage: String = ""
-        private var lastProcessedTime: Long = 0
-
-        var isFlutterListening: Boolean = false
+        /** Non-chat notifications already captured, by key and content. */
+        private val reposts = RepostFilter()
 
         /** The connected listener, for reading what's in the shade right now. */
         @Volatile var instance: EchoNotificationListenerService? = null
@@ -27,21 +26,40 @@ class EchoNotificationListenerService : NotificationListenerService() {
     /** Does what the owner did on their paired computer (see DesktopRelay). */
     private var relay: DesktopRelay? = null
 
+    // Every callback below catches what it throws: an exception escaping one
+    // would crash the listener, and Android would stop delivering anything
+    // until it's rebound. One odd notification shouldn't cost the rest.
+
     override fun onListenerConnected() {
         super.onListenerConnected()
         instance = this
-        relay?.stop()
-        relay = DesktopRelay(applicationContext).also { it.start() }
+        try {
+            relay?.stop()
+            relay = DesktopRelay(applicationContext).also { it.start() }
+        } catch (e: Exception) {
+            Log.w("EchoNotification", "Couldn't start the desktop relay: ${e.message}")
+        }
         // After an update or restart, chats still in the shade can be
         // answered and opened again straight away, and messages that came
         // in while Echo wasn't listening are caught up (the ones it already
-        // has are skipped). Other notifications aren't: nothing records
-        // which of those were already captured.
+        // has are skipped). Other notifications aren't, as nothing records
+        // which of those were already captured, except the very first time
+        // Echo listens, during onboarding: then nothing has been, and what's
+        // in the shade is what the owner's first look is read from.
+        val firstLook = takeFirstLook()
         try {
             for (sbn in activeNotifications.orEmpty()) {
-                if (!captures(sbn)) continue
-                val conversation = ConversationReader.read(sbn) ?: continue
-                capture(sbn, conversation)
+                try {
+                    if (!captures(sbn)) continue
+                    val conversation = ConversationReader.read(sbn)
+                    if (conversation != null) {
+                        capture(sbn, conversation)
+                    } else if (firstLook) {
+                        posted(sbn, at = sbn.postTime)
+                    }
+                } catch (e: Exception) {
+                    Log.w("EchoNotification", "Skipped a chat in the shade: ${e.message}")
+                }
             }
         } catch (e: Exception) {
             Log.w("EchoNotification", "Couldn't read the shade: ${e.message}")
@@ -50,7 +68,11 @@ class EchoNotificationListenerService : NotificationListenerService() {
 
     override fun onListenerDisconnected() {
         instance = null
-        relay?.stop()
+        try {
+            relay?.stop()
+        } catch (e: Exception) {
+            Log.w("EchoNotification", "Couldn't stop the desktop relay: ${e.message}")
+        }
         relay = null
         super.onListenerDisconnected()
     }
@@ -71,7 +93,34 @@ class EchoNotificationListenerService : NotificationListenerService() {
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         super.onNotificationPosted(sbn)
         if (sbn == null) return
+        try {
+            posted(sbn)
+        } catch (e: Exception) {
+            Log.e("EchoNotification", "Couldn't capture a notification from ${sbn.packageName}", e)
+        }
+    }
 
+    /**
+     * True once only: the first time the listener connects before onboarding
+     * is finished. Later connections (an update, a restart, access turned
+     * off and on) would capture again what was saved the first time.
+     */
+    private fun takeFirstLook(): Boolean = try {
+        val flutter = applicationContext.getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+        val own = applicationContext.getSharedPreferences("echo_listener", MODE_PRIVATE)
+        val onboarded = flutter.getBoolean("flutter.onboarding_finished", false)
+        if (onboarded || own.getBoolean("shade_read", false)) {
+            false
+        } else {
+            own.edit().putBoolean("shade_read", true).apply()
+            true
+        }
+    } catch (e: Exception) {
+        false
+    }
+
+    /** Captures [sbn], as arriving [at] (when it was posted, for the shade). */
+    private fun posted(sbn: StatusBarNotification, at: Long = System.currentTimeMillis()) {
         val packageName = sbn.packageName ?: return
         val extras = sbn.notification?.extras ?: return
         
@@ -93,24 +142,21 @@ class EchoNotificationListenerService : NotificationListenerService() {
             return
         }
 
-        val currentTime = System.currentTimeMillis()
-        if (text.isNotEmpty() && text == lastProcessedText && packageName == lastProcessedPackage && (currentTime - lastProcessedTime) < 2000) {
-            return // Duplicate detected within 2 seconds
-        }
+        // An expanded notification (a long email, a long message) carries
+        // its whole text separately; the plain text is only the first line.
+        val bigText = extras.getCharSequence(android.app.Notification.EXTRA_BIG_TEXT)?.toString()?.trim().orEmpty()
 
-        lastProcessedText = text
-        lastProcessedPackage = packageName
-        lastProcessedTime = currentTime
+        // Apps post the same notification again, unchanged, whenever they
+        // refresh it; only a new one, or a changed text, is captured.
+        if (reposts.isRepost(sbn.key, "$title\u0000$text\u0000$bigText")) return
+
+        val currentTime = at
 
         // Clean up WhatsApp summary prefixes
         var cleanTitle = title
         if (packageName.contains("whatsapp", ignoreCase = true) && title.startsWith("WhatsApp: ", ignoreCase = true)) {
             cleanTitle = title.substring(10).trim()
         }
-
-        // An expanded notification (a long email, a long message) carries
-        // its whole text separately; the plain text is only the first line.
-        val bigText = extras.getCharSequence(android.app.Notification.EXTRA_BIG_TEXT)?.toString()?.trim().orEmpty()
 
         val json = JSONObject()
         json.put("source", mapPackageToSource(packageName))
@@ -173,7 +219,17 @@ class EchoNotificationListenerService : NotificationListenerService() {
         reason: Int,
     ) {
         super.onNotificationRemoved(sbn, rankingMap, reason)
-        if (sbn == null || sbn.isOngoing) return
+        if (sbn == null) return
+        try {
+            removed(sbn, reason)
+        } catch (e: Exception) {
+            Log.e("EchoNotification", "Couldn't read a removed notification from ${sbn.packageName}", e)
+        }
+    }
+
+    private fun removed(sbn: StatusBarNotification, reason: Int) {
+        reposts.forget(sbn.key)
+        if (sbn.isOngoing) return
         val conversation = ConversationReader.read(sbn)
         val action = when {
             reason == REASON_CLICK -> "opened"
@@ -196,16 +252,22 @@ class EchoNotificationListenerService : NotificationListenerService() {
         emit(json)
     }
 
+    /**
+     * Always buffers [json], then offers it to the app's UI as a fast path.
+     * Buffering only while no UI listened lost what arrived as the app went
+     * to the background: the UI had stopped listening, but the listener
+     * didn't know yet. Both copies carry one `captureKey`, so Dart saves the
+     * live one, confirms it to the buffer, and recognises the buffered one
+     * if it's drained first or as well.
+     */
     private fun emit(json: JSONObject) {
+        val key = UUID.randomUUID().toString()
+        json.put("captureKey", key)
         val jsonString = json.toString()
         Log.d("EchoNotification", "Captured from ${json.optString("packageName")}")
 
-        // 1. Buffer to SharedPreferences ONLY if Flutter is not actively listening
-        if (!isFlutterListening) {
-            NotificationBuffer.append(applicationContext, jsonString)
-        }
+        NotificationBuffer.append(applicationContext, jsonString, key)
 
-        // 2. Broadcast to MainActivity if active
         val intent = Intent(ACTION_NEW_NOTIFICATION)
         intent.putExtra(EXTRA_NOTIFICATION_DATA, jsonString)
         intent.setPackage(applicationContext.packageName)

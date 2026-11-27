@@ -5,7 +5,10 @@ import 'package:flutter/material.dart';
 ///
 /// Like [IndexedStack] it keeps every child alive in the tree, so tab state
 /// (scroll positions, in-flight requests, controllers) is preserved across
-/// switches — only the visible one is interactive.
+/// switches — only the visible one is interactive. Every child keeps the
+/// same wrappers whether it's showing or not, so switching never changes the
+/// tree's shape (which would remount the tabs); the hidden ones have their
+/// tickers muted so their looping animations don't run unseen.
 class FadeIndexedStack extends StatefulWidget {
   final int index;
   final List<Widget> children;
@@ -34,9 +37,14 @@ class _FadeIndexedStackState extends State<FadeIndexedStack>
   void didUpdateWidget(covariant FadeIndexedStack oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.index != widget.index) {
-      _controller
-        ..reset()
-        ..forward();
+      // With animations turned off, the new tab simply appears.
+      if (MediaQuery.of(context).disableAnimations) {
+        _controller.value = 1;
+      } else {
+        _controller
+          ..reset()
+          ..forward();
+      }
     }
   }
 
@@ -62,15 +70,20 @@ class _FadeIndexedStackState extends State<FadeIndexedStack>
           fit: StackFit.expand,
           children: List<Widget>.generate(widget.children.length, (i) {
             final isActive = i == widget.index;
-            // Keep inactive pages laid out (state preserved) but invisible and
-            // non-interactive. The active page bounces + fades in.
-            return IgnorePointer(
-              ignoring: !isActive,
-              child: Opacity(
-                opacity: isActive ? fade : 0,
-                child: isActive
-                    ? Transform.scale(scale: scale, child: widget.children[i])
-                    : widget.children[i],
+            // Keep inactive pages laid out (state preserved) but invisible,
+            // non-interactive and still. The active page bounces + fades in.
+            // The wrappers are the same either way so nothing remounts.
+            return TickerMode(
+              enabled: isActive,
+              child: IgnorePointer(
+                ignoring: !isActive,
+                child: Opacity(
+                  opacity: isActive ? fade : 0,
+                  child: Transform.scale(
+                    scale: isActive ? scale : 1,
+                    child: widget.children[i],
+                  ),
+                ),
               ),
             );
           }),

@@ -6,6 +6,7 @@ import 'dart:ui' show lerpDouble;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:project_echo/core/presentation/widgets/min_tap_area.dart';
 import 'package:project_echo/core/theme/app_theme.dart';
 import 'package:project_echo/core/theme/google_fonts.dart';
 import 'package:project_echo/features/echo/presentation/widgets/timer/next_briefing_timer.dart';
@@ -468,28 +469,33 @@ class _Line extends StatelessWidget {
                 ),
               ),
               for (final s in stops)
+                // A 48 dp tap area around each small dot.
                 Positioned(
-                  left: _position(s.at) * w - 16,
-                  top: lineY - 16,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => onSelect(s.item.id),
-                    child: SizedBox(
-                      width: 32,
-                      height: 32,
-                      child: Center(
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 180),
-                          width: s.item.id == selectedId ? 14 : 11,
-                          height: s.item.id == selectedId ? 14 : 11,
-                          decoration: BoxDecoration(
-                            color: s.item.id == selectedId
-                                ? c.textPrimary
-                                : c.background,
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: c.textPrimary,
-                              width: 2.5,
+                  left: _position(s.at) * w - kMinTapTarget / 2,
+                  top: lineY - kMinTapTarget / 2,
+                  child: Semantics(
+                    button: true,
+                    selected: s.item.id == selectedId,
+                    label: '${_DayLineState._clock(s.at)}, ${s.item.title}',
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => onSelect(s.item.id),
+                      child: SizedBox.square(
+                        dimension: kMinTapTarget,
+                        child: Center(
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 180),
+                            width: s.item.id == selectedId ? 14 : 11,
+                            height: s.item.id == selectedId ? 14 : 11,
+                            decoration: BoxDecoration(
+                              color: s.item.id == selectedId
+                                  ? c.textPrimary
+                                  : c.background,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: c.textPrimary,
+                                width: 2.5,
+                              ),
                             ),
                           ),
                         ),

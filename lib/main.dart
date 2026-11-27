@@ -14,6 +14,7 @@ import 'package:go_router/go_router.dart';
 import 'package:project_echo/features/echo/data/services/notification_service.dart';
 import 'package:project_echo/core/services/schedule_service.dart';
 import 'package:project_echo/core/services/local_notification_service.dart';
+import 'package:project_echo/core/services/pending_autoplay.dart';
 import 'package:project_echo/core/services/echo_server_service.dart';
 import 'package:project_echo/core/services/analytics_service.dart';
 import 'package:project_echo/core/services/remote_config_service.dart';
@@ -66,8 +67,12 @@ void main() async {
   await localNotifications.init();
   final launchDetails = await localNotifications.flutterLocalNotificationsPlugin
       .getNotificationAppLaunchDetails();
-  if (launchDetails?.didNotificationLaunchApp ?? false) {
-    await prefs.setBool('pending_autoplay', true);
+  // A gentle reminder (see GentleNudges) only opens Home.
+  if ((launchDetails?.didNotificationLaunchApp ?? false) &&
+      !LocalNotificationService.opensHomeOnly(
+        launchDetails?.notificationResponse?.payload,
+      )) {
+    await PendingAutoplay.mark(prefs);
   }
 
   // Note: notification permission is requested in-context during onboarding
@@ -84,7 +89,12 @@ void main() async {
 
     await ScheduleService.initialize();
     final briefingTimes = prefs.getStringList('briefing_times') ?? ['07:00'];
-    await ScheduleService.updateSchedules(briefingTimes);
+    // Nothing before the first frame needs the alarms set.
+    unawaited(
+      ScheduleService.updateSchedules(
+        briefingTimes,
+      ).catchError((Object e) => debugPrint('Scheduling briefings failed: $e')),
+    );
   }
 
   // Desktop-only, off by default: resume the Echo Engine service on launch if

@@ -1,4 +1,4 @@
-import 'package:isar/isar.dart';
+import 'package:isar_community/isar.dart';
 
 part 'raw_data.g.dart';
 
@@ -34,6 +34,14 @@ class RawData {
       isGroup && (threadTitle?.isNotEmpty ?? false) && threadTitle != sender
       ? (sender.isEmpty ? threadTitle! : '$sender · $threadTitle')
       : sender;
+
+  /// The native buffer's key for this notification, so one delivered again
+  /// (the app died before confirming it was saved, or it was saved live as
+  /// well) isn't saved twice. For a calendar event, its title and start
+  /// (`calendar:…`, see NotificationIngest.calendarKey). Null for what was
+  /// saved before keys were kept.
+  @Index()
+  String? captureKey;
 
   // 384-dimensional vector from all-MiniLM-L6-v2
   List<double>? embedding;

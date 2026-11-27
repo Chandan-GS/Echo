@@ -57,11 +57,21 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
         getByName("release") {
+            // A release signed with the debug key can't be uploaded to Play
+            // as an update, so a missing upload key fails the build rather
+            // than falling back quietly. CI's sideload APKs opt in with
+            // ECHO_ALLOW_DEBUG_SIGNING=1.
             val releaseConfig = signingConfigs.getByName("release")
-            signingConfig = if (releaseConfig.storeFile?.exists() == true) {
-                releaseConfig
-            } else {
-                signingConfigs.getByName("debug")
+            val hasUploadKey = releaseConfig.storeFile?.exists() == true
+            signingConfig = if (hasUploadKey) releaseConfig else signingConfigs.getByName("debug")
+            if (!hasUploadKey && System.getenv("ECHO_ALLOW_DEBUG_SIGNING") != "1") {
+                gradle.taskGraph.whenReady {
+                    if (allTasks.any { it.project == project && it.name.endsWith("Release") }) {
+                        throw GradleException(
+                            "No upload key (android/key.properties): set ECHO_ALLOW_DEBUG_SIGNING=1 for a debug-signed release.",
+                        )
+                    }
+                }
             }
             isMinifyEnabled = false
             isShrinkResources = false
@@ -71,6 +81,7 @@ android {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    testImplementation("junit:junit:4.13.2")
 }
 
 flutter {

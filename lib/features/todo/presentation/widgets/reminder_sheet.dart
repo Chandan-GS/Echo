@@ -49,6 +49,11 @@ Future<ReminderChoice?> showReminderSheet(
   );
 }
 
+/// The reminder sheet's minute wheel: every five minutes, plus [keep] when it
+/// falls between them.
+List<int> minuteStops(int keep) =>
+    {for (var m = 0; m < 60; m += 5) m, keep}.toList()..sort();
+
 /// One of the sheet's choices: a time, what it is, and how it's drawn.
 class _Option {
   final String id;
@@ -80,19 +85,24 @@ class _ReminderSheetState extends State<_ReminderSheet> {
   late final _minute = FixedExtentScrollController(initialItem: _initial.$2);
   late final _half = FixedExtentScrollController(initialItem: _initial.$3);
 
-  /// The wheels start on the reminder already set, else the suggestion, else
-  /// an hour from now: (hour index, minute index, AM/PM index).
-  late final (int, int, int) _initial = () {
-    final t =
-        widget.current ??
-        _options.firstOrNull?.at ??
-        _now.add(const Duration(hours: 1));
-    return (
-      t.hour % 12 == 0 ? 11 : t.hour % 12 - 1,
-      t.minute ~/ 5,
-      t.hour < 12 ? 0 : 1,
-    );
-  }();
+  /// What the wheels start on: the reminder already set, else the
+  /// suggestion, else an hour from now.
+  late final DateTime _start =
+      widget.current ??
+      _options.firstOrNull?.at ??
+      _now.add(const Duration(hours: 1));
+
+  /// The minute wheel: every five minutes, plus the starting time's own
+  /// minute when it's between them, so a reminder at 7:37 opens on 7:37 and
+  /// isn't moved to 7:35 by saving it again.
+  late final List<int> _minutes = minuteStops(_start.minute);
+
+  /// (hour index, minute index, AM/PM index) of [_start].
+  late final (int, int, int) _initial = (
+    _start.hour % 12 == 0 ? 11 : _start.hour % 12 - 1,
+    _minutes.indexOf(_start.minute),
+    _start.hour < 12 ? 0 : 1,
+  );
 
   @override
   void initState() {
@@ -104,13 +114,7 @@ class _ReminderSheetState extends State<_ReminderSheet> {
     _choice = current == null
         ? (_options.firstOrNull?.id ?? _custom)
         : (match?.id ?? _custom);
-    final from = DateTime(_now.year, _now.month, _now.day);
-    final day = current ?? widget.item.day;
-    _day = DateTime(
-      day.year,
-      day.month,
-      day.day,
-    ).difference(from).inDays.clamp(0, 6);
+    _day = calendarDaysBetween(_now, current ?? widget.item.day).clamp(0, 6);
   }
 
   @override
@@ -153,7 +157,7 @@ class _ReminderSheetState extends State<_ReminderSheet> {
         ),
       );
     }
-    final evening = today.add(const Duration(hours: 19));
+    final evening = DateTime(today.year, today.month, today.day, 19);
     if (evening.isAfter(now.add(const Duration(minutes: 30)))) {
       options.add(
         _Option(
@@ -167,7 +171,7 @@ class _ReminderSheetState extends State<_ReminderSheet> {
     options.add(
       _Option(
         'morning',
-        today.add(const Duration(days: 1, hours: 9)),
+        DateTime(today.year, today.month, today.day + 1, 9),
         'Tomorrow morning',
         icon: Symbols.wb_sunny_rounded,
       ),
@@ -176,13 +180,18 @@ class _ReminderSheetState extends State<_ReminderSheet> {
   }
 
   DateTime get _customAt {
-    final from = DateTime(_now.year, _now.month, _now.day);
     final hour = (_hour.hasClients ? _hour.selectedItem : _initial.$1) % 12 + 1;
     final minute =
-        (_minute.hasClients ? _minute.selectedItem : _initial.$2) % 12 * 5;
+        _minutes[(_minute.hasClients ? _minute.selectedItem : _initial.$2) %
+            _minutes.length];
     final pm = (_half.hasClients ? _half.selectedItem : _initial.$3) == 1;
-    return from.add(
-      Duration(days: _day, hours: hour % 12 + (pm ? 12 : 0), minutes: minute),
+    // Calendar days, not 24-hour steps, so a clock change doesn't shift it.
+    return DateTime(
+      _now.year,
+      _now.month,
+      _now.day + _day,
+      hour % 12 + (pm ? 12 : 0),
+      minute,
     );
   }
 
@@ -319,7 +328,7 @@ class _ReminderSheetState extends State<_ReminderSheet> {
     String dayName(int n) {
       if (n == 0) return 'Today';
       if (n == 1) return 'Tomorrow';
-      final d = _now.add(Duration(days: n));
+      final d = addDays(_now, n);
       return '${weekdays[d.weekday - 1]} ${d.day}';
     }
 
@@ -394,8 +403,7 @@ class _ReminderSheetState extends State<_ReminderSheet> {
                     wheel(_hour, [for (var h = 1; h <= 12; h++) '$h']),
                     _wheelText(context, ':'),
                     wheel(_minute, [
-                      for (var m = 0; m < 60; m += 5)
-                        m.toString().padLeft(2, '0'),
+                      for (final m in _minutes) m.toString().padLeft(2, '0'),
                     ]),
                     wheel(_half, const ['AM', 'PM'], loop: false),
                   ],

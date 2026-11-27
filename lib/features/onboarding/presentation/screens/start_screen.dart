@@ -7,12 +7,15 @@ import 'package:project_echo/features/onboarding/presentation/cubit/on_boarding_
 import 'package:project_echo/features/onboarding/presentation/screens/permission_screen.dart';
 import 'package:project_echo/features/onboarding/presentation/screens/ai_mode_screen.dart';
 import 'package:project_echo/features/onboarding/presentation/screens/apps_screen.dart';
+import 'package:project_echo/features/onboarding/presentation/screens/first_look_screen.dart';
+import 'package:project_echo/features/onboarding/presentation/screens/streak_goal_screen.dart';
 import 'package:project_echo/features/onboarding/presentation/screens/welcome_screen.dart';
 import 'package:project_echo/features/onboarding/presentation/screens/name_input_screen.dart';
 import 'package:project_echo/features/onboarding/presentation/screens/personalize_screen.dart';
 import 'package:project_echo/features/onboarding/presentation/screens/voice_screen.dart';
 import 'package:project_echo/features/onboarding/presentation/screens/preview_screen.dart';
 import 'package:project_echo/features/onboarding/presentation/widgets/onboarding_scaffold.dart';
+import 'package:project_echo/core/presentation/widgets/router_back.dart';
 
 class StartScreen extends StatelessWidget {
   const StartScreen({super.key});
@@ -45,6 +48,7 @@ class StartScreen extends StatelessWidget {
             key: const ValueKey('shell'),
             step: _stepFor(state),
             onBack: _onBackFor(context, state),
+            onSkip: _onSkipFor(context, state),
             body: AnimatedSwitcher(
               duration: AppMotion.medium,
               switchInCurve: AppMotion.emphasized,
@@ -62,12 +66,18 @@ class StartScreen extends StatelessWidget {
           );
         }
 
-        return AnimatedSwitcher(
-          duration: AppMotion.medium,
-          switchInCurve: AppMotion.emphasized,
-          switchOutCurve: AppMotion.standard,
-          transitionBuilder: _fadeSlide,
-          child: top,
+        // System back steps back like the shell's back button; only the
+        // welcome screen's back leaves the app.
+        final back = _onBackFor(context, state);
+        return RouterBack(
+          onBack: back,
+          child: AnimatedSwitcher(
+            duration: AppMotion.medium,
+            switchInCurve: AppMotion.emphasized,
+            switchOutCurve: AppMotion.standard,
+            transitionBuilder: _fadeSlide,
+            child: top,
+          ),
         );
       },
     );
@@ -87,17 +97,32 @@ class StartScreen extends StatelessWidget {
   }
 
   int _stepFor(OnBoardingState state) {
-    // Android has the extra "which apps" step right after permissions.
-    final extra = Platform.isAndroid ? 1 : 0;
+    // Android has two extra steps right after permissions (the first look,
+    // then which apps Echo hears) and ends with the streak goal.
+    final extra = Platform.isAndroid ? 2 : 0;
     return switch (state) {
       PermissionsStep() => 1,
-      AppsStep() => 2,
+      FirstLookStep() => 2,
+      AppsStep() => 3,
       AiModeStep() => 2 + extra,
       NameInputStep() => 3 + extra,
       PersonalizeStep() => 4 + extra,
       VoiceStep() => 5 + extra,
       PreviewStep() => 6 + extra,
+      StreakGoalStep() => 7 + extra,
       _ => 1,
+    };
+  }
+
+  /// The steps that can be skipped, with defaults: naming, personalising
+  /// and the voice.
+  VoidCallback? _onSkipFor(BuildContext context, OnBoardingState state) {
+    final cubit = context.read<OnBoardingCubit>();
+    return switch (state) {
+      NameInputStep() => cubit.skipName,
+      PersonalizeStep() => cubit.skipPersonalize,
+      VoiceStep() => cubit.skipVoice,
+      _ => null,
     };
   }
 
@@ -109,7 +134,9 @@ class StartScreen extends StatelessWidget {
     final isDesktop = Platform.isMacOS || Platform.isWindows;
     return switch (state) {
       PermissionsStep() => cubit.startOnboarding,
-      AppsStep() => cubit.checkPermissions,
+      FirstLookStep() => cubit.checkPermissions,
+      AppsStep() =>
+        Platform.isAndroid ? cubit.goBackToFirstLook : cubit.checkPermissions,
       AiModeStep() =>
         isDesktop
             ? cubit.startOnboarding
@@ -120,6 +147,7 @@ class StartScreen extends StatelessWidget {
       PersonalizeStep() => cubit.goBackToName,
       VoiceStep() => cubit.goBackToPersonalize,
       PreviewStep() => cubit.goBackToVoice,
+      StreakGoalStep() => cubit.goBackFromStreakGoal,
       _ => null,
     };
   }
@@ -127,6 +155,7 @@ class StartScreen extends StatelessWidget {
   Widget _bodyForState(OnBoardingState state) {
     return switch (state) {
       PermissionsStep() => const PermissionScreen(),
+      FirstLookStep(:final autoPlay) => FirstLookScreen(autoPlay: autoPlay),
       AppsStep() => const AppsScreen(),
       AiModeStep() => const AiModeScreen(),
       NameInputStep() => const NameInputScreen(),
@@ -139,6 +168,7 @@ class StartScreen extends StatelessWidget {
           interests: interests,
           voice: voice,
         ),
+      StreakGoalStep() => const StreakGoalScreen(),
       _ => const SizedBox.shrink(),
     };
   }
