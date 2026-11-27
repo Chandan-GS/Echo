@@ -15,6 +15,7 @@ import 'package:project_echo/features/onboarding/presentation/screens/personaliz
 import 'package:project_echo/features/onboarding/presentation/screens/voice_screen.dart';
 import 'package:project_echo/features/onboarding/presentation/screens/preview_screen.dart';
 import 'package:project_echo/features/onboarding/presentation/widgets/onboarding_scaffold.dart';
+import 'package:project_echo/core/presentation/widgets/router_back.dart';
 
 class StartScreen extends StatelessWidget {
   const StartScreen({super.key});
@@ -68,11 +69,8 @@ class StartScreen extends StatelessWidget {
         // System back steps back like the shell's back button; only the
         // welcome screen's back leaves the app.
         final back = _onBackFor(context, state);
-        return PopScope(
-          canPop: back == null,
-          onPopInvokedWithResult: (didPop, _) {
-            if (!didPop) back?.call();
-          },
+        return RouterBack(
+          onBack: back,
           child: AnimatedSwitcher(
             duration: AppMotion.medium,
             switchInCurve: AppMotion.emphasized,
